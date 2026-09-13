@@ -1,0 +1,182 @@
+/** Curated Soundcore 8-band curves. Band bytes use 0x78 = 0 dB, 10 units = 1 dB. */
+
+export interface EqPreset {
+  id: string;
+  name: string;
+  blurb: string;
+  index: number;
+  bands: number[];
+  featured?: boolean;
+  swatch: string;
+}
+
+export const EQ_PRESETS: EqPreset[] = [
+  {
+    id: 'signature',
+    name: 'Soundcore Signature',
+    blurb: 'Default factory curve',
+    index: 0x00,
+    bands: [0, 0, 0, 0, 0, 0, 0, 0],
+    featured: true,
+    swatch: 'linear-gradient(135deg,#6a5cff,#3d7bff)',
+  },
+  {
+    id: 'acoustic',
+    name: 'Acoustic',
+    blurb: 'Warm mids, airy top',
+    index: 0x01,
+    bands: [4, 1, 2, 2, 4, 4, 4, 2],
+    featured: true,
+    swatch: 'linear-gradient(135deg,#c9a227,#f3d36b)',
+  },
+  {
+    id: 'bass',
+    name: 'Bass Booster',
+    blurb: 'Sub and low-mid lift',
+    index: 0x02,
+    bands: [4, 3, 1, 0, 0, 0, 0, 0],
+    featured: true,
+    swatch: 'linear-gradient(135deg,#e85d04,#ff9e00)',
+  },
+  {
+    id: 'bass-cut',
+    name: 'Bass Reducer',
+    blurb: 'Lean low end',
+    index: 0x03,
+    bands: [-4.4, -3, -1, 0, 0, 0, 0, 0],
+    swatch: 'linear-gradient(135deg,#4a90d9,#9fd3ff)',
+  },
+  {
+    id: 'classical',
+    name: 'Classical',
+    blurb: 'Hall-like presence',
+    index: 0x04,
+    bands: [3, 3, -1.2, -1.2, 0, 2, 3, 4],
+    swatch: 'linear-gradient(135deg,#5c4d3c,#d7c4a3)',
+  },
+  {
+    id: 'podcast',
+    name: 'Podcast',
+    blurb: 'Speech intelligibility',
+    index: 0x05,
+    bands: [-3, 2, 4, 4, 3, 2, 0, -1.2],
+    featured: true,
+    swatch: 'linear-gradient(135deg,#1d6f6a,#5fd3c8)',
+  },
+  {
+    id: 'dance',
+    name: 'Dance',
+    blurb: 'Club punch',
+    index: 0x06,
+    bands: [2, -3, -1, 1, 2, 2, 1, -3],
+    swatch: 'linear-gradient(135deg,#c81d77,#ff7ad9)',
+  },
+  {
+    id: 'deep',
+    name: 'Deep',
+    blurb: 'Sub-focused',
+    index: 0x07,
+    bands: [2, 1, 3, 3, 2, -1.2, -4.4, -5.8],
+    swatch: 'linear-gradient(135deg,#1b3a4b,#3d7ea6)',
+  },
+  {
+    id: 'electronic',
+    name: 'Electronic',
+    blurb: 'Synths and sparkle',
+    index: 0x08,
+    bands: [3, 2, -1.2, 2, 1, 2, 3, 3],
+    swatch: 'linear-gradient(135deg,#5b2dff,#00d4ff)',
+  },
+  {
+    id: 'flat',
+    name: 'Flat',
+    blurb: 'Near-linear reference',
+    index: 0x09,
+    bands: [-1.2, -1.2, -1, 0, 0, 0, -1.2, -1.2],
+    featured: true,
+    swatch: 'linear-gradient(135deg,#9aa3b2,#d5dae3)',
+  },
+  {
+    id: 'hiphop',
+    name: 'Hip-Hop',
+    blurb: '808s and presence',
+    index: 0x0a,
+    bands: [2, 3, -1, -1, 2, -1, 2, 3],
+    swatch: 'linear-gradient(135deg,#111,#f4c430)',
+  },
+  {
+    id: 'jazz',
+    name: 'Jazz',
+    blurb: 'Ride and upright bass',
+    index: 0x0b,
+    bands: [2, 2, -1.2, -1.2, 0, 2, 3, 4],
+    swatch: 'linear-gradient(135deg,#7a1f2b,#e8b298)',
+  },
+  {
+    id: 'latin',
+    name: 'Latin',
+    blurb: 'Percussion forward',
+    index: 0x0c,
+    bands: [0, 0, -1.2, -1.2, -1.2, 0, 3, 4.6],
+    swatch: 'linear-gradient(135deg,#c2410c,#fbbf24)',
+  },
+  {
+    id: 'lounge',
+    name: 'Lounge',
+    blurb: 'Soft evening curve',
+    index: 0x0d,
+    bands: [-1, 2, 4, 3, 0, -1.2, 2, 1],
+    swatch: 'linear-gradient(135deg,#312e81,#a78bfa)',
+  },
+  {
+    id: 'piano',
+    name: 'Piano',
+    blurb: 'Hammer attack',
+    index: 0x0e,
+    bands: [0, 3, 3, 2, 4, 4.6, 3, 4],
+    swatch: 'linear-gradient(135deg,#1f2937,#e5e7eb)',
+  },
+  {
+    id: 'pop',
+    name: 'Pop',
+    blurb: 'Radio smile',
+    index: 0x0f,
+    bands: [-1, 1, 3, 3, 1, -1, -1.2, -3],
+    swatch: 'linear-gradient(135deg,#db2777,#fb7185)',
+  },
+  {
+    id: 'rnb',
+    name: 'R&B',
+    blurb: 'Vocal silk, sub weight',
+    index: 0x10,
+    bands: [6, 2, -1.2, -1.2, 2, 3, 3, 4],
+    swatch: 'linear-gradient(135deg,#4c1d95,#f472b6)',
+  },
+  {
+    id: 'rock',
+    name: 'Rock',
+    blurb: 'Grit and cymbals',
+    index: 0x11,
+    bands: [3, 2, -1, -1, 1, 3, 3, 3],
+    swatch: 'linear-gradient(135deg,#7f1d1d,#f97316)',
+  },
+  {
+    id: 'treble',
+    name: 'Treble Booster',
+    blurb: 'Air and detail',
+    index: 0x14,
+    bands: [-1.2, -1.2, -1.2, -1, 1, 2, 2, 4],
+    featured: true,
+    swatch: 'linear-gradient(135deg,#0369a1,#7dd3fc)',
+  },
+  {
+    id: 'treble-cut',
+    name: 'Treble Reducer',
+    blurb: 'Tame brightness',
+    index: 0x15,
+    bands: [0, 0, 0, -1.2, -3, -4.4, -4.4, -6],
+    swatch: 'linear-gradient(135deg,#57534e,#a8a29e)',
+  },
+];
+
+export const FEATURED_PRESETS = EQ_PRESETS.filter((p) => p.featured);
