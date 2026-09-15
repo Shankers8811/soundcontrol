@@ -2,6 +2,12 @@ import { useState } from 'react';
 import { buildProjectZip, downloadBlob, downloadText } from '../lib/exportZip';
 import { PROTOCOL_MD } from '../lib/protocolDoc';
 import { BRIDGE_PY, ELECTRON_MAIN } from '../lib/embedded';
+import {
+  APP_VERSION,
+  LATEST_RELEASE_URL,
+  WINDOWS_INSTALLER_URL,
+  WINDOWS_PORTABLE_URL,
+} from '../lib/downloads';
 
 export function DeployPanel() {
   const [busy, setBusy] = useState(false);
@@ -33,29 +39,57 @@ export function DeployPanel() {
   };
 
   return (
-    <div className="space-y-3">
-      <p className="text-sm font-medium">Desktop extras</p>
-      <div className="grid gap-2">
-        <Action title="Install as app" body="PWA window, no browser chrome." cta="Install" onClick={installPwa} />
-        <Action title="Source zip" body="Full project." cta={busy ? 'Packing…' : 'Download'} onClick={zipAll} />
-        <Action
-          title="RFCOMM bridge"
-          body="python3 soundcore_bridge.py"
-          cta="Save .py"
-          onClick={() => downloadText(BRIDGE_PY, 'soundcore_bridge.py', 'text/x-python')}
-        />
-        <Action
-          title="Electron"
-          body="electron-main.cjs"
-          cta="Save .cjs"
-          onClick={() => downloadText(ELECTRON_MAIN, 'electron-main.cjs', 'text/javascript')}
-        />
-        <Action
-          title="Protocol"
-          body="ANC / EQ frame spec"
-          cta="Save .md"
-          onClick={() => downloadText(PROTOCOL_MD, 'PROTOCOL.md', 'text/markdown')}
-        />
+    <div className="space-y-4">
+      {/* Direct downloads for the packaged Windows release */}
+      <div className="space-y-3">
+        <p className="text-sm font-medium">Download for Windows</p>
+        <div className="grid gap-2">
+          <LinkAction
+            title="Windows installer"
+            body={`SoundControl Setup ${APP_VERSION}.exe · NSIS`}
+            cta="Download .exe"
+            href={WINDOWS_INSTALLER_URL}
+          />
+          <LinkAction
+            title="Portable app"
+            body={`SoundControl ${APP_VERSION}.exe · no install`}
+            cta="Download .exe"
+            href={WINDOWS_PORTABLE_URL}
+          />
+          <LinkAction
+            title="Release notes & older versions"
+            body="GitHub Releases"
+            cta="Open"
+            href={LATEST_RELEASE_URL}
+          />
+        </div>
+      </div>
+
+      {/* Developer / self-hosting extras */}
+      <div className="space-y-3">
+        <p className="text-sm font-medium">Desktop extras</p>
+        <div className="grid gap-2">
+          <Action title="Install as app" body="PWA window, no browser chrome." cta="Install" onClick={installPwa} />
+          <Action title="Source zip" body="Full project." cta={busy ? 'Packing…' : 'Download'} onClick={zipAll} />
+          <Action
+            title="RFCOMM bridge"
+            body="python3 soundcore_bridge.py"
+            cta="Save .py"
+            onClick={() => downloadText(BRIDGE_PY, 'soundcore_bridge.py', 'text/x-python')}
+          />
+          <Action
+            title="Electron"
+            body="electron-main.cjs"
+            cta="Save .cjs"
+            onClick={() => downloadText(ELECTRON_MAIN, 'electron-main.cjs', 'text/javascript')}
+          />
+          <Action
+            title="Protocol"
+            body="ANC / EQ frame spec"
+            cta="Save .md"
+            onClick={() => downloadText(PROTOCOL_MD, 'PROTOCOL.md', 'text/markdown')}
+          />
+        </div>
       </div>
       {msg && <p className="text-xs text-blue">{msg}</p>}
     </div>
@@ -82,6 +116,35 @@ function Action({
       <button onClick={onClick} className="shrink-0 rounded-full bg-blue px-3 py-1.5 text-sm font-semibold text-white">
         {cta}
       </button>
+    </div>
+  );
+}
+
+function LinkAction({
+  title,
+  body,
+  cta,
+  href,
+}: {
+  title: string;
+  body: string;
+  cta: string;
+  href: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl bg-wash px-3 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="font-medium">{title}</p>
+        <p className="truncate text-xs text-mute">{body}</p>
+      </div>
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="shrink-0 rounded-full bg-blue px-3 py-1.5 text-sm font-semibold text-white"
+      >
+        {cta}
+      </a>
     </div>
   );
 }
