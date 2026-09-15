@@ -9,6 +9,7 @@ export function ConnectSheet() {
   const [searching, setSearching] = useState(false);
   const [nearby, setNearby] = useState<NearbyDevice[]>([]);
   const [hint, setHint] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const framed = inIframe();
 
   useEffect(() => {
@@ -41,7 +42,7 @@ export function ConnectSheet() {
 
     setSearching(true);
     try {
-      await app.connectBle();
+      await app.connectBle(showAll);
     } catch (err) {
       if (isPolicyError(err)) {
         openAppWindow();
@@ -81,6 +82,20 @@ export function ConnectSheet() {
         {searching || app.connecting ? 'Searching…' : 'Search'}
       </button>
 
+      <button
+        onClick={() => setShowAll((v) => !v)}
+        className="mt-3 flex w-full items-center justify-between rounded-2xl border border-line bg-wash px-3.5 py-3 text-left"
+        aria-pressed={showAll}
+      >
+        <span>
+          <span className="block text-sm font-semibold text-ink">Show All Bluetooth Devices</span>
+          <span className="block text-xs text-mute">
+            Turn on if your soundcore doesn&apos;t appear in the list
+          </span>
+        </span>
+        <span className={`toggle ${showAll ? 'on' : ''}`} aria-hidden />
+      </button>
+
       {hint && <p className="mt-3 rounded-2xl bg-sky px-3 py-2 text-center text-sm text-blue">{hint}</p>}
 
       <div className="mt-6">
@@ -115,6 +130,13 @@ export function ConnectSheet() {
         <p className="text-xs font-bold uppercase tracking-wider text-mute mb-2">No hardware nearby? Try a demo device:</p>
         <div className="grid grid-cols-2 gap-2 text-xs">
           <button
+            onClick={() => void app.connectSim('r50i-nc')}
+            className="rounded-xl bg-white p-2.5 font-medium border border-line hover:border-blue text-left transition"
+          >
+            <div className="font-semibold text-ink">R50i NC</div>
+            <div className="text-[11px] text-mute">Compact Earbuds</div>
+          </button>
+          <button
             onClick={() => void app.connectSim('liberty-4-nc')}
             className="rounded-xl bg-white p-2.5 font-medium border border-line hover:border-blue text-left transition"
           >
@@ -134,13 +156,6 @@ export function ConnectSheet() {
           >
             <div className="font-semibold text-ink">Life Q30</div>
             <div className="text-[11px] text-mute">Travel & Commute</div>
-          </button>
-          <button
-            onClick={() => void app.connectSim('r50i-nc')}
-            className="rounded-xl bg-white p-2.5 font-medium border border-line hover:border-blue text-left transition"
-          >
-            <div className="font-semibold text-ink">R50i NC</div>
-            <div className="text-[11px] text-mute">Compact Earbuds</div>
           </button>
         </div>
       </div>
