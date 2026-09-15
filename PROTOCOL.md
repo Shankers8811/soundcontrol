@@ -124,6 +124,38 @@ Signature (all zeros):
 
 Supported on Liberty 4 NC, Liberty 3 Pro, R50i NC, P30i, P20i / P25i.
 
+## BassUp™ dynamic low-frequency boost
+
+```
+08 EE 00 00 00 02 82 0B 00  [01 on / 00 off]  [cs]
+```
+
+Applies dynamic DSP bass boost without altering the custom equalizer curve.
+
+## 3D Spatial Audio / Surround Sound
+
+```
+08 EE 00 00 00 02 86 0A 00  [01 on / 00 off]  [cs]
+```
+
+Enables head-related transfer function (HRTF) spatial acoustic soundstage on Liberty 4 and Space One.
+
+## Find My Device (Acoustic Beacon Alarm)
+
+```
+08 EE 00 00 00 01 88 0C 00  [Left: 01/00]  [Right: 01/00]  [cs]
+```
+
+Triggers high-amplitude 3.2 kHz acoustic locator chirps from the selected earbuds.
+
+## Factory Reset
+
+```
+08 EE 00 00 00 01 85 0A 00  [cs]
+```
+
+Restores hardware to factory DSP calibration.
+
 ## LDAC & dual connection (Liberty 4 NC, Space Q45)
 
 ```

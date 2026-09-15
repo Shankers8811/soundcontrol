@@ -84,10 +84,10 @@ export function ConnectSheet() {
       {hint && <p className="mt-3 rounded-2xl bg-sky px-3 py-2 text-center text-sm text-blue">{hint}</p>}
 
       <div className="mt-6">
-        <p className="text-xs font-medium uppercase tracking-wide text-mute">Nearby devices</p>
+        <p className="text-xs font-bold uppercase tracking-wider text-mute">Nearby Soundcore Devices</p>
         {nearby.length === 0 ? (
-          <p className="mt-3 text-center text-sm text-mute">
-            Tap Search. Chrome shows soundcore earbuds the same way the Android app does.
+          <p className="mt-2 text-xs text-mute leading-relaxed">
+            Tap Search to discover your Soundcore headphones or earbuds.
           </p>
         ) : (
           <ul className="mt-2 space-y-2">
@@ -96,12 +96,12 @@ export function ConnectSheet() {
                 <button
                   disabled={app.connecting}
                   onClick={() => void pick(d)}
-                  className="flex w-full items-center gap-3 rounded-2xl bg-wash px-3 py-3 text-left"
+                  className="flex w-full items-center gap-3 rounded-2xl bg-wash px-3.5 py-3 text-left border border-line hover:border-blue transition shadow-2xs"
                 >
-                  <img src={asset('device-earbuds.png')} alt="" className="h-12 w-12 object-contain" />
+                  <img src={asset('device-earbuds.png')} alt="" className="h-10 w-10 object-contain" />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{d.name}</span>
-                    <span className="text-xs text-mute">Tap to connect</span>
+                    <span className="block truncate font-semibold text-ink text-sm">{d.name}</span>
+                    <span className="text-xs text-blue font-medium">Tap to Connect</span>
                   </span>
                 </button>
               </li>
@@ -110,13 +110,40 @@ export function ConnectSheet() {
         )}
       </div>
 
-      <button
-        disabled={app.connecting}
-        onClick={() => void app.connectSim()}
-        className="mt-auto pt-8 pb-2 text-center text-sm text-mute"
-      >
-        No earbuds nearby? Try the demo
-      </button>
+      {/* Demo presets */}
+      <div className="mt-6 rounded-2xl bg-wash p-3.5 border border-line">
+        <p className="text-xs font-bold uppercase tracking-wider text-mute mb-2">No hardware nearby? Try a demo device:</p>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <button
+            onClick={() => void app.connectSim('liberty-4-nc')}
+            className="rounded-xl bg-white p-2.5 font-medium border border-line hover:border-blue text-left transition"
+          >
+            <div className="font-semibold text-ink">Liberty 4 NC</div>
+            <div className="text-[11px] text-mute">Active Noise Cancelling</div>
+          </button>
+          <button
+            onClick={() => void app.connectSim('space-one')}
+            className="rounded-xl bg-white p-2.5 font-medium border border-line hover:border-blue text-left transition"
+          >
+            <div className="font-semibold text-ink">Space One</div>
+            <div className="text-[11px] text-mute">Over-Ear Headphone</div>
+          </button>
+          <button
+            onClick={() => void app.connectSim('q30')}
+            className="rounded-xl bg-white p-2.5 font-medium border border-line hover:border-blue text-left transition"
+          >
+            <div className="font-semibold text-ink">Life Q30</div>
+            <div className="text-[11px] text-mute">Travel & Commute</div>
+          </button>
+          <button
+            onClick={() => void app.connectSim('r50i-nc')}
+            className="rounded-xl bg-white p-2.5 font-medium border border-line hover:border-blue text-left transition"
+          >
+            <div className="font-semibold text-ink">R50i NC</div>
+            <div className="text-[11px] text-mute">Compact Earbuds</div>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
