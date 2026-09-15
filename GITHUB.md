@@ -38,19 +38,17 @@ git push -u origin main
 2. **Source**: GitHub Actions
 3. Open the **Actions** tab and wait for **GitHub Pages** to go green (GitHub installs Node and builds — you do not)
 
-## 4. Open it in Brave
+## 4. Open it in Brave or Chrome
 
 The site will be:
 
-`https://YOUR_USER.github.io/soundcontrol/`
+`https://shankers8811.github.io/soundcontrol/`
 
 Open that **as its own tab**. Then:
 
-1. Lion icon → Shields **down** for this site
-2. **Add Device** → **Search**
-3. Tap your soundcore in the picker
-
-No MAC addresses. No sandbox token.
+1. Tap **Add Device** → **Search**
+2. Tap your soundcore earbuds or headphones in the Bluetooth picker
+3. No codes to type, works seamlessly!
 
 ## What GitHub cannot do
 

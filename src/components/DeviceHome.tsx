@@ -59,29 +59,51 @@ export function DeviceHome() {
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between px-4 pt-3">
-        <span className="text-[15px] font-semibold tracking-tight text-blue">soundcore</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[17px] font-black tracking-tight text-blue">soundcore</span>
+          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+            {app.connected ? 'Connected' : 'Offline'}
+          </span>
+        </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => app.push('connect')} className="rounded-full p-2 text-mute" aria-label="Devices">
+          <button
+            onClick={() => app.push('device-select')}
+            title="Switch Soundcore Model"
+            className="flex items-center gap-1 rounded-full bg-wash px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 transition"
+          >
+            <span>Model</span>
+            <IconChevron className="text-mute" size={14} />
+          </button>
+          <button onClick={() => app.push('connect')} className="rounded-full p-2 text-mute hover:text-ink" aria-label="Devices">
             <IconPlus />
           </button>
-          <button onClick={() => app.setTab('settings')} className="rounded-full p-2 text-mute" aria-label="Settings">
+          <button onClick={() => app.setTab('settings')} className="rounded-full p-2 text-mute hover:text-ink" aria-label="Settings">
             <IconGear />
           </button>
         </div>
       </header>
 
-      <div className="relative mx-3 overflow-hidden rounded-3xl bg-gradient-to-b from-[#d7e8ff] via-[#eef4ff] to-white px-4 pb-4 pt-2">
-        <img src={photo} alt="" className="mx-auto h-44 w-auto object-contain drop-shadow-md" />
-        <h1 className="text-center text-xl font-semibold tracking-wide">{app.profile.name.toUpperCase()}</h1>
-        <p className="mt-0.5 text-center text-xs text-mute">{app.deviceName}</p>
-        <div className="mt-3 flex justify-center gap-5">
+      <div className="relative mx-3 mt-2 overflow-hidden rounded-3xl bg-gradient-to-b from-[#d7e8ff] via-[#eef4ff] to-white px-4 pb-4 pt-2 border border-blue/10">
+        <img src={photo} alt="" className="mx-auto h-44 w-auto object-contain drop-shadow-md transition-transform hover:scale-105 duration-300" />
+        <h1 className="text-center text-xl font-bold tracking-wide text-ink">{app.profile.name.toUpperCase()}</h1>
+        <p className="mt-0.5 text-center text-xs text-mute font-medium">{app.deviceName} · {app.profile.sku}</p>
+        <div className="mt-3 flex justify-center gap-6">
           <IconBattery label="L" level={app.battery.left} />
           <IconBattery label="R" level={app.battery.right} />
           {app.profile.kind === 'earbuds' && <IconBattery label="Case" level={app.battery.case} />}
         </div>
-        {app.ldac && (
-          <p className="mt-2 text-center font-mono text-[10px] text-blue">LDAC</p>
-        )}
+        <div className="mt-2 flex items-center justify-center gap-2">
+          {app.ldac && (
+            <span className="rounded bg-blue/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-blue">
+              LDAC High-Res
+            </span>
+          )}
+          {app.bassUp && (
+            <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+              BassUp™
+            </span>
+          )}
+        </div>
       </div>
 
       <section className="mx-3 mt-3 rounded-2xl bg-wash px-4 py-4">
@@ -121,26 +143,42 @@ export function DeviceHome() {
         </button>
       </section>
 
-      <div className="mx-3 mt-3 grid grid-cols-2 gap-3 pb-4">
+      <div className="mx-3 mt-3 grid grid-cols-2 gap-2.5 pb-4">
         <Tile
           icon={<IconEq />}
           title="Sound Effects"
           sub={app.hearId ? 'HearID Sound' : (preset?.name ?? 'Custom EQ')}
           onClick={() => app.setTab('sounds')}
         />
-        <Tile icon={<IconVolume />} title="Safe Volume" sub={`${app.safeVolume}%`} onClick={() => app.push('safe-volume')} />
-        <Tile icon={<IconHand />} title="Controls" sub="Gestures & more" onClick={() => app.setTab('controls')} />
+        <Tile
+          icon={<IconHand />}
+          title="Controls"
+          sub="Tap gestures & actions"
+          onClick={() => app.setTab('controls')}
+        />
         <Tile
           icon={<IconEar />}
-          title="HearID"
-          sub={app.hearId ? 'Personalized' : 'Not set'}
+          title="HearID Sound"
+          sub={app.hearId ? 'Personalized active' : 'Run hearing test'}
           onClick={() => app.push('hearid')}
+        />
+        <Tile
+          icon={<span className="text-xl">🔍</span>}
+          title="Find Device"
+          sub="Play locator alarm"
+          onClick={() => app.push('find-device')}
+        />
+        <Tile
+          icon={<IconVolume />}
+          title="Safe Volume"
+          sub={`${app.safeVolume}% max limit`}
+          onClick={() => app.push('safe-volume')}
         />
         {app.profile.gaming && (
           <Tile
             icon={<IconGame />}
             title="Game Mode"
-            sub={app.gaming ? 'On · low latency' : 'Off'}
+            sub={app.gaming ? 'Active · 80ms latency' : 'Off'}
             onClick={() => void app.setGaming(!app.gaming)}
           />
         )}

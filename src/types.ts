@@ -6,7 +6,7 @@ export type AncScene = 'transport' | 'outdoor' | 'indoor';
 
 export type DeviceFamily = 'classic' | 'tws';
 
-export type TabId = 'device' | 'sounds' | 'controls' | 'settings';
+export type TabId = 'device' | 'sounds' | 'controls' | 'sleep' | 'settings';
 
 export type StackId =
   | null
@@ -17,16 +17,30 @@ export type StackId =
   | 'diagnostics'
   | 'about'
   | 'safe-volume'
-  | 'connect';
+  | 'connect'
+  | 'find-device'
+  | 'device-select';
 
-export type GestureAction = 'play' | 'next' | 'prev' | 'anc' | 'trans' | 'off';
+export type GestureAction =
+  | 'play'
+  | 'next'
+  | 'prev'
+  | 'vol-up'
+  | 'vol-down'
+  | 'anc'
+  | 'trans'
+  | 'voice-assistant'
+  | 'game'
+  | 'off';
 
 export interface TouchMap {
   leftSingle: GestureAction;
   leftDouble: GestureAction;
+  leftTriple: GestureAction;
   leftHold: GestureAction;
   rightSingle: GestureAction;
   rightDouble: GestureAction;
+  rightTriple: GestureAction;
   rightHold: GestureAction;
 }
 
@@ -34,6 +48,9 @@ export interface BatteryState {
   left: number | null;
   right: number | null;
   case: number | null;
+  leftCharging?: boolean;
+  rightCharging?: boolean;
+  caseCharging?: boolean;
 }
 
 export interface DeviceProfile {
@@ -71,10 +88,12 @@ export const EQ_HZ = [100, 200, 400, 800, 1600, 3200, 6400, 12800] as const;
 export const ZERO_BANDS = [0, 0, 0, 0, 0, 0, 0, 0];
 
 export const DEFAULT_TOUCH: TouchMap = {
-  leftSingle: 'anc',
+  leftSingle: 'vol-down',
   leftDouble: 'prev',
-  leftHold: 'off',
-  rightSingle: 'play',
+  leftTriple: 'voice-assistant',
+  leftHold: 'anc',
+  rightSingle: 'vol-up',
   rightDouble: 'next',
-  rightHold: 'trans',
+  rightTriple: 'game',
+  rightHold: 'play',
 };
