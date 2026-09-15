@@ -5,6 +5,10 @@ on:
     branches: [main, 'arena/**']
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   build-win:
     runs-on: windows-latest
@@ -15,7 +19,25 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run build:win
+      - name: Build Windows installer
+        run: |
+          $ErrorActionPreference = 'Continue'
+          npm run build:win 2>&1 | Tee-Object -FilePath build-win.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        shell: pwsh
+      # TEMPORARY DEBUG: CI logs are unreachable from the dev sandbox, so
+      # exfiltrate the failure tail to issue #4. Remove after green.
+      - name: Report failure log
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          "# Windows build failure (run $env:GITHUB_RUN_ID)" | Out-File -FilePath issue-body.md
+          '```text' | Out-File -FilePath issue-body.md -Append
+          Get-Content build-win.log -Tail 60 | Out-File -FilePath issue-body.md -Append
+          '```' | Out-File -FilePath issue-body.md -Append
+          gh issue comment 4 --body-file issue-body.md
+        shell: pwsh
       - uses: actions/upload-artifact@v4
         with:
           name: SoundControl-Windows
