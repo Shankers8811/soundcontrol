@@ -9,7 +9,39 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 5173",
     "electron": "electron electron-main.cjs",
+    "build:win": "npm run build && electron-builder --win",
+    "build:win:portable": "npm run build && electron-builder --win portable",
+    "dist": "npm run build && electron-builder",
     "bridge": "python3 soundcore_bridge.py"
+  },
+  "build": {
+    "appId": "com.soundcontrol.desktop",
+    "productName": "SoundControl",
+    "copyright": "Copyright © 2026",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron-main.cjs",
+      "preload.cjs",
+      "soundcore_bridge.py",
+      "public/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "public/icon-512.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SoundControl"
+    }
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.6",
@@ -24,6 +56,7 @@
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.2",
     "electron": "^37.3.1",
+    "electron-builder": "^26.15.3",
     "tailwindcss": "^4.1.13",
     "typescript": "^5.9.2",
     "vite": "^7.1.5"

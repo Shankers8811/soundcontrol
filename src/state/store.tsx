@@ -15,9 +15,11 @@ import {
   INIT,
   LDAC,
   buildAnc,
+  buildBassUp,
   buildCustomEq,
   buildEqPreset,
   buildGameMode,
+  buildResetDevice,
   describePacket,
 } from '../protocol/packets';
 import type { EqPreset } from '../protocol/presets';
@@ -86,6 +88,8 @@ interface AppState {
   touch: TouchMap;
   eqId: string;
   bands: number[];
+  bassUp: boolean;
+  spatialAudio: boolean;
   hearId: boolean;
   log: LogEntry[];
   error: string | null;
@@ -93,7 +97,7 @@ interface AppState {
   connectBle: () => Promise<void>;
   connectSerial: () => Promise<void>;
   connectBridge: (mac: string, name?: string) => Promise<void>;
-  connectSim: () => Promise<void>;
+  connectSim: (customProfileId?: string) => Promise<void>;
   disconnect: () => Promise<void>;
   setAnc: (mode: AncMode, level?: number, scene?: AncScene) => Promise<void>;
   setTransVocal: (on: boolean) => Promise<void>;
@@ -101,6 +105,8 @@ interface AppState {
   setGaming: (on: boolean) => Promise<void>;
   setLdac: (on: boolean) => Promise<void>;
   setDual: (on: boolean) => Promise<void>;
+  setBassUp: (on: boolean) => Promise<void>;
+  setSpatialAudio: (on: boolean) => Promise<void>;
   setWearDetect: (on: boolean) => void;
   setPrompts: (on: boolean) => void;
   setSafeVolume: (n: number) => void;
@@ -114,6 +120,7 @@ interface AppState {
   inject: (bytes: Uint8Array, note?: string) => Promise<void>;
   clearLog: () => void;
   findDevice: () => Promise<void>;
+  resetDevice: () => Promise<void>;
 }
 
 const Ctx = createContext<AppState | null>(null);
@@ -146,6 +153,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [touch, setTouchState] = useState<TouchMap>(() => load('sc.touch', DEFAULT_TOUCH));
   const [eqId, setEqId] = useState('signature');
   const [bands, setBands] = useState<number[]>([...ZERO_BANDS]);
+  const [bassUp, setBassUpState] = useState(false);
+  const [spatialAudio, setSpatialAudioState] = useState(false);
   const [hearId, setHearIdState] = useState(false);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -279,13 +288,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const connectSim = useCallback(
-    () =>
+    (customProfileId?: string) =>
       wrapConnect(async () => {
         const { transport, name, battery: b } = connectSimulator(onRx);
-        await attach(transport, name, b);
+        const targetProfile = customProfileId ? DEVICES.find((d) => d.id === customProfileId) : undefined;
+        await attach(transport, targetProfile ? `${targetProfile.name} (sim)` : name, b);
+        if (targetProfile) {
+          setProfile(targetProfile);
+        }
       }),
     [attach, onRx, wrapConnect],
   );
+
+  const setBassUp = useCallback(
+    async (on: boolean) => {
+      setBassUpState(on);
+      await write(buildBassUp(on), `BassUp ${on ? 'on' : 'off'}`);
+      if (prompts) await beep('ok');
+    },
+    [prompts, write],
+  );
+
+  const setSpatialAudio = useCallback(
+    async (on: boolean) => {
+      setSpatialAudioState(on);
+      // In Soundcore protocol, spatial audio / 3D sound is opcode category 0x02, type 0x86
+      await write(new Uint8Array([0x08, 0xee, 0x00, 0x00, 0x00, 0x02, 0x86, 0x0a, 0x00, on ? 0x01 : 0x00]), `Spatial Audio ${on ? 'on' : 'off'}`);
+      if (prompts) await beep('ok');
+    },
+    [prompts, write],
+  );
+
+  const resetDevice = useCallback(async () => {
+    await write(buildResetDevice(), 'Factory Reset');
+    setBands([...ZERO_BANDS]);
+    setEqId('signature');
+    setBassUpState(false);
+    setSpatialAudioState(false);
+    setHearIdState(false);
+    setAncMode('anc');
+    setAncLevel(5);
+    setGamingState(false);
+    if (prompts) await beep('ok');
+  }, [prompts, write]);
 
   const disconnect = useCallback(async () => {
     const t = transportRef.current;
@@ -441,6 +486,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       touch,
       eqId,
       bands,
+      bassUp,
+      spatialAudio,
       hearId,
       log,
       error,
@@ -456,6 +503,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setGaming,
       setLdac,
       setDual,
+      setBassUp,
+      setSpatialAudio,
       setWearDetect: (on) => {
         setWearDetectState(on);
         save('sc.wear', on);
@@ -487,6 +536,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       inject,
       clearLog: () => setLog([]),
       findDevice,
+      resetDevice,
     }),
     [
       tab,
@@ -508,6 +558,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       gaming,
       ldac,
       dual,
+      bassUp,
+      spatialAudio,
       wearDetect,
       prompts,
       safeVolume,
@@ -530,12 +582,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setGaming,
       setLdac,
       setDual,
+      setBassUp,
+      setSpatialAudio,
       applyPreset,
       setBand,
       commitEq,
       applyBands,
       inject,
       findDevice,
+      resetDevice,
     ],
   );
 
