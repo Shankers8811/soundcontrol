@@ -93,6 +93,21 @@ export function buildGameMode(on: boolean): Uint8Array {
   return withChecksum([0x08, 0xee, 0x00, 0x00, 0x00, 0x01, 0x87, 0x0c, 0x00, on ? 0x01 : 0x00]);
 }
 
+/** BassUp dynamic bass boost command */
+export function buildBassUp(on: boolean): Uint8Array {
+  return withChecksum([0x08, 0xee, 0x00, 0x00, 0x00, 0x02, 0x82, 0x0b, 0x00, on ? 0x01 : 0x00]);
+}
+
+/** Find My Device acoustic beacon command */
+export function buildFindDevice(left: boolean, right: boolean): Uint8Array {
+  return withChecksum([0x08, 0xee, 0x00, 0x00, 0x00, 0x01, 0x88, 0x0c, 0x00, left ? 0x01 : 0x00, right ? 0x01 : 0x00]);
+}
+
+/** Factory reset command */
+export function buildResetDevice(): Uint8Array {
+  return withChecksum([0x08, 0xee, 0x00, 0x00, 0x00, 0x01, 0x85, 0x0a, 0x00]);
+}
+
 export function buildDeviceInfoQuery(): Uint8Array {
   return withChecksum([0x08, 0xee, 0x00, 0x00, 0x00, 0x01, 0x01, 0x0a, 0x00]);
 }
@@ -106,7 +121,10 @@ export function describePacket(data: ArrayLike<number>): string {
   const dir = a === 0x09 && b === 0xff ? 'RX' : a === 0x08 && b === 0xee ? 'TX' : 'UNK';
   if (cat === 0x06 && typ === 0x81) return `${dir} ANC / ambient`;
   if (cat === 0x02 && typ === 0x81) return `${dir} Equalizer`;
+  if (cat === 0x02 && typ === 0x82) return `${dir} BassUp`;
   if (typ === 0x87) return `${dir} Gaming / latency`;
+  if (typ === 0x88) return `${dir} Find Device`;
+  if (typ === 0x85) return `${dir} Device Reset`;
   if (cat === 0x01 && typ === 0x01) return `${dir} Init / device info`;
   if (cat === 0x01 && typ === 0x7f) return `${dir} LDAC query`;
   if (cat === 0x01 && typ === 0xff) return `${dir} LDAC set`;

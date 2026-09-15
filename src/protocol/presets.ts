@@ -177,6 +177,23 @@ export const EQ_PRESETS: EqPreset[] = [
     bands: [0, 0, 0, -1.2, -3, -4.4, -4.4, -6],
     swatch: 'linear-gradient(135deg,#57534e,#a8a29e)',
   },
+  {
+    id: 'vocal',
+    name: 'Vocal Booster',
+    blurb: 'Highlight singers and dialogue',
+    index: 0x12,
+    bands: [-2, 1, 3, 4, 3, 1, 0, -1],
+    featured: true,
+    swatch: 'linear-gradient(135deg,#0d9488,#2dd4bf)',
+  },
+  {
+    id: 'spoken-word',
+    name: 'Spoken Word',
+    blurb: 'Audiobooks & lectures',
+    index: 0x13,
+    bands: [-3, 2, 4, 4, 3, 1, 0, -2],
+    swatch: 'linear-gradient(135deg,#6366f1,#818cf8)',
+  },
 ];
 
 export const FEATURED_PRESETS = EQ_PRESETS.filter((p) => p.featured);
