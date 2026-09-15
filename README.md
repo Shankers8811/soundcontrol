@@ -34,8 +34,8 @@
 
 | Download | File | Notes |
 |---|---|---|
-| 🪟 **Windows installer** | [`SoundControl Setup 1.0.0.exe`](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl%20Setup%201.0.0.exe) | NSIS setup, Start-menu & desktop shortcuts |
-| 💾 **Portable app** | [`SoundControl 1.0.0.exe`](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl%201.0.0.exe) | Single file, runs without installing |
+| 🪟 **Windows installer** | [`SoundControl-Setup-1.0.0.exe`](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup-1.0.0.exe) | NSIS setup, Start-menu & desktop shortcuts |
+| 💾 **Portable app** | [`SoundControl-1.0.0.exe`](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-1.0.0.exe) | Single file, runs without installing |
 
 - All builds and release notes live on the **[Releases page](https://github.com/Shankers8811/soundcontrol/releases/latest)**.
 - The same **Download for Windows** buttons are built into the app under **Settings → About → Desktop extras**.
