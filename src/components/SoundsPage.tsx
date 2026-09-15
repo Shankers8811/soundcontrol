@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import { EQ_PRESETS } from '../protocol/presets';
-import { dbToByte } from '../protocol/codec';
 import { useApp } from '../state/store';
 import { EQ_HZ } from '../types';
 import { EqCurve } from './EqCurve';
@@ -162,15 +161,28 @@ export function CustomEqPage() {
     }, 160);
   };
 
+  const resetFlat = () => {
+    app.bands.forEach((_, i) => app.setBand(i, 0));
+    if (app.connected) void app.commitEq();
+  };
+
   return (
-    <div className="px-4 py-3">
-      <div className="rounded-2xl bg-wash p-2">
+    <div className="space-y-4 px-4 py-3 pb-8">
+      <div className="rounded-2xl bg-wash p-3 border border-line">
         <EqCurve bands={app.bands} />
       </div>
-      <div className="mt-4 flex items-end justify-between gap-1 overflow-x-auto pb-2">
+
+      <div className="flex items-center justify-between px-1">
+        <span className="text-xs font-bold uppercase tracking-wider text-mute">Custom Equalizer</span>
+        <button onClick={resetFlat} className="text-xs font-semibold text-blue hover:underline">
+          Reset Flat
+        </button>
+      </div>
+
+      <div className="rounded-2xl bg-wash p-4 border border-line flex items-end justify-between gap-1 overflow-x-auto pb-2">
         {app.bands.map((db, i) => (
-          <label key={EQ_HZ[i]} className="flex min-w-10 flex-col items-center gap-1">
-            <span className="font-mono text-[11px] text-blue">{db > 0 ? `+${db}` : db}</span>
+          <label key={EQ_HZ[i]} className="flex min-w-10 flex-col items-center gap-1.5">
+            <span className="text-[11px] font-bold text-blue">{db > 0 ? `+${db}` : db}</span>
             <input
               className="eq-fader"
               type="range"
@@ -181,19 +193,19 @@ export function CustomEqPage() {
               disabled={!app.connected}
               onChange={(e) => onSlide(i, Number(e.target.value))}
             />
-            <span className="font-mono text-[10px] text-mute">
+            <span className="text-[11px] font-semibold text-slate-600">
               {EQ_HZ[i] >= 1000 ? `${EQ_HZ[i] / 1000}k` : EQ_HZ[i]}
             </span>
-            <span className="font-mono text-[9px] text-[#b0b6c0]">{dbToByte(db).toString(16)}</span>
           </label>
         ))}
       </div>
+
       <button
         disabled={!app.connected}
         onClick={() => void app.commitEq()}
-        className="mt-4 w-full rounded-full bg-blue py-3 font-semibold text-white disabled:opacity-40"
+        className="w-full rounded-full bg-blue py-3.5 font-bold text-white shadow-md hover:bg-blue-2 disabled:opacity-40"
       >
-        Apply to device
+        Save & Apply Curve
       </button>
     </div>
   );
@@ -201,28 +213,58 @@ export function CustomEqPage() {
 
 export function SafeVolumePage() {
   const app = useApp();
+
+  const presets = [
+    { label: 'Extra Protection (80 dB)', value: 80, desc: 'Gentle on ears, ideal for study or long listening' },
+    { label: 'Recommended (85 dB)', value: 85, desc: 'WHO standard safe listening limit for daily music' },
+    { label: 'Maximum Output (90 dB)', value: 90, desc: 'Higher output for noisy fitness or outdoor use' },
+  ];
+
   return (
-    <div className="px-4 py-3">
-      <p className="text-sm text-mute">
-        Caps headphone output. The official app stores this on-device; SoundControl remembers it here and shows a
-        warning above 85%.
-      </p>
-      <div className="mt-8 text-center">
-        <p className="text-5xl font-semibold text-blue">{app.safeVolume}</p>
-        <p className="text-sm text-mute">percent</p>
+    <div className="space-y-4 px-4 py-3 pb-8">
+      <div className="rounded-3xl bg-wash p-4 border border-line">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-bold text-ink">Safe Volume Limiter</p>
+            <p className="text-xs text-mute">Protects ears from sudden or prolonged excessive volume</p>
+          </div>
+          <button
+            onClick={() => app.setSafeVolume(app.safeVolume > 0 ? 0 : 85)}
+            className={`toggle ${app.safeVolume > 0 ? 'on' : ''}`}
+            aria-label="Safe Volume"
+          />
+        </div>
       </div>
-      <input
-        type="range"
-        min={60}
-        max={100}
-        value={app.safeVolume}
-        onChange={(e) => app.setSafeVolume(Number(e.target.value))}
-        className="mt-6 w-full accent-blue"
-      />
-      {app.safeVolume > 85 && (
-        <p className="mt-3 rounded-xl bg-[#fff1f2] px-3 py-2 text-sm text-danger">
-          High volumes can damage hearing during long sessions.
-        </p>
+
+      {app.safeVolume > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-bold uppercase tracking-wider text-mute">Volume Cap Settings</p>
+          <div className="grid gap-2">
+            {presets.map((p) => {
+              const active = app.safeVolume === p.value;
+              return (
+                <button
+                  key={p.value}
+                  onClick={() => app.setSafeVolume(p.value)}
+                  className={`flex items-center gap-3.5 rounded-2xl border p-3.5 text-left transition ${
+                    active ? 'border-blue bg-sky/40 ring-1 ring-blue/30 shadow-xs' : 'border-line bg-wash hover:border-slate-300'
+                  }`}
+                >
+                  <span className="text-2xl">🛡️</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-bold text-ink">{p.label}</div>
+                    <div className="text-xs text-mute mt-0.5">{p.desc}</div>
+                  </div>
+                  {active && (
+                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-blue text-white text-xs font-bold">
+                      ✓
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );

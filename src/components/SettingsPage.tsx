@@ -79,24 +79,22 @@ export function SettingsPage() {
               value={app.autoOff}
               onChange={(e) => app.setAutoOff(Number(e.target.value))}
             >
-              <option value={0}>Never</option>
-              <option value={5}>5 min</option>
-              <option value={10}>10 min</option>
-              <option value={30}>30 min</option>
-              <option value={60}>60 min</option>
-              <option value={120}>120 min</option>
+              <option value={0}>Disabled</option>
+              <option value={15}>After 15 minutes</option>
+              <option value={30}>After 30 minutes</option>
+              <option value={60}>After 60 minutes</option>
             </select>
           }
         />
-        <Row title="Find My Device" sub="Acoustic beacon alarm" onClick={() => app.push('find-device')} />
-        <Row title="Safe Volume Limiter" sub={`${app.safeVolume}% maximum cap`} onClick={() => app.push('safe-volume')} />
+        <Row title="Find My Device" sub="Play loud locator sound" onClick={() => app.push('find-device')} />
+        <Row title="Hearing Protection" sub={app.safeVolume > 0 ? 'Safe Volume Active' : 'Off'} onClick={() => app.push('safe-volume')} />
       </section>
 
       {/* System & Maintenance */}
       <section className="overflow-hidden rounded-2xl bg-wash border border-line">
         <Row
           title="Firmware Update"
-          sub={fwStatus ?? `Current: v${app.firmware}`}
+          sub={fwStatus ?? `Latest firmware installed`}
           right={
             <button
               onClick={checkFirmware}
@@ -108,7 +106,6 @@ export function SettingsPage() {
           }
         />
         <Row title="Reset Device" sub="Restore default factory settings" onClick={() => void handleReset()} />
-        <Row title="Diagnostics Console" sub="Inspect live RFCOMM / BLE byte frames" onClick={() => app.push('diagnostics')} />
         <Row title="About SoundControl" sub="Desktop & web companion" onClick={() => app.push('about')} />
       </section>
     </div>
