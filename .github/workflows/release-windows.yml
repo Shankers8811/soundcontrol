@@ -33,9 +33,11 @@ jobs:
       # Build both Windows targets (NSIS installer + portable) but let this
       # workflow own the GitHub Release creation instead of electron-builder.
       - run: npm run build:win -- --publish never
-      - name: Locate packaged .exe files
+      - name: Stage .exe files with stable, URL-safe names
         id: artifacts
         shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
           echo "Built Windows distributables:"
@@ -47,41 +49,38 @@ jobs:
           PORTABLE="$(find release -maxdepth 1 -name '*.exe' ! -name '*Setup*' | head -n 1)"
           test -n "$INSTALLER"
           test -n "$PORTABLE"
-          echo "installer=$INSTALLER"
-          echo "portable=$PORTABLE"
-          echo "installer_path=$INSTALLER" >> "$GITHUB_OUTPUT"
-          echo "portable_path=$PORTABLE" >> "$GITHUB_OUTPUT"
+          # Asset versions are the tag without its leading "v" (v1.0.0 -> 1.0.0).
+          VERSION="${RELEASE_TAG#v}"
+          # Rename on disk to hyphenated names (no spaces) so the uploaded
+          # GitHub asset names are deterministic and the deep links resolve.
+          mkdir -p release-assets
+          cp "$INSTALLER" "release-assets/SoundControl-Setup-$VERSION.exe"
+          cp "$PORTABLE"  "release-assets/SoundControl-$VERSION.exe"
+          echo "Staged release assets:"
+          ls -la release-assets/
+          test "$(find release-assets -maxdepth 1 -name '*.exe' | wc -l)" -eq 2
       - name: Publish GitHub Release with both .exe files
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          INSTALLER_PATH: ${{ steps.artifacts.outputs.installer_path }}
-          PORTABLE_PATH: ${{ steps.artifacts.outputs.portable_path }}
         run: |
           set -euo pipefail
-          # Asset versions are the tag without its leading "v" (v1.0.0 -> 1.0.0).
-          VERSION="${RELEASE_TAG#v}"
-          echo "Publishing release for tag: $RELEASE_TAG (version $VERSION)"
-
+          echo "Publishing release for tag: $RELEASE_TAG"
           # Create the release (no-op on a re-run), then upload both binaries
-          # under stable, URL-safe names (no spaces) so the README and in-app
-          # "/releases/latest/download/..." deep links always resolve.
+          # from release-assets/, whose filenames are the published asset names.
           gh release create "$RELEASE_TAG" \
             --title "SoundControl $RELEASE_TAG" \
             --generate-notes \
             --latest \
             || gh release edit "$RELEASE_TAG" --latest
-
-          gh release upload "$RELEASE_TAG" \
-            "$INSTALLER_PATH#SoundControl-Setup-$VERSION.exe" \
-            "$PORTABLE_PATH#SoundControl-$VERSION.exe" \
-            --clobber
-
+          gh release upload "$RELEASE_TAG" release-assets/*.exe --clobber
           gh release view "$RELEASE_TAG"
       - name: Attach build folder to the workflow run
         uses: actions/upload-artifact@v4
         with:
           name: SoundControl-Windows-Release
-          path: release/
+          path: |
+            release/
+            release-assets/
           if-no-files-found: error
