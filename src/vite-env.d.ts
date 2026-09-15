@@ -1,5 +1,9 @@
 /// <reference types="vite/client" />
 
+// Injected by Vite from package.json and the canonical repo URL (see vite.config.ts).
+declare const __APP_VERSION__: string;
+declare const __REPO_URL__: string;
+
 declare module '*?raw' {
   const src: string;
   export default src;

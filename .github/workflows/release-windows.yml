@@ -1,0 +1,65 @@
+name: Release Windows
+
+# Tagging a commit on main (e.g. `git tag v1.0.0 main && git push origin v1.0.0`)
+# builds the NSIS installer and the portable .exe and publishes BOTH files as
+# assets of a new GitHub Release. The in-app download buttons and the README
+# deep-link to the "/releases/latest/download/..." URLs produced here.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)build and publish, e.g. v1.0.0'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Build both Windows targets (NSIS installer + portable) but let this
+      # workflow own the GitHub Release creation instead of electron-builder.
+      - run: npm run build:win -- --publish never
+      - name: Verify packaged .exe files
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Built Windows distributables:"
+          ls -la release/*.exe
+          test "$(find release -maxdepth 1 -name '*.exe' | wc -l)" -eq 2
+      - name: Publish GitHub Release with both .exe files
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          echo "Publishing release for tag: $RELEASE_TAG"
+          # release/*.exe expands to exactly the two distributables:
+          #   "SoundControl Setup <version>.exe"  (NSIS installer)
+          #   "SoundControl <version>.exe"        (portable, no install)
+          gh release create "$RELEASE_TAG" \
+            --title "SoundControl $RELEASE_TAG" \
+            --generate-notes \
+            --latest \
+            release/*.exe
+          gh release view "$RELEASE_TAG"
+      - name: Attach build folder to the workflow run
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoundControl-Windows-Release
+          path: release/
+          if-no-files-found: error

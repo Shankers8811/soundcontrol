@@ -29,7 +29,19 @@
 - **Demo Mode**: Includes full offline simulation with realistic hardware models and audio synthesis if no physical device is connected.
 
 ### 2. 💻 Windows Desktop App (Electron & Native EXE)
-- Run directly on Windows with hardware Bluetooth support:
+
+**⬇️ Direct download (recommended) — no build required:**
+
+| Download | File | Notes |
+|---|---|---|
+| 🪟 **Windows installer** | [`SoundControl Setup 1.0.0.exe`](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl%20Setup%201.0.0.exe) | NSIS setup, Start-menu & desktop shortcuts |
+| 💾 **Portable app** | [`SoundControl 1.0.0.exe`](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl%201.0.0.exe) | Single file, runs without installing |
+
+- All builds and release notes live on the **[Releases page](https://github.com/Shankers8811/soundcontrol/releases/latest)**.
+- The same **Download for Windows** buttons are built into the app under **Settings → About → Desktop extras**.
+- Windows SmartScreen may show an unsigned-publisher prompt on first run (the app is free and not code-signed); choose **More info → Run anyway**.
+
+**Or build/run it yourself from source.** Run directly on Windows with hardware Bluetooth support:
   ```cmd
   git clone https://github.com/Shankers8811/soundcontrol.git
   cd soundcontrol
@@ -131,6 +143,19 @@ Generates production assets in `dist/`.
 npm run build:win
 ```
 Generates standalone Windows installer and portable `.exe` in `release/`.
+
+### Publish a new Windows Release
+Tagged commits are built and published automatically by the **Release Windows**
+workflow (`.github/workflows/release-windows.yml`). It compiles both `.exe`
+targets on `windows-latest`, creates a GitHub Release, and attaches both files:
+
+```bash
+git tag v1.0.0 main
+git push origin v1.0.0
+```
+
+The in-app download buttons and the links above resolve through
+`releases/latest/download/...`, so they always point at the newest Release.
 
 ---
 

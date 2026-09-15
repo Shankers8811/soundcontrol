@@ -33,6 +33,11 @@ jobs:
 
   deploy:
     needs: build
+    # The github-pages environment is restricted by a branch policy to
+    # main/master; deploying from PR/feature branches is blocked. The build
+    # job above still validates every branch, but only publish from the
+    # production branches (or a manual dispatch).
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
