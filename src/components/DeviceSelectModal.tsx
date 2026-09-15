@@ -37,9 +37,8 @@ export function DeviceSelectModal({ onClose }: { onClose: () => void }) {
                   <span className="font-mono text-[11px] text-mute">{d.sku}</span>
                 </div>
                 <div className="mt-0.5 flex flex-wrap gap-1 text-[11px] text-mute">
-                  {d.ancLevels && <span className="rounded bg-white px-1.5 py-0.5 border border-line">5-Level ANC</span>}
-                  {d.scenes && <span className="rounded bg-white px-1.5 py-0.5 border border-line">Scenes</span>}
-                  {d.ldac && <span className="rounded bg-white px-1.5 py-0.5 border border-line text-blue font-mono font-medium">LDAC</span>}
+                  {(d.ancLevels || d.scenes) && <span className="rounded bg-white px-1.5 py-0.5 border border-line">Noise Cancelling</span>}
+                  {d.ldac && <span className="rounded bg-white px-1.5 py-0.5 border border-line text-blue font-medium">High-Res Audio</span>}
                   {d.gaming && <span className="rounded bg-white px-1.5 py-0.5 border border-line">Game Mode</span>}
                   {d.dual && <span className="rounded bg-white px-1.5 py-0.5 border border-line">Dual Connect</span>}
                 </div>
