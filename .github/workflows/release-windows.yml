@@ -28,6 +28,12 @@ permissions:
 jobs:
   release-win:
     runs-on: windows-latest
+    # The `secrets` context is not available inside a step's `if:` expression,
+    # so mirror the certificate secrets into job env for the gating check.
+    # Unset secrets evaluate to '' and the signing step simply skips.
+    env:
+      WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+      WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,11 +44,8 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Set up Authenticode signing (skipped without certificate secrets)
-        if: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' }}
+        if: ${{ env.WINDOWS_CERT_BASE64 != '' }}
         shell: bash
-        env:
-          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
-          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           set -euo pipefail
           printf '%s' "$WINDOWS_CERT_BASE64" | tr -d '\r\n' | base64 --decode > cert.p12
