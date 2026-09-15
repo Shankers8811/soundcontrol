@@ -5,8 +5,7 @@ import { BRIDGE_PY, ELECTRON_MAIN } from '../lib/embedded';
 import {
   APP_VERSION,
   LATEST_RELEASE_URL,
-  WINDOWS_INSTALLER_URL,
-  WINDOWS_PORTABLE_URL,
+  WINDOWS_DOWNLOAD_URL,
 } from '../lib/downloads';
 
 export function DeployPanel() {
@@ -45,16 +44,10 @@ export function DeployPanel() {
         <p className="text-sm font-medium">Download for Windows</p>
         <div className="grid gap-2">
           <LinkAction
-            title="Windows installer"
-            body={`SoundControl-Setup-${APP_VERSION}.exe · NSIS`}
+            title="SoundControl for Windows"
+            body={`SoundControl-Setup-${APP_VERSION}.exe · installs the app`}
             cta="Download .exe"
-            href={WINDOWS_INSTALLER_URL}
-          />
-          <LinkAction
-            title="Portable app"
-            body={`SoundControl-${APP_VERSION}.exe · no install`}
-            cta="Download .exe"
-            href={WINDOWS_PORTABLE_URL}
+            href={WINDOWS_DOWNLOAD_URL}
           />
           <LinkAction
             title="Release notes & older versions"

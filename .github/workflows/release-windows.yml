@@ -1,9 +1,16 @@
 name: Release Windows
 
 # Tagging a commit on main (e.g. `git tag v1.0.0 main && git push origin v1.0.0`)
-# builds the NSIS installer and the portable .exe and publishes BOTH files as
-# assets of a new GitHub Release. The in-app download buttons and the README
-# deep-link to the "/releases/latest/download/..." URLs produced here.
+# builds the standard NSIS Windows installer and publishes it as the single
+# asset of a new GitHub Release: SoundControl-Setup-<version>.exe.
+# The in-app download button and the README deep-link to the
+# "/releases/latest/download/..." URL produced here.
+#
+# Authenticode code signing (which removes the SmartScreen "unknown
+# publisher" warning) is automatic when these repository secrets exist:
+#   WINDOWS_CERTIFICATE_BASE64    base64 of the .p12/.pfx certificate
+#   WINDOWS_CERTIFICATE_PASSWORD  the certificate's password
+# Without them the installer is built unsigned, exactly as before.
 on:
   push:
     tags:
@@ -30,11 +37,28 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Build both Windows targets (NSIS installer + portable) but let this
-      # workflow own the GitHub Release creation instead of electron-builder.
+      - name: Set up Authenticode signing (skipped without certificate secrets)
+        if: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' }}
+        shell: bash
+        env:
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$WINDOWS_CERT_BASE64" | tr -d '\r\n' | base64 --decode > cert.p12
+          test -s cert.p12
+          # electron-builder signs app + installer automatically via CSC_LINK.
+          echo "CSC_LINK=$(cygpath -w "$PWD/cert.p12")" >> "$GITHUB_ENV"
+          echo "CSC_KEY_PASSWORD=$WINDOWS_CERT_PASSWORD" >> "$GITHUB_ENV"
+          echo "Certificate staged — electron-builder will Authenticode-sign the build."
+      # Build the Windows installer; the Release itself is published by the
+      # steps below rather than by electron-builder's built-in publisher.
       - run: npm run build:win -- --publish never
-      - name: Stage .exe files with stable, URL-safe names
-        id: artifacts
+      - name: Remove certificate material
+        if: always()
+        shell: bash
+        run: rm -f cert.p12
+      - name: Stage installer .exe with a stable, URL-safe name
         shell: bash
         env:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -42,24 +66,21 @@ jobs:
           set -euo pipefail
           echo "Built Windows distributables:"
           ls -la release/*.exe
-          test "$(find release -maxdepth 1 -name '*.exe' | wc -l)" -eq 2
-          # electron-builder defaults: "*Setup*.exe" is the NSIS installer,
-          # the other .exe is the portable build.
-          INSTALLER="$(find release -maxdepth 1 -name '*Setup*.exe' | head -n 1)"
-          PORTABLE="$(find release -maxdepth 1 -name '*.exe' ! -name '*Setup*' | head -n 1)"
+          # Exactly one artifact: the NSIS installer (win-unpacked/ is a
+          # subdirectory, so maxdepth 1 only sees the distributable itself).
+          test "$(find release -maxdepth 1 -name '*.exe' | wc -l)" -eq 1
+          INSTALLER="$(find release -maxdepth 1 -name '*.exe' | head -n 1)"
           test -n "$INSTALLER"
-          test -n "$PORTABLE"
-          # Asset versions are the tag without its leading "v" (v1.0.0 -> 1.0.0).
+          # Asset version is the tag without its leading "v" (v1.0.0 -> 1.0.0).
           VERSION="${RELEASE_TAG#v}"
-          # Rename on disk to hyphenated names (no spaces) so the uploaded
-          # GitHub asset names are deterministic and the deep links resolve.
+          # Rename on disk so the published asset name is deterministic and the
+          # deep links never depend on GitHub normalising spaces in filenames.
           mkdir -p release-assets
           cp "$INSTALLER" "release-assets/SoundControl-Setup-$VERSION.exe"
-          cp "$PORTABLE"  "release-assets/SoundControl-$VERSION.exe"
           echo "Staged release assets:"
           ls -la release-assets/
-          test "$(find release-assets -maxdepth 1 -name '*.exe' | wc -l)" -eq 2
-      - name: Publish GitHub Release with both .exe files
+          test "$(find release-assets -maxdepth 1 -name '*.exe' | wc -l)" -eq 1
+      - name: Publish GitHub Release with the installer
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -67,8 +88,8 @@ jobs:
         run: |
           set -euo pipefail
           echo "Publishing release for tag: $RELEASE_TAG"
-          # Create the release (no-op on a re-run), then upload both binaries
-          # from release-assets/, whose filenames are the published asset names.
+          # Create the release (no-op on a re-run), then upload the installer
+          # from release-assets/, whose filename is the published asset name.
           gh release create "$RELEASE_TAG" \
             --title "SoundControl $RELEASE_TAG" \
             --generate-notes \

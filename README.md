@@ -34,12 +34,11 @@
 
 | Download | File | Notes |
 |---|---|---|
-| 🪟 **Windows installer** | [`SoundControl-Setup-1.0.0.exe`](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup-1.0.0.exe) | NSIS setup, Start-menu & desktop shortcuts |
-| 💾 **Portable app** | [`SoundControl-1.0.0.exe`](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-1.0.0.exe) | Single file, runs without installing |
+| 🪟 **Windows app (installer)** | [`SoundControl-Setup-1.0.0.exe`](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup-1.0.0.exe) | NSIS setup, Start-menu & desktop shortcuts |
 
 - All builds and release notes live on the **[Releases page](https://github.com/Shankers8811/soundcontrol/releases/latest)**.
-- The same **Download for Windows** buttons are built into the app under **Settings → About → Desktop extras**.
-- Windows SmartScreen may show an unsigned-publisher prompt on first run (the app is free and not code-signed); choose **More info → Run anyway**.
+- The same **Download for Windows** button is built into the app under **Settings → About → Desktop extras**.
+- Windows SmartScreen may show an unsigned-publisher prompt on first run (the app is free and not code-signed); choose **More info → Run anyway** — see [Code signing & SmartScreen](#-code-signing--smartscreen) for how to make that warning disappear.
 
 **Or build/run it yourself from source.** Run directly on Windows with hardware Bluetooth support:
   ```cmd
@@ -53,7 +52,7 @@
   ```cmd
   npm run build:win
   ```
-  The packaged NSIS setup installer and portable `.exe` will be generated in the **`release/`** directory.
+  The packaged NSIS setup installer `.exe` will be generated in the **`release/`** directory.
 
 ---
 
@@ -142,20 +141,41 @@ Generates production assets in `dist/`.
 ```bash
 npm run build:win
 ```
-Generates standalone Windows installer and portable `.exe` in `release/`.
+Generates the NSIS Windows installer (`SoundControl Setup <version>.exe`) in `release/`.
 
 ### Publish a new Windows Release
 Tagged commits are built and published automatically by the **Release Windows**
-workflow (`.github/workflows/release-windows.yml`). It compiles both `.exe`
-targets on `windows-latest`, creates a GitHub Release, and attaches both files:
+workflow (`.github/workflows/release-windows.yml`). It builds the NSIS installer
+on `windows-latest`, creates a GitHub Release, and attaches the single
+`SoundControl-Setup-<version>.exe` asset:
 
 ```bash
 git tag v1.0.0 main
 git push origin v1.0.0
 ```
 
-The in-app download buttons and the links above resolve through
+The in-app download button and the links above resolve through
 `releases/latest/download/...`, so they always point at the newest Release.
+
+### 🔏 Code signing & SmartScreen
+By default the installer is **unsigned**, so first-time downloaders see the
+SmartScreen "Windows protected your PC — Unknown publisher" prompt. It is not a
+virus check failure; click **More info → Run anyway**, or right-click the file →
+**Properties → Unblock** before launching. The prompt can only be removed with an
+Authenticode code-signing certificate — nothing in the build config can suppress it.
+
+To sign releases, add two repository secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `WINDOWS_CERTIFICATE_BASE64` | base64 text of the `.p12`/`.pfx` file (e.g. `openssl base64 -in cert.p12 -out cert.b64`) |
+| `WINDOWS_CERTIFICATE_PASSWORD` | the certificate password |
+
+The Release workflow picks them up automatically and electron-builder signs the app
+and the installer; the cleanup step deletes the certificate after the build.
+Certificate options: an **EV** cert clears SmartScreen instantly, an **OV** cert
+builds reputation over time, and the [SignPath Foundation](https://signpath.org/)
+provides **free** code signing for qualifying open-source projects.
 
 ---
 
