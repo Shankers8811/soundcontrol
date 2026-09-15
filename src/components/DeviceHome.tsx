@@ -49,12 +49,16 @@ export function DeviceHome() {
       : app.ancMode === 'anc'
         ? app.profile.scenes
           ? `Noise Cancelling · ${cap(app.ancScene)}`
-          : `Manual · Level ${app.ancLevel}`
+          : app.ancLevel >= 4
+            ? 'Noise Cancelling · Maximum'
+            : app.ancLevel === 3
+              ? 'Noise Cancelling · Balanced'
+              : 'Noise Cancelling · Gentle'
         : app.ancMode === 'transparency'
           ? app.transVocal
             ? 'Transparency · Talk Mode'
-            : 'Transparency Mode'
-          : 'Normal';
+            : 'Transparency · Full'
+          : 'Normal Mode';
 
   return (
     <div className="flex flex-1 flex-col">
@@ -171,7 +175,7 @@ export function DeviceHome() {
         <Tile
           icon={<IconVolume />}
           title="Safe Volume"
-          sub={`${app.safeVolume}% max limit`}
+          sub={app.safeVolume > 0 ? 'Protection Active' : 'Off'}
           onClick={() => app.push('safe-volume')}
         />
         {app.profile.gaming && (
