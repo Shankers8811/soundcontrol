@@ -46,13 +46,13 @@ export function DeployPanel() {
         <div className="grid gap-2">
           <LinkAction
             title="Windows installer"
-            body={`SoundControl Setup ${APP_VERSION}.exe · NSIS`}
+            body={`SoundControl-Setup-${APP_VERSION}.exe · NSIS`}
             cta="Download .exe"
             href={WINDOWS_INSTALLER_URL}
           />
           <LinkAction
             title="Portable app"
-            body={`SoundControl ${APP_VERSION}.exe · no install`}
+            body={`SoundControl-${APP_VERSION}.exe · no install`}
             cta="Download .exe"
             href={WINDOWS_PORTABLE_URL}
           />
