@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Desktop companion for Anker Soundcore earbuds and headphones — Web Bluetooth, Web Serial, and RFCOMM bridge.",
+  "main": "electron-main.cjs",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc --noEmit && vite build",
@@ -27,6 +28,9 @@
       "preload.cjs",
       "soundcore_bridge.py",
       "public/**/*"
+    ],
+    "asarUnpack": [
+      "soundcore_bridge.py"
     ],
     "win": {
       "target": [
