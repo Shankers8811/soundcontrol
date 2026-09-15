@@ -2,12 +2,11 @@
 //
 // The tag-triggered "Release Windows" workflow (.github/workflows/release-windows.yml)
 // builds the NSIS installer and the portable .exe and attaches both to the
-// newest GitHub Release. GitHub's "/releases/latest/download/<asset>" route
-// always points at the assets of the latest Release, so these links stay valid
-// as new versions ship. The asset names come from electron-builder's defaults
-// for productName "SoundControl":
-//   installer: SoundControl Setup <version>.exe
-//   portable:  SoundControl <version>.exe
+// newest GitHub Release under stable, URL-safe names:
+//   installer: SoundControl-Setup-<version>.exe
+//   portable:  SoundControl-<version>.exe
+// GitHub's "/releases/latest/download/<asset>" route always points at the
+// assets of the latest Release, so these links stay valid as new versions ship.
 export const REPO_URL = __REPO_URL__;
 export const APP_VERSION = __APP_VERSION__;
 
@@ -18,5 +17,5 @@ function releaseAsset(assetName: string): string {
   return `${REPO_URL}/releases/latest/download/${encodeURIComponent(assetName)}`;
 }
 
-export const WINDOWS_INSTALLER_URL = releaseAsset(`SoundControl Setup ${APP_VERSION}.exe`);
-export const WINDOWS_PORTABLE_URL = releaseAsset(`SoundControl ${APP_VERSION}.exe`);
+export const WINDOWS_INSTALLER_URL = releaseAsset(`SoundControl-Setup-${APP_VERSION}.exe`);
+export const WINDOWS_PORTABLE_URL = releaseAsset(`SoundControl-${APP_VERSION}.exe`);
