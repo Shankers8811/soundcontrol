@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
+const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
@@ -8,10 +9,22 @@ app.commandLine.appendSwitch('enable-experimental-web-platform-features');
 
 let bridgeProcess = null;
 
+function bridgeScriptPath() {
+  // In the packaged app the bridge is unpacked next to app.asar (see
+  // asarUnpack in package.json) so the Python interpreter can read it.
+  const unpacked = path.join(__dirname, '..', 'app.asar.unpacked', 'soundcore_bridge.py');
+  try {
+    if (fs.existsSync(unpacked)) return unpacked;
+  } catch {
+    /* fall through */
+  }
+  return path.join(__dirname, 'soundcore_bridge.py');
+}
+
 function startBridgeIfAvailable() {
   try {
     const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-    const scriptPath = path.join(__dirname, 'soundcore_bridge.py');
+    const scriptPath = bridgeScriptPath();
     bridgeProcess = spawn(pythonCmd, [scriptPath, '--host', '127.0.0.1', '--port', '8765']);
     bridgeProcess.stderr.on('data', (d) => {
       console.log(`[bridge] ${d}`);
