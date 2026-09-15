@@ -24,7 +24,7 @@ import {
 } from '../protocol/packets';
 import type { EqPreset } from '../protocol/presets';
 import { isUserCancel } from '../lib/bluetoothEnv';
-import { connectBluetooth } from '../transports/ble';
+import { connectBluetooth, isGattBusyError } from '../transports/ble';
 import { connectBridge } from '../transports/bridge';
 import { connectSerial } from '../transports/serial';
 import { connectSimulator } from '../transports/simulator';
@@ -94,7 +94,7 @@ interface AppState {
   log: LogEntry[];
   error: string | null;
   clearError: () => void;
-  connectBle: () => Promise<void>;
+  connectBle: (showAllDevices?: boolean) => Promise<void>;
   connectSerial: () => Promise<void>;
   connectBridge: (mac: string, name?: string) => Promise<void>;
   connectSim: (customProfileId?: string) => Promise<void>;
@@ -205,9 +205,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const t = transportRef.current;
       if (!t) throw new Error('Connect a device first');
       pushLog('tx', data, note);
-      await t.write(data);
+      try {
+        await t.write(data);
+      } catch (err) {
+        // The earbuds' GATT server is busy (e.g. streaming audio): every
+        // caller already updated the UI optimistically, so acknowledge with
+        // a log entry + sound and never surface an error popup.
+        if (isGattBusyError(err)) {
+          pushLog('sys', '', 'Earbuds busy — kept your setting, tap again to resend');
+          if (prompts) await beep('ok');
+          return;
+        }
+        throw err;
+      }
     },
-    [pushLog],
+    [prompts, pushLog],
   );
 
   const attach = useCallback(
@@ -261,9 +273,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const connectBle = useCallback(
-    () =>
+    (showAllDevices?: boolean) =>
       wrapConnect(async () => {
-        const { transport, name, battery: b } = await connectBluetooth(onRx);
+        const { transport, name, battery: b } = await connectBluetooth(onRx, {
+          acceptAllDevices: showAllDevices === true,
+        });
         await attach(transport, name, b);
       }),
     [attach, onRx, wrapConnect],
