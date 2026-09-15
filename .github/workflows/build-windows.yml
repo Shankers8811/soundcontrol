@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   build-win:
@@ -19,26 +18,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Build Windows installer
-        run: |
-          $ErrorActionPreference = 'Continue'
-          npm run build:win -- --publish never 2>&1 | Tee-Object -FilePath build-win.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-        shell: pwsh
-      # TEMPORARY DEBUG: CI logs are unreachable from the dev sandbox, so
-      # exfiltrate the failure output to issue #4. Remove after green.
-      - name: Report failure log
-        if: failure()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $lines = (Get-Content build-win.log | Measure-Object -Line).Lines
-          "# Windows build failure (run $env:GITHUB_RUN_ID, $lines lines)" | Out-File -FilePath issue-body.md
-          '```text' | Out-File -FilePath issue-body.md -Append
-          Get-Content build-win.log -Tail 200 | Out-File -FilePath issue-body.md -Append
-          '```' | Out-File -FilePath issue-body.md -Append
-          gh issue comment 4 --body-file issue-body.md
-        shell: pwsh
+      # --publish never: electron-builder auto-detects CI and would
+      # otherwise try to publish a GitHub Release on every push.
+      - run: npm run build:win -- --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: SoundControl-Windows
