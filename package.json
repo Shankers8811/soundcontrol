@@ -1,7 +1,7 @@
 {
   "name": "soundcontrol",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "description": "Desktop companion for Anker Soundcore earbuds and headphones — Web Bluetooth, Web Serial, and RFCOMM bridge.",
   "main": "electron-main.cjs",
@@ -12,7 +12,9 @@
     "electron": "electron electron-main.cjs",
     "build:win": "npm run build && electron-builder --win",
     "dist": "npm run build && electron-builder",
-    "bridge": "python3 soundcore_bridge.py"
+    "bridge": "python3 soundcore_bridge.py",
+    "fetch:python-embed": "node scripts/fetch-python-embed.mjs",
+    "prebuild:win": "npm run fetch:python-embed"
   },
   "build": {
     "appId": "com.soundcontrol.desktop",
@@ -30,6 +32,12 @@
     ],
     "asarUnpack": [
       "soundcore_bridge.py"
+    ],
+    "extraResources": [
+      {
+        "from": "python-embed",
+        "to": "python"
+      }
     ],
     "win": {
       "target": [
