@@ -1,10 +1,10 @@
 name: Release Windows
 
-# Tagging a commit on main (e.g. `git tag v1.0.2 main && git push origin v1.0.2`)
+# Tagging a commit on main (e.g. `git tag v1.0.5 main && git push origin v1.0.5`)
 # builds the standard NSIS Windows installer and publishes one asset on
-# a new GitHub Release. A commit on the session release branch whose message
-# contains [publish-windows] can also rebuild the existing stable release
-# without requiring an artifact download.
+# a new GitHub Release. A commit on any arena session branch whose message
+# contains [publish-windows] can also rebuild the stable release matching
+# package.json without requiring an artifact download.
 # SoundControl-Setup.exe. The in-app download button deep-links to this name
 # via "/releases/latest/download/..." so every client gets the newest build.
 #
@@ -18,7 +18,7 @@ on:
     tags:
       - 'v*'
     branches:
-      - 'arena/01a0aa09-soundcontrol'
+      - 'arena/**'
   workflow_dispatch:
     inputs:
       tag:
@@ -105,11 +105,25 @@ jobs:
           echo "Staged release asset:"
           ls -la release-assets/
           test "$(find release-assets -maxdepth 1 -name '*.exe' | wc -l)" -eq 1
+      - name: Resolve release tag
+        id: release-tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            VERSION="$(node -p "require('./package.json').version")"
+            echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Resolved tag: $(grep '^tag=' "$GITHUB_OUTPUT" | cut -d= -f2)"
       - name: Publish GitHub Release with the installer
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || (github.event_name == 'push' && github.ref_name == 'arena/01a0aa09-soundcontrol' && 'v1.0.4') || github.ref_name }}
+          RELEASE_TAG: ${{ steps.release-tag.outputs.tag }}
         run: |
           set -euo pipefail
           echo "Publishing release for tag: $RELEASE_TAG"

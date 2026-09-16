@@ -38,4 +38,7 @@ installer asset named `SoundControl-Setup.exe`.
 
 SoundControl uses the bundled local helper to enumerate Bluetooth devices already paired
 with Windows, connect through Classic Bluetooth RFCOMM, and expose Soundcore controls.
+Liveness uses `/health`; `/scan` is the slower cached PnP enumeration. Android BLE
+captures are decode-only references (`src/protocol/ble.ts`, PROTOCOL.md appendix) —
+the app never uses Web Bluetooth.
 GitHub hosts the source and release files; it is not used to host or run the app.
