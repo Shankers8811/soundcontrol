@@ -15,6 +15,7 @@ import {
   INIT,
   LDAC,
   buildAnc,
+  buildBatteryQuery,
   buildBassUp,
   buildCustomEq,
   buildEqPreset,
@@ -34,6 +35,7 @@ import type {
   AncScene,
   BatteryState,
   DeviceProfile,
+  EarbudPresence,
   GestureAction,
   LogEntry,
   StackId,
@@ -97,7 +99,7 @@ interface AppState {
   clearError: () => void;
   connectBle: (showAllDevices?: boolean) => Promise<void>;
   connectSerial: () => Promise<void>;
-  connectBridge: (mac: string, name?: string) => Promise<void>;
+  connectBridge: (mac: string, name?: string, windowsBattery?: number | null) => Promise<void>;
   connectSim: (customProfileId?: string) => Promise<void>;
   disconnect: () => Promise<void>;
   setAnc: (mode: AncMode, level?: number, scene?: AncScene) => Promise<void>;
@@ -137,6 +139,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [transportLabel, setTransportLabel] = useState('Not connected');
   const [deviceName, setDeviceName] = useState('No device');
   const [profile, setProfile] = useState<DeviceProfile>(matchDevice('R50i'));
+  const profileRef = useRef(profile);
   const [battery, setBattery] = useState<BatteryState>({ left: null, right: null, case: null });
   const [ancMode, setAncMode] = useState<AncMode>('anc');
   const [ancLevel, setAncLevel] = useState(5);
@@ -185,18 +188,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const onRx = useCallback(
     (data: Uint8Array) => {
       pushLog('rx', data);
-      if (data[0] === 0x09 && data.length >= 52) {
-        const l = data[49];
-        const r = data[50];
-        const c = data[51];
-        if (l <= 100 && r <= 100) {
-          setBattery({
-            left: l,
-            right: r,
-            case: c <= 100 ? c : null,
-          });
-        }
+      if (data[0] !== 0x09 || data[1] !== 0xff || data.length < 10) return;
+
+      // A device-info response carries the TWS values at payload offsets
+      // 40/41/42. Older firmware also places them after one of a few known
+      // three-byte markers. Values are raw 0..5/0..10 steps, not percentages.
+      const payload = data.slice(9, data.length - 1);
+      const level = (value: number | undefined): number | null =>
+        value === undefined || value === 0xff || value > 100 ? null : value;
+      let levels: [number | null, number | null, number | null] | null = null;
+      let presence: EarbudPresence = 'unknown';
+      let rawLeft: number | undefined;
+      let rawRight: number | undefined;
+      if (data[5] === 0x01 && data[6] === 0x01 && payload.length >= 43) {
+        rawLeft = payload[40];
+        rawRight = payload[41];
+        levels = [level(rawLeft), level(rawRight), level(payload[42])];
+      } else if (data[5] === 0x01 && data[6] === 0x03 && payload.length >= 2) {
+        // The explicit battery query returns left/right in the first two
+        // payload bytes. The case value remains from device-info.
+        rawLeft = payload[0];
+        rawRight = payload[1];
+        levels = [level(rawLeft), level(rawRight), null];
       }
+      if (!levels) return;
+      if (
+        levels.every((value) => value === null) &&
+        !(rawLeft === 0xff || rawRight === 0xff)
+      ) return;
+      if (rawLeft !== undefined && rawRight !== undefined) {
+        const leftPresent = rawLeft !== 0xff;
+        const rightPresent = rawRight !== 0xff;
+        presence = leftPresent && rightPresent ? 'both' : leftPresent ? 'left' : rightPresent ? 'right' : 'none';
+      }
+
+      setBattery((previous) => ({
+        left: levels![0] ?? previous.left,
+        right: levels![1] ?? previous.right,
+        case: levels![2] ?? previous.case,
+        batteryScale: profileRef.current.kind === 'earbuds' ? profileRef.current.batteryMax : null,
+        presence: presence === 'unknown' ? previous.presence : presence,
+      }));
     },
     [pushLog],
   );
@@ -231,14 +263,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       transportRef.current = t;
       setTransportLabel(t.label);
       setDeviceName(name);
-      setProfile(matchDevice(name));
+      const nextProfile = matchDevice(name);
+      profileRef.current = nextProfile;
+      setProfile(nextProfile);
       if (typeof bat === 'number') {
-        setBattery({ left: bat, right: bat, case: null });
+        setBattery({ left: bat, right: bat, case: null, batteryScale: null, presence: 'unknown' });
       } else if (bat && typeof bat === 'object') {
         setBattery({
           left: bat.left ?? null,
           right: bat.right ?? null,
           case: bat.case ?? null,
+          batteryScale: bat.batteryScale ?? null,
+          presence: bat.presence ?? 'unknown',
         });
       }
       setConnected(true);
@@ -249,6 +285,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await t.write(INIT);
         pushLog('tx', INIT, 'Handshake');
       } catch (err) {
+        pushLog('sys', '', err instanceof Error ? err.message : String(err));
+      }
+      try {
+        await t.write(buildBatteryQuery());
+        pushLog('tx', buildBatteryQuery(), 'Battery query');
+      } catch (err) {
+        // Some over-ear models only expose battery in the device-info frame.
         pushLog('sys', '', err instanceof Error ? err.message : String(err));
       }
       await beep('ok');
@@ -297,10 +340,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const connectBridgePort = useCallback(
-    (mac: string, label?: string) =>
+    (mac: string, label?: string, windowsBattery?: number | null) =>
       wrapConnect(async () => {
-        const { transport, name } = await connectBridge(mac, onRx, label);
-        await attach(transport, name);
+        const { transport, name, battery: b } = await connectBridge(mac, onRx, label, windowsBattery ?? null);
+        await attach(transport, name, b);
       }),
     [attach, onRx, wrapConnect],
   );
@@ -464,7 +507,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setProfileId = useCallback((id: string) => {
     const hit = DEVICES.find((d) => d.id === id);
-    if (hit) setProfile(hit);
+    if (hit) {
+      profileRef.current = hit;
+      setProfile(hit);
+    }
   }, []);
 
   const findDevice = useCallback(async () => {

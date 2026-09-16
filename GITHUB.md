@@ -1,10 +1,11 @@
 # Put SoundControl on GitHub (no Node on your PC)
 
-> **Status:** `github.com/Shankers8811/soundcontrol` and its Pages site already exist, so
-> you only need this page if you are starting a fresh copy or a fork. Day-to-day changes go
+> **Status:** `github.com/Shankers8811/soundcontrol` exists, but the public web deployment is
+> intentionally paused while the Pages configuration is cleaned up. Day-to-day changes go
 > through a normal PR — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-GitHub Pages gives you a real `https://you.github.io/...` tab. Brave can use Web Bluetooth there. The Arena sandbox URL cannot.
+The public README currently documents the Windows desktop app only. Do not advertise or rely
+on a `github.io` web-app URL until the Pages deployment is deliberately relaunched.
 
 You still need **Chrome, Edge, or Brave on a computer** — not the phone soundcore app, and not this Arena preview.
 
@@ -36,24 +37,18 @@ git remote add origin https://github.com/YOUR_USER/soundcontrol.git
 git push -u origin main
 ```
 
-## 3. Turn on Pages
+## 3. Pages deployment (when the web app is ready)
+
+The web app is not being launched from this repository right now. Before relaunching it:
 
 1. Repo **Settings** → **Pages**
-2. **Source**: GitHub Actions
-3. Open the **Actions** tab and wait for **GitHub Pages** to go green (GitHub installs Node and builds — you do not)
+2. Choose exactly one publisher: **GitHub Actions**
+3. Restore or add a reviewed Pages workflow, then wait for that workflow to go green
+4. Verify the generated site before adding its URL back to the README
 
-## 4. Open it in Brave or Chrome
-
-The site will be:
-
-`https://shankers8811.github.io/soundcontrol/`
-
-Open that **as its own tab**. Then:
-
-1. Tap **Add Device** → **Search**
-2. Tap your soundcore earbuds or headphones in the Bluetooth picker
-3. No codes to type, works seamlessly!
+Do not enable both **Deploy from a branch** and an Actions deployment for the same site.
 
 ## What GitHub cannot do
 
-GitHub only hosts the website. It cannot talk to Classic Bluetooth RFCOMM. **Search** uses Web Bluetooth (battery / some EQ). Full ANC still needs the desktop helper on your PC later (`python3 soundcore_bridge.py`). For trying the UI, **Try the demo** works on the GitHub site too.
+GitHub hosts the source and Windows release artifacts. It cannot talk to Classic Bluetooth RFCOMM;
+the Windows desktop installer starts the local helper that provides that hardware path.

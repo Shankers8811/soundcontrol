@@ -50,7 +50,22 @@ Example — handshake:
 
 Must be the first write after the RFCOMM socket is up. The device answers with a
 `09 FF … cat=01 type=01` info blob. On TWS firmware, left / right / case battery often
-sit at payload offsets 40 / 41 / 42 (values `0…100`).
+sit at payload offsets 40 / 41 / 42. Earbud values are model-scaled steps on
+many TWS families (for example `0…5` or `0…10`), while over-ear models commonly
+report percentages directly.
+
+A live TWS battery response can also be requested explicitly:
+
+```
+08 EE 00 00 00 01 03 0A 00 04
+```
+
+The `01 03` response starts with the raw left and right levels. `FF` means that
+side is disconnected from the host; it is not a zero-percent battery value and
+is used only for connected-side availability. This signal does not prove that an
+earbud is inserted in an ear: the Soundcore protocol exposes a wearing-detection
+setting on some models, but no confirmed per-side in-ear telemetry field is
+available to this app.
 
 ## ANC — Life Q30 / Q35 / Space Q45 / Life Tune (`classic`)
 

@@ -1,18 +1,20 @@
 # Publish SoundControl on GitHub (first time, no coding)
 
-> **Status:** already done for this project — the website lives at
-> <https://shankers8811.github.io/soundcontrol/> and installers at
-> <https://github.com/Shankers8811/soundcontrol/releases/latest>. Keep this page as the
-> from-scratch recipe (or for a fork); publishing a new version is just a tag push.
+> **Status:** the Windows installer is published at
+> <https://github.com/Shankers8811/soundcontrol/releases/latest>. The public web deployment is
+> intentionally paused while its Pages configuration is cleaned up. Keep this page as a
+> from-scratch recipe (or for a fork); publishing a new Windows version is just a tag push.
 
-You need a **free GitHub account** and the zip of this project. GitHub is a public folder on the internet — not an APK store, not a virus site. **ear (web)** lives there the same way: [github.com/radiance-project/ear-web](https://github.com/radiance-project/ear-web).
+You need a **free GitHub account** and the project files. GitHub hosts the source and release
+artifacts; the Windows installer is the currently supported public distribution.
 
 You will end up with:
 
 - A public page: `https://github.com/YOUR_NAME/soundcontrol`
-- A public website: `https://YOUR_NAME.github.io/soundcontrol/`
+- A Windows installer release
 
-People open the website in Chrome and tap Search. That is how ear-web gained users.
+A web deployment is a separate launch decision. Do not publish a `github.io` URL until Pages
+has exactly one configured publisher and the generated app has been verified.
 
 ---
 
@@ -21,7 +23,7 @@ People open the website in Chrome and tap Search. That is how ear-web gained use
 1. Go to [https://github.com/signup](https://github.com/signup)
 2. Enter **your email**
 3. Choose a **password**
-4. Choose a **username** (this becomes `YOUR_NAME` in the links above). Example: `nimali` → `https://nimali.github.io/soundcontrol/`
+4. Choose a **username** for the GitHub repository and release page
 5. Prove you are not a robot
 6. Open the email GitHub sent you and click the green button
 7. You are in. You do not need to pay.
@@ -53,59 +55,31 @@ Wait until the file list looks like a real project.
 
 ---
 
-## D. Turn on the public website
+## D. Relaunch the web app later
 
-1. On the repo page, click **Settings** (top row)
-2. Left menu: **Pages**
-3. **Build and deployment → Source:** choose **GitHub Actions**
-4. Click **Actions** (top row, next to Settings)
-5. Click **GitHub Pages** if it appears, or wait ~2 minutes
-6. When you see a **green check**, it worked
-7. If it asks **Allow GitHub Actions**, click I understand / Allow
+The web deployment is intentionally paused. When it is ready to relaunch:
 
----
+1. On the repo page, open **Settings → Pages**
+2. Choose **GitHub Actions** as the only source; disable **Deploy from a branch**
+3. Restore a reviewed Pages workflow and wait for its green check
+4. Verify the generated site before adding its URL to the README
 
-## E. Open it like ear-web
-
-In Chrome, Edge, or Brave (its **own** tab):
-
-```
-https://YOUR_NAME.github.io/soundcontrol/
-```
-
-Replace `YOUR_NAME` with the username from step A.
-
-Then: **Add Device → Search** or **Try the demo**.
+Do not run a branch publisher and an Actions publisher for the same Pages site.
 
 ---
 
-## F. Make the fork yours (links, buttons, bridge)
+## E. Make the fork yours (links, buttons, bridge)
 
-The repo hard-codes the original owner's name in four places — search for
-`Shankers8811` (in the GitHub web UI: open each file, click the pencil) and
-replace it with your username:
-
-1. `README.md` — the live-site, download, and badge links
-2. `vite.config.ts` — `REPO_URL`, which drives the in-app download buttons
-3. `soundcore_bridge.py` — `BUNDLED_WEB_ORIGINS`, the web origin the bridge answers
-4. `GITHUB.md` — the example site URL in step 4
-
-Then commit. Your Pages site is `https://YOUR_NAME.github.io/soundcontrol/`.
-
-Optional: repo page → ⚙️ **About** (right side) → tick **Use your GitHub Pages website** → save. The homepage link then shows like ear-web’s `earweb.bttl.xyz`.
+The repo hard-codes the original owner's name in the release and bridge links — search for
+`Shankers8811` when preparing a fork and replace only the links appropriate for that fork.
+Do not add a public web URL until the Pages relaunch has been verified.
 
 ---
 
-## Share (how projects get stars)
+## Share the Windows release
 
-After the site loads for you:
-
-- Post the **github.io** link on Reddit **r/soundcore** and **r/anker**
-- Title idea: `Unofficial desktop soundcore app (web) — ANC/EQ, no Anka`
-- Pin the website link in the GitHub **About** box
-- Answer **Issues** when people report models
-
-You do **not** download APKs from strangers. You published **your** web app.
+After the installer release is verified, share the GitHub release page. Keep hardware and
+Bluetooth capability claims tied to models that have actually been tested.
 
 ---
 

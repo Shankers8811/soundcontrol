@@ -12,6 +12,7 @@ export const DEVICES: DeviceProfile[] = [
     scenes: false,
     ldac: false,
     dual: true,
+    batteryMax: 5,
     names: ['R50i', 'A3949', 'soundcore R50i', 'soundcore R50i NC'],
   },
   {
@@ -25,6 +26,7 @@ export const DEVICES: DeviceProfile[] = [
     scenes: false,
     ldac: false,
     dual: true,
+    batteryMax: 10,
     names: ['P30i', 'A3959', 'soundcore P30i'],
   },
   {
@@ -38,6 +40,7 @@ export const DEVICES: DeviceProfile[] = [
     scenes: false,
     ldac: false,
     dual: false,
+    batteryMax: 5,
     names: ['P20i', 'P25i', 'A3948', 'soundcore P20i', 'soundcore P25i'],
   },
   {
@@ -51,6 +54,7 @@ export const DEVICES: DeviceProfile[] = [
     scenes: false,
     ldac: true,
     dual: true,
+    batteryMax: 5,
     names: ['Liberty 4 NC', 'A3947', 'soundcore Liberty 4 NC'],
   },
   {
@@ -64,6 +68,7 @@ export const DEVICES: DeviceProfile[] = [
     scenes: false,
     ldac: true,
     dual: true,
+    batteryMax: 5,
     names: ['Liberty 4', 'A3953', 'soundcore Liberty 4'],
   },
   {
@@ -77,6 +82,7 @@ export const DEVICES: DeviceProfile[] = [
     scenes: false,
     ldac: true,
     dual: true,
+    batteryMax: 5,
     names: ['Liberty 3 Pro', 'A3952', 'soundcore Liberty 3 Pro'],
   },
   {
@@ -90,6 +96,7 @@ export const DEVICES: DeviceProfile[] = [
     scenes: true,
     ldac: true,
     dual: true,
+    batteryMax: 5,
     names: ['Space One', 'A3035', 'soundcore Space One'],
   },
   {
@@ -103,6 +110,7 @@ export const DEVICES: DeviceProfile[] = [
     scenes: true,
     ldac: true,
     dual: true,
+    batteryMax: 5,
     names: ['Q45', 'Space Q45', 'A3040', 'soundcore Space Q45'],
   },
   {
@@ -116,6 +124,7 @@ export const DEVICES: DeviceProfile[] = [
     scenes: true,
     ldac: true,
     dual: false,
+    batteryMax: 5,
     names: ['Q35', 'Life Q35', 'A3029', 'soundcore Life Q35'],
   },
   {
@@ -129,6 +138,7 @@ export const DEVICES: DeviceProfile[] = [
     scenes: true,
     ldac: false,
     dual: false,
+    batteryMax: 5,
     names: ['Q30', 'Life Q30', 'A3028', 'Soundcore Life Q30'],
   },
   {
@@ -142,6 +152,7 @@ export const DEVICES: DeviceProfile[] = [
     scenes: true,
     ldac: false,
     dual: false,
+    batteryMax: 5,
     names: ['Life Tune', 'A3027', 'soundcore Life Tune'],
   },
   {
@@ -155,6 +166,7 @@ export const DEVICES: DeviceProfile[] = [
     scenes: false,
     ldac: false,
     dual: false,
+    batteryMax: 5,
     names: ['Sport X10', 'A3961', 'soundcore Sport X10'],
   },
   {
@@ -168,6 +180,7 @@ export const DEVICES: DeviceProfile[] = [
     scenes: false,
     ldac: false,
     dual: false,
+    batteryMax: 5,
     names: ['Sleep A10', 'A6610', 'soundcore Sleep A10'],
   },
 ];
