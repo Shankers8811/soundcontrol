@@ -1,0 +1,48 @@
+=== /tmp/x/abacktools-Ankersoundcore_6.4.0-17_APKPure-part3-of4/play-services-measurement-sdk-api.properties
+version=21.5.1
+client=play-services-measurement-sdk-api
+play-services-measurement-sdk-api_client=21.5.1
+=== /tmp/x/abacktools-Ankersoundcore_6.4.0-17_APKPure-part3-of4/play-services-measurement-sdk.properties
+version=21.5.1
+client=play-services-measurement-sdk
+play-services-measurement-sdk_client=21.5.1
+=== /tmp/x/abacktools-Ankersoundcore_6.4.0-17_APKPure-part3-of4/play-services-stats.properties
+version=17.0.2
+client=play-services-stats
+play-services-stats_client=17.0.2
+=== /tmp/x/abacktools-Ankersoundcore_6.4.0-17_APKPure-part3-of4/play-services-measurement-api.properties
+version=21.5.1
+client=play-services-measurement-api
+play-services-measurement-api_client=21.5.1
+=== /tmp/x/abacktools-Ankersoundcore_6.4.0-17_APKPure-part3-of4/play-services-measurement.properties
+version=21.5.1
+client=play-services-measurement
+play-services-measurement_client=21.5.1
+=== /tmp/x/abacktools-Ankersoundcore_6.4.0-17_APKPure-part3-of4/play-services-measurement-impl.properties
+version=21.5.1
+client=play-services-measurement-impl
+play-services-measurement-impl_client=21.5.1
+=== /tmp/x/abacktools-Ankersoundcore_6.4.0-17_APKPure-part3-of4/play-services-ads-identifier.properties
+version=18.0.0
+client=play-services-ads-identifier
+play-services-ads-identifier_client=18.0.0
+=== /tmp/x/abacktools-Ankersoundcore_6.4.0-17_APKPure-part3-of4/play-services-tasks.properties
+version=18.0.2
+client=play-services-tasks
+play-services-tasks_client=18.0.2
+=== /tmp/x/abacktools-Ankersoundcore_6.4.0-17_APKPure-part3-of4/play-services-base.properties
+version=18.0.1
+client=play-services-base
+play-services-base_client=18.0.1
+=== /tmp/x/abacktools-Ankersoundcore_6.4.0-17_APKPure-part3-of4/play-services-basement.properties
+version=18.1.0
+client=play-services-basement
+play-services-basement_client=18.1.0
+=== /tmp/x/abacktools-Ankersoundcore_6.4.0-17_APKPure-part3-of4/play-services-cloud-messaging.properties
+version=17.1.0
+client=play-services-cloud-messaging
+play-services-cloud-messaging_client=17.1.0
+=== /tmp/x/abacktools-Ankersoundcore_6.4.0-17_APKPure-part3-of4/play-services-measurement-base.properties
+version=21.5.1
+client=play-services-measurement-base
+play-services-measurement-base_client=21.5.1
