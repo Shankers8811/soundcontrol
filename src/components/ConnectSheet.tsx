@@ -112,7 +112,14 @@ export function ConnectSheet() {
     <div className="flex flex-1 flex-col px-5 py-4">
       <div className="flex flex-col items-center pt-4">
         <div className={`radar ${searching || app.connecting ? 'on' : ''}`}>
-          <img src={asset('device-earbuds.png')} alt="" className="h-16 w-16 object-contain" />
+          <img
+            src={asset('device-earbuds.webp')}
+            alt=""
+            width={704}
+            height={384}
+            decoding="async"
+            className="h-16 w-16 object-contain"
+          />
         </div>
         <h2 className="mt-5 text-center text-xl font-semibold">Add device</h2>
         <p className="mt-2 max-w-[20rem] text-center text-sm text-mute">
@@ -175,7 +182,7 @@ export function ConnectSheet() {
                   onClick={() => void pick(d)}
                   className="flex w-full items-center gap-3 rounded-2xl bg-wash px-3.5 py-3 text-left border border-line hover:border-blue transition shadow-2xs"
                 >
-                  <img src={asset('device-earbuds.png')} alt="" className="h-10 w-10 object-contain" />
+                  <img src={asset('device-earbuds.webp')} alt="" width={704} height={384} loading="lazy" decoding="async" className="h-10 w-10 object-contain" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold text-ink text-sm">{d.name}</span>
                     <span className="text-xs text-blue font-medium">Tap to Connect</span>

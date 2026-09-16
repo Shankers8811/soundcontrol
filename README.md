@@ -14,6 +14,9 @@
   <img src="https://img.shields.io/badge/Web%20App-Chrome%20%7C%20Edge%20%7C%20Brave-0084ff" alt="Web App">
   <img src="https://img.shields.io/badge/Windows%20App-Electron%20%7C%20EXE-0084ff" alt="Windows App">
   <img src="https://img.shields.io/badge/Android%20Parity-100%25-success" alt="Feature Complete">
+  <a href="https://github.com/Shankers8811/soundcontrol/releases/latest"><img src="https://img.shields.io/github/v/release/Shankers8811/soundcontrol?label=latest%20release&color=0084ff" alt="Latest release"></a>
+  <a href="https://github.com/Shankers8811/soundcontrol/actions/workflows/build-windows.yml"><img src="https://github.com/Shankers8811/soundcontrol/actions/workflows/build-windows.yml/badge.svg?branch=main" alt="Windows build"></a>
+  <a href="https://github.com/Shankers8811/soundcontrol/actions/workflows/pages.yml"><img src="https://github.com/Shankers8811/soundcontrol/actions/workflows/pages.yml/badge.svg?branch=main" alt="Pages deploy"></a>
 </p>
 
 ---
@@ -26,6 +29,7 @@
 - **Browser Compatibility**: Chrome, Edge, Brave, or Opera (version 117+) on Windows, macOS, Linux, or ChromeOS.
 - **Connection**: Connects directly via the **Web Bluetooth API** (GATT Service `0000ffe0-0000-1000-8000-00805f9b34fb`).
 - **Installable PWA**: Click the Install icon in your browser address bar to install SoundControl as a standalone desktop application.
+- **Light app shell**: icons ship pre-rendered at their exact manifest sizes and device art is WebP, so the whole offline shell is under 350 KB instead of 6 MB — it installs and cold-boots fast on a weak connection.
 - **Demo Mode**: Includes full offline simulation with realistic hardware models and audio synthesis if no physical device is connected.
 
 ### 2. 💻 Windows Desktop App (Electron & Native EXE)
@@ -51,6 +55,9 @@ runs on a Python runtime **bundled inside the installer** — no Python to insta
    automatically (even while playing audio) — tap to connect. If the list stays empty, use the
    **Connect by MAC** field (the address appears in Settings → device → Device properties).
    The helper's start-up is logged to `%AppData%\soundcontrol\main.log`.
+   The helper only listens on `127.0.0.1` and answers the app's own origins (never
+   `Access-Control-Allow-Origin: *`), so a random web page cannot enumerate your paired
+   devices or write to them — see [SECURITY.md](.github/SECURITY.md).
 
 The very first launch after installing can take a few extra seconds while Windows inspects a
 freshly downloaded app — it is not hung. If SmartScreen appears, choose **More info → Run anyway**
@@ -140,7 +147,7 @@ Every packet transmitted between the host application and the hardware device fo
 ## 🛠️ Development & Building
 
 ### Prerequisites
-- Node.js 18+ (Node 20 or 22 recommended)
+- **Node.js 20.19+ or 22.12+** (Node 22 recommended) — Vite 8 refuses older runtimes
 - **Python 3.9+** — only for running the bridge from source. Release installers carry their own
   bundled Python runtime (`python-embed/`, fetched automatically by `npm run fetch:python-embed`
   during `npm run build:win`), so desktop users install nothing extra. The web app in Chrome/Edge
