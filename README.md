@@ -43,16 +43,20 @@
 **🔎 Connecting earbuds on Windows (important).** A browser-style scan only sees earbuds that
 are in **pairing mode** — buds already connected to your laptop are invisible to it, and the
 desktop app cannot use Web Bluetooth at all (Electron implements it on Linux only). The desktop
-app instead talks to devices **already paired with Windows** through a tiny local Python bridge:
+app instead talks to devices **already paired with Windows** through a small local bridge that
+runs on a Python runtime **bundled inside the installer** — no Python to install, nothing to configure:
 
-1. Install Python once: `winget install -e --id Python.Python.3.12` (or the python.org installer with “Add to PATH”).
-2. Pair the earbuds in **Settings → Bluetooth & devices** and leave them connected.
-3. Launch SoundControl → **Add device** → **Refresh paired devices**. Your paired buds are listed
+1. Pair the earbuds in **Settings → Bluetooth & devices** and leave them connected.
+2. Launch SoundControl → **Add device** → **Refresh paired devices**. Your paired buds are listed
    automatically (even while playing audio) — tap to connect. If the list stays empty, use the
    **Connect by MAC** field (the address appears in Settings → device → Device properties).
-   Bridge start-up is logged to `%AppData%\soundcontrol\main.log`.
+   The helper's start-up is logged to `%AppData%\soundcontrol\main.log`.
 
-Prefer no installs? Open the [web app](https://shankers8811.github.io/soundcontrol/) in Chrome
+The very first launch after installing can take a few extra seconds while Windows inspects a
+freshly downloaded app — it is not hung. If SmartScreen appears, choose **More info → Run anyway**
+(see [Code signing & SmartScreen](#-code-signing--smartscreen)).
+
+Prefer no installs at all? Open the [web app](https://shankers8811.github.io/soundcontrol/) in Chrome
 or Edge and put the earbuds in pairing mode instead (open the case, hold its button ~3s).
 
 **Or build/run it yourself from source.** Run directly on Windows with hardware Bluetooth support:
@@ -137,8 +141,10 @@ Every packet transmitted between the host application and the hardware device fo
 
 ### Prerequisites
 - Node.js 18+ (Node 20 or 22 recommended)
-- **Python 3.9+** — required for earbud control in the **Windows desktop app**: it powers the local
-  RFCOMM bridge that finds earbuds already paired with Windows. The web app in Chrome/Edge needs no Python.
+- **Python 3.9+** — only for running the bridge from source. Release installers carry their own
+  bundled Python runtime (`python-embed/`, fetched automatically by `npm run fetch:python-embed`
+  during `npm run build:win`), so desktop users install nothing extra. The web app in Chrome/Edge
+  needs no Python either.
 
 ### Setup & Development Server
 ```bash
