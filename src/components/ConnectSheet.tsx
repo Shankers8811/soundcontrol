@@ -60,7 +60,7 @@ export function ConnectSheet() {
         if (found.length) setNearby(found);
         if (!alive) {
           setHint(
-            'The desktop bridge is not running — it needs Python 3. Install it once (winget install -e --id Python.Python.3.12) and restart SoundControl — or open the web app in Edge/Chrome and put the earbuds in pairing mode.',
+            'The Bluetooth helper is not responding. Restart SoundControl — it starts the helper automatically, no installs needed. If it still does not respond, reinstall from the latest GitHub Release (or open the web app in Edge/Chrome and pair earbuds in pairing mode instead).',
           );
         } else if (!found.length) {
           setHint(
@@ -153,7 +153,7 @@ export function ConnectSheet() {
           {helper === 'online'
             ? 'Windows helper: running ✓ — paired devices are listed below automatically.'
             : helper === 'offline'
-              ? 'Windows helper: not running — tap Refresh to see how to enable it (needs Python).'
+              ? 'Windows helper: not responding — restart the app (it starts automatically).'
               : 'Checking for the Windows helper…'}
         </p>
       )}

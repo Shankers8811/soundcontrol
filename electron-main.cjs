@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog } = require('electron');
 const fs = require('fs');
+const http = require('http');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -75,25 +76,82 @@ function bridgeScriptPath() {
   return path.join(__dirname, 'soundcore_bridge.py');
 }
 
-// Windows has no guaranteed 'python' on PATH — it may be missing entirely or be
-// the Microsoft Store stub that exits immediately. Try candidates in order and
-// keep the first interpreter that stays alive long enough to serve the bridge.
-function pythonCandidates() {
-  if (process.platform === 'win32') {
-    return [
-      { cmd: 'py', args: ['-3'] },
-      { cmd: 'py', args: [] },
-      { cmd: 'python', args: [] },
-      { cmd: 'python3', args: [] },
-    ];
-  }
-  return [
-    { cmd: 'python3', args: [] },
-    { cmd: 'python', args: [] },
+// The installer ships the official Python embeddable runtime
+// (resources/python on Windows) so the RFCOMM bridge works with zero user
+// setup. Nothing is added to PATH; the runtime only runs inside SoundControl.
+function bundledPythonPath() {
+  const exe = process.platform === 'win32' ? 'python.exe' : 'python3';
+  const candidates = [
+    // Packaged: <install>/resources/python/python.exe
+    path.join(process.resourcesPath || '', 'python', exe),
+    // electron-builder always stages the archive's python.exe name
+    path.join(process.resourcesPath || '', 'python', 'python.exe'),
+    // Dev checkout: <repo>/python-embed/python.exe
+    path.join(__dirname, 'python-embed', exe),
   ];
+  for (const candidate of candidates) {
+    try {
+      if (candidate && fs.existsSync(candidate) && fs.statSync(candidate).size > 0) return candidate;
+    } catch {
+      /* keep looking */
+    }
+  }
+  return null;
 }
 
-function startBridgeIfAvailable() {
+// Preference order: the runtime bundled with the app first (no setup at all),
+// then a user-installed Python. Windows has no guaranteed 'python' — it may be
+// missing entirely or be the Microsoft Store stub that exits immediately; the
+// readiness probe below filters those out.
+function pythonCandidates() {
+  const bundled = bundledPythonPath();
+  const interpreters =
+    process.platform === 'win32'
+      ? [
+          { cmd: 'py', args: ['-3'] },
+          { cmd: 'py', args: [] },
+          { cmd: 'python', args: [] },
+          { cmd: 'python3', args: [] },
+        ]
+      : [
+          { cmd: 'python3', args: [] },
+          { cmd: 'python', args: [] },
+        ];
+  return bundled ? [{ cmd: bundled, args: [], bundled: true }, ...interpreters] : interpreters;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Is something already serving the bridge port? (user-run bridge, leftover
+// instance). 700 ms is plenty for a loopback request and keeps startup snappy.
+function probeBridge(timeoutMs = 700) {
+  return new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port: 8765, path: '/scan', timeout: timeoutMs }, (res) => {
+      res.resume();
+      resolve(res.statusCode === 200);
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.on('error', () => resolve(false));
+  });
+}
+
+// Wait until the freshly spawned bridge actually answers HTTP — a definitive
+// signal, and much faster than "the process is still alive after N seconds".
+async function waitForBridgeReady(child, budgetMs = 5000) {
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null || child.signalCode !== null) return false;
+    if (await probeBridge(500)) return true;
+    await sleep(150);
+  }
+  return false;
+}
+
+async function startBridgeIfAvailable() {
+  if (bridgeProcess) return;
   const scriptPath = bridgeScriptPath();
   try {
     if (!fs.existsSync(scriptPath)) {
@@ -104,68 +162,54 @@ function startBridgeIfAvailable() {
     /* proceed optimistically if existsSync misbehaves */
   }
 
+  if (await probeBridge()) {
+    log('bridge already listening on 127.0.0.1:8765; not spawning another');
+    return;
+  }
+
   const candidates = pythonCandidates();
-  const tryFrom = (i) => {
-    if (i >= candidates.length) {
-      onBridgeMissing();
-      return;
-    }
-    const { cmd, args } = candidates[i];
+  for (const { cmd, args, bundled } of candidates) {
+    const label = bundled ? 'bundled runtime' : cmd;
     let child;
     try {
       child = spawn(cmd, [...args, scriptPath, '--host', '127.0.0.1', '--port', '8765'], {
         windowsHide: true,
       });
     } catch (err) {
-      log(`spawn ${cmd} threw: ${err}`);
-      tryFrom(i + 1);
+      log(`spawn ${label} threw: ${err}`);
+      continue;
+    }
+
+    const onOutput = (d) => log(`[bridge] ${String(d).trimEnd()}`);
+    child.stderr.on('data', onOutput);
+    child.stdout.on('data', onOutput);
+    child.on('error', (err) => log(`bridge ${label} error: ${err.code || err.message}`));
+    child.on('exit', (code) => {
+      if (bridgeProcess === child) bridgeProcess = null;
+      log(`bridge (${label}) exited with code ${code}`);
+    });
+
+    if (await waitForBridgeReady(child)) {
+      bridgeProcess = child;
+      log(`bridge started via ${label}`);
       return;
     }
 
-    // phase: 'probing' → 'promoted' (usable) | 'failed' | 'done' (exited later).
-    // One state machine keeps error/exit/timeout from double-advancing candidates.
-    let phase = 'probing';
-    const fail = (why) => {
-      if (phase !== 'probing') return;
-      phase = 'failed';
-      log(`bridge candidate ${cmd} failed (${why})`);
-      try {
-        child.kill();
-      } catch {
-        /* already gone */
-      }
-      tryFrom(i + 1);
-    };
-    child.on('error', (err) => fail(err.code || err.message));
-    child.stderr.on('data', (d) => log(`[bridge] ${String(d).trimEnd()}`));
-    child.stdout.on('data', (d) => log(`[bridge] ${String(d).trimEnd()}`));
-    child.on('exit', (code) => {
-      if (phase === 'probing') fail(`exited with code ${code}`);
-      else if (phase === 'promoted') {
-        phase = 'done';
-        log(`bridge exited with code ${code}`);
-        if (bridgeProcess === child) bridgeProcess = null;
-      }
-    });
-    // Store stubs die almost instantly; real interpreters keep serving.
-    setTimeout(() => {
-      if (phase !== 'probing') return;
-      if (child.exitCode === null && child.signalCode === null) {
-        phase = 'promoted';
-        bridgeProcess = child;
-        log(`bridge started via ${cmd}`);
-      } else {
-        fail(`exited with code ${child.exitCode}`);
-      }
-    }, 2000);
-  };
-  tryFrom(0);
+    log(`bridge ${label} never became ready; trying next interpreter`);
+    try {
+      child.kill();
+    } catch {
+      /* already gone */
+    }
+  }
+
+  onBridgeMissing();
 }
 
-// If no Python helper could start at all, tell the Windows user once — without
-// it there is no way to find earbuds already connected to the machine.
+// Last resort: the bundled runtime is missing AND no system Python works.
+// With a normal installation this should never happen.
 function onBridgeMissing() {
-  log('no usable Python interpreter found — RFCOMM bridge disabled');
+  log('bridge could not be started (no usable interpreter)');
   if (process.platform !== 'win32' || !app.isPackaged) return;
   try {
     const flag = path.join(app.getPath('userData'), 'bridge-help-shown');
@@ -173,12 +217,12 @@ function onBridgeMissing() {
     fs.mkdirSync(path.dirname(flag), { recursive: true });
     fs.writeFileSync(flag, String(Date.now()));
     dialog.showMessageBox({
-      type: 'info',
-      title: 'Desktop pairing needs Python',
+      type: 'warning',
+      title: 'Bluetooth helper could not start',
       message:
-        'SoundControl can control earbuds that are already paired with Windows, but the local bridge requires Python 3.\n\n' +
-        'Install Python once, then restart SoundControl:\n    winget install -e --id Python.Python.3.12\n\n' +
-        'Alternatively, open https://shankers8811.github.io/soundcontrol/ in Chrome or Edge and pair earbuds that are in pairing mode (no Python needed).',
+        'SoundControl ships its own Bluetooth helper, so this usually means the installation is incomplete.\n\n' +
+        'Reinstall from the latest GitHub Release to fix it.\n\n' +
+        'Alternatively, using your own Python 3 (winget install -e --id Python.Python.3.12) also works.',
       buttons: ['OK'],
     });
   } catch {
@@ -216,7 +260,10 @@ function createWindow() {
       title: 'SoundControl — Desktop Companion for Soundcore',
       icon: path.join(__dirname, 'public', 'icon-512.png'),
       autoHideMenuBar: true,
-      show: false,
+      // Draw the window immediately rather than waiting for the renderer to
+      // report ready: on a cold start (and especially when antivirus scans an
+      // unsigned exe on first run) that wait is seconds of "nothing happened".
+      show: true,
       webPreferences: {
         preload: path.join(__dirname, 'preload.cjs'),
         contextIsolation: true,
