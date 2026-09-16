@@ -4,8 +4,15 @@
 Pipes exact Soundcore DSP frames (08 EE …) into Classic Bluetooth RFCOMM.
 Default channel is 4; over-ears sometimes answer on 12 or 15.
 
-    python3 soundcore_bridge.py --host 0.0.0.0 --port 8765
+    python3 soundcore_bridge.py                      # loopback, port 8765
     python3 soundcore_bridge.py --mac AA:BB:CC:DD:EE:FF --channel 4
+    python3 soundcore_bridge.py --allow-origin https://you.github.io
+
+Access control: the bridge listens on the loopback interface, so it is not
+reachable from the network — but *your browser* can reach it from any page you
+visit, and /scan plus the WebSocket can read your paired-device list and write
+raw frames to your hearing. Requests from web content are therefore answered
+only for origins this project ships or develops against (see origin_allowed).
 
 Talk to it from the web UI over WebSocket JSON:
 
@@ -34,6 +41,7 @@ import hashlib
 import base64
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
+from urllib.parse import urlsplit
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 RFCOMM = getattr(socket, "BTPROTO_RFCOMM", 3)
@@ -264,21 +272,104 @@ def scan_devices() -> list[dict[str, str]]:
 BRIDGE = Bridge()
 
 
+# --- Access control -----------------------------------------------------------
+# Who may talk to the bridge from a browser. A web page can send a fetch() or a
+# WebSocket to http://127.0.0.1:8765, so "it only listens on loopback" is not a
+# defence: the attack path is the victim's own browser. Answers are restricted
+# to clients this project ships, plus any non-browser client (local code that
+# could already open RFCOMM by itself gains nothing from a browser check).
+LOCAL_ORIGIN_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
+# The published web app. It cannot reach an http/ws loopback service from an
+# https origin under Private Network Access rules, but allow it so a locally
+# hosted or proxied build keeps working.
+BUNDLED_WEB_ORIGINS = frozenset({"https://shankers8811.github.io"})
+# The packaged desktop app loads from file://, an opaque origin, so its requests
+# carry "Origin: null". A web page can arrange a null origin too (a sandboxed
+# iframe), so null alone is not proof — the desktop app is identified by its
+# Electron user agent, which a page cannot forge (User-Agent is a forbidden
+# header name for fetch() and WebSocket).
+DESKTOP_UA_MARKERS = ("Electron/", "soundcontrol/")
+EXTRA_ALLOWED_ORIGINS: set[str] = set()
+ALLOW_ANY_ORIGIN = False
+
+
+def origin_allowed(origin: Optional[str], user_agent: str = "") -> bool:
+    """True when a browser request carrying `origin` may reach the bridge."""
+    if ALLOW_ANY_ORIGIN:
+        return True
+    if not origin:
+        # No Origin header at all: not web content (app main process probe,
+        # curl, tests, native helpers).
+        return True
+    if origin in EXTRA_ALLOWED_ORIGINS:
+        return True
+    if origin == "null":
+        return any(marker in user_agent for marker in DESKTOP_UA_MARKERS)
+    try:
+        parts = urlsplit(origin)
+        scheme, host = parts.scheme, (parts.hostname or "")
+    except ValueError:
+        return False
+    if scheme in ("", "file"):
+        return any(marker in user_agent for marker in DESKTOP_UA_MARKERS)
+    if scheme == "http":
+        # The dev server (http://localhost:5173) and the bridge's own origin.
+        return host in LOCAL_ORIGIN_HOSTS
+    if scheme == "https":
+        return origin in BUNDLED_WEB_ORIGINS
+    return False
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args: object) -> None:  # noqa: A003
         sys.stderr.write("bridge: " + (fmt % args) + "\n")
 
+    # -- origin gate ---------------------------------------------------------
+    def _origin(self) -> Optional[str]:
+        return self.headers.get("Origin")
+
+    def _allowed(self) -> bool:
+        """Check the caller and log a rejection, so main.log explains a 403."""
+        origin = self._origin()
+        if origin_allowed(origin, self.headers.get("User-Agent", "")):
+            return True
+        sys.stderr.write(
+            f"bridge: rejected {self.command} {self.path} from origin {origin!r}\n"
+        )
+        self.send_response(403)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        body = json.dumps({"ok": False, "error": "origin not allowed by bridge"}).encode()
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except OSError:
+            pass
+        return False
+
     def _cors(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self._origin()
+        self.send_header("Vary", "Origin")
+        if ALLOW_ANY_ORIGIN:
+            self.send_header("Access-Control-Allow-Origin", "*")
+        elif origin:
+            # Echo the exact origin so that *our* client can read the response.
+            # A wildcard here is what let any web page read /scan.
+            self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Allow-Headers", "content-type")
-        self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET,OPTIONS")
 
     def do_OPTIONS(self) -> None:  # noqa: N802
+        if not self._allowed():
+            return
         self.send_response(204)
         self._cors()
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
+        if not self._allowed():
+            return
         if self.headers.get("Upgrade", "").lower() == "websocket":
             self._ws()
             return
@@ -383,13 +474,38 @@ def main() -> None:
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--mac", default="")
     p.add_argument("--channel", type=int, default=4)
+    p.add_argument(
+        "--allow-origin",
+        action="append",
+        default=[],
+        metavar="ORIGIN",
+        help="Extra browser origin allowed to use the bridge, e.g. https://you.github.io. "
+        "Pass '*' to answer any origin (not recommended: any web page you visit could "
+        "then read your paired devices and write to your earbuds).",
+    )
     args = p.parse_args()
+    global ALLOW_ANY_ORIGIN
+    for item in args.allow_origin:
+        value = item.strip().rstrip("/")
+        if value == "*":
+            ALLOW_ANY_ORIGIN = True
+            print("bridge: WARNING allowing any origin (--allow-origin *)", file=sys.stderr)
+        elif value:
+            EXTRA_ALLOWED_ORIGINS.add(value)
     if args.mac:
         try:
             BRIDGE.connect(args.mac, args.channel)
             print(f"preconnected {BRIDGE.mac} ch{BRIDGE.channel}", file=sys.stderr)
         except Exception as exc:  # noqa: BLE001
             print(f"preconnect failed: {exc}", file=sys.stderr)
+    if args.host not in ("127.0.0.1", "localhost", "::1"):
+        # Anyone on the LAN could then write raw frames to the paired device:
+        # the bridge has no authentication and no encryption of its own.
+        print(
+            f"bridge: WARNING binding {args.host}:{args.port} exposes unauthenticated "
+            "Bluetooth writes to the network; use the default 127.0.0.1",
+            file=sys.stderr,
+        )
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"SoundControl bridge http://{args.host}:{args.port}/ws", file=sys.stderr)
     try:

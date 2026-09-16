@@ -41,7 +41,7 @@ export function DeviceHome() {
     );
   }
 
-  const photo = app.profile.kind === 'overear' ? asset('device-overear.png') : asset('device-earbuds.png');
+  const photo = app.profile.kind === 'overear' ? asset('device-overear.webp') : asset('device-earbuds.webp');
   const preset = EQ_PRESETS.find((p) => p.id === app.eqId);
   const modeLabel =
     app.ancMode === 'adaptive'
@@ -88,7 +88,14 @@ export function DeviceHome() {
       </header>
 
       <div className="relative mx-3 mt-2 overflow-hidden rounded-3xl bg-gradient-to-b from-[#d7e8ff] via-[#eef4ff] to-white px-4 pb-4 pt-2 border border-blue/10">
-        <img src={photo} alt="" className="mx-auto h-44 w-auto object-contain drop-shadow-md transition-transform hover:scale-105 duration-300" />
+        <img
+          src={photo}
+          alt=""
+          width={704}
+          height={384}
+          decoding="async"
+          className="mx-auto h-44 w-auto object-contain drop-shadow-md transition-transform hover:scale-105 duration-300"
+        />
         <h1 className="text-center text-xl font-bold tracking-wide text-ink">{app.profile.name.toUpperCase()}</h1>
         <p className="mt-0.5 text-center text-xs text-mute font-medium">{app.deviceName} · {app.profile.sku}</p>
         <div className="mt-3 flex justify-center gap-6">
