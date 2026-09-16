@@ -34,7 +34,7 @@
 
 | Download | File | Notes |
 |---|---|---|
-| 🪟 **Windows app (installer)** | [`SoundControl-Setup-1.0.1.exe`](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup-1.0.1.exe) | NSIS setup, Start-menu & desktop shortcuts |
+| 🪟 **Windows app (installer)** | [**Download the latest `SoundControl-Setup-<version>.exe`**](https://github.com/Shankers8811/soundcontrol/releases/latest) | NSIS setup, Start-menu & desktop shortcuts. Ships its own built-in Bluetooth runtime — no Python needed |
 
 - All builds and release notes live on the **[Releases page](https://github.com/Shankers8811/soundcontrol/releases/latest)**.
 - The same **Download for Windows** button is built into the app under **Settings → About → Desktop extras**.
@@ -172,8 +172,9 @@ on `windows-latest`, creates a GitHub Release, and attaches the single
 `SoundControl-Setup-<version>.exe` asset:
 
 ```bash
-git tag v1.0.1 main
-git push origin v1.0.1
+# Bump "version" in package.json first — the asset name is derived from it.
+git tag vX.Y.Z main
+git push origin vX.Y.Z
 ```
 
 The in-app download button and the links above resolve through
