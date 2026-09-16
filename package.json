@@ -1,7 +1,7 @@
 {
   "name": "soundcontrol",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "description": "Desktop companion for Anker Soundcore earbuds and headphones — Web Bluetooth, Web Serial, and RFCOMM bridge.",
   "main": "electron-main.cjs",
@@ -54,21 +54,21 @@
     }
   },
   "dependencies": {
-    "@fontsource/ibm-plex-mono": "^5.2.6",
-    "@fontsource/outfit": "^5.2.6",
-    "jszip": "^3.10.1",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/outfit": "^5.3.0",
+    "jszip": "^3.10.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.1.13",
-    "@types/react": "^19.1.13",
-    "@types/react-dom": "^19.1.9",
-    "@vitejs/plugin-react": "^5.0.2",
-    "electron": "^37.3.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.4.1",
     "electron-builder": "^26.15.3",
-    "tailwindcss": "^4.1.13",
-    "typescript": "^5.9.2",
-    "vite": "^7.1.5"
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
   }
 }
