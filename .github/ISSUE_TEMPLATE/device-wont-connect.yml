@@ -1,0 +1,94 @@
+name: "🎧 Device won't connect / drops out"
+description: "Report a pairing, connection, or disconnect problem with real diagnostic data."
+title: "[connect] "
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Connection bugs are almost always about **how the device was reachable**, not the app itself.
+        Please fill in every field — a report without a transport and a log line usually cannot be acted on.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which build?
+      description: The web app and the Windows app reach your earbuds through completely different transports.
+      multiple: false
+      options:
+        - Web app (shankers8811.github.io/soundcontrol)
+        - Windows desktop app (SoundControl-Setup installer)
+        - Built from source (`npm run electron`)
+        - Other / not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser or OS
+      description: Web Bluetooth needs Chrome, Edge, Brave or Opera 117+. Firefox and Safari cannot connect at all — that is a browser limit, not a bug here.
+      multiple: false
+      options:
+        - Chrome (Windows)
+        - Edge (Windows)
+        - Brave (Windows)
+        - Chrome (macOS)
+        - Chrome (Linux)
+        - Firefox / Safari (known unsupported)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Soundcore model and firmware
+      description: e.g. "Liberty 4 NC, firmware 2.1.4". Model names are listed in `src/protocol/devices.ts`.
+      placeholder: "Liberty 4 NC"
+    validations:
+      required: true
+  - type: dropdown
+    id: state
+    attributes:
+      label: What state were the earbuds in when you tried to connect?
+      description: A browser scan only sees devices in **pairing mode**; a device already connected to your laptop is invisible to it. This is the single most common cause of an empty scan list.
+      multiple: false
+      options:
+        - In pairing mode (case open, button held ~3s)
+        - Already connected to this computer
+        - Already connected to my phone
+        - Just out of the case, no button held
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, step by step
+      description: "Example: Add device → Search → spinner runs ~30s → 'No devices found', even though the buds show in Windows Bluetooth settings."
+      placeholder: "1. …\n2. …"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Diagnostics — hex console and desktop log
+      description: >-
+        Paste the **Console** tab contents (TX/RX frames) from the app.
+        For the Windows app, also attach the tail of `%AppData%\soundcontrol\main.log`,
+        which records whether the bundled Bluetooth helper started.
+      render: shell
+      placeholder: |
+        TX 08 EE 01 01 00 00 02 ..
+        RX 09 FF 01 01 ..
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you post
+      options:
+        - label: I searched open and closed issues for my model
+          required: true
+        - label: I tried the demo mode and the UI itself works (so this is a connectivity issue, not a rendering one)
+          required: true
+        - label: This report contains no serial numbers, MAC addresses of devices I do not own, or private pairing data
+          required: true
