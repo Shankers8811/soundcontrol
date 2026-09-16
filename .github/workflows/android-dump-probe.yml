@@ -3,16 +3,14 @@ name: Android dump
 # The agent's sandbox cannot reach Google (TLS to *.google.com is blocked) and
 # cannot read Actions logs (results-receiver.actions.githubusercontent.com is
 # blocked), so this workflow runs on a runner with full internet access and
-# commits its findings plus every diagnostic into the repo, where the agent can
-# read them over git.
+# commits findings plus diagnostics into the repo, where the agent reads them
+# over git.
 #
-# It downloads the shared APK dump, unpacks it, extracts the protocol facts this
-# project needs (opcodes, frame layouts, device tables) and commits only that
-# curated material. The complete decompiled tree of Anker's proprietary app is
-# deliberately NOT committed to this public repository.
-#
-# Every step is non-fatal and appends to /tmp/diag.txt, because a step that
-# fails before writing diagnostics is undebuggable from here.
+# Finding from run 3: the official soundcore app is a *Flutter* app. classes.dex
+# is only ~330 KB (the Flutter embedding, package com.oceanwing.soundcore); the
+# real logic is AOT-compiled Dart in lib/*/libapp.so, so jadx/dex analysis is
+# the wrong tool. This iteration inspects the Dart binaries, the resource
+# bundle and the asset inventory instead.
 on:
   push:
     paths:
@@ -34,42 +32,15 @@ jobs:
         with:
           python-version: '3.12'
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
       - name: Install tools
         run: |
           exec > >(tee -a /tmp/diag.txt) 2>&1
           set +e
-          echo "### tool install"
           pip install --quiet gdown 2>&1 | tail -2
-          echo "pip gdown exit: ${PIPESTATUS[0]}"
           python -c "import gdown; print('gdown', gdown.__version__)"
-          echo
-          echo "--- jadx (optional, non-fatal)"
-          mkdir -p /opt/tools && cd /opt/tools
-          curl -sfL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -o /tmp/jadx.json https://api.github.com/repos/skylot/jadx/releases/latest
-          echo "api exit: $?"
-          echo "api body head: $(head -c 200 /tmp/jadx.json)"
-          URL=$(grep -oE 'https://[^"]*jadx[^"]*\.zip' /tmp/jadx.json | head -1)
-          echo "jadx URL: '$URL'"
-          if [ -n "$URL" ]; then
-            curl -sfL -o jadx.zip "$URL"
-            echo "curl exit: $?  size: $(stat -c%s jadx.zip 2>/dev/null || echo 0)"
-            unzip -o -q jadx.zip
-            echo "unzip exit: $?"
-          fi
-          find /opt/tools -maxdepth 3 -name 'jadx*' -type f | head -5
-          /opt/tools/jadx/bin/jadx --version 2>&1 | head -3
-          echo "jadx available: $([ -x /opt/tools/jadx/bin/jadx ] && echo yes || echo no)"
-          echo
-          echo "--- androguard (fallback DEX analysis, non-fatal)"
-          pip install --quiet androguard 2>&1 | tail -3
-          python -c "import androguard; print('androguard', androguard.__version__)" 2>&1 | tail -2
-          echo "tools done"
+          # binwalk/xxd/binutils give us strings + structure inspection
+          command -v strings xxd file unzip python3
+          echo "tools ready"
 
       - name: Download the Drive folder
         run: |
@@ -79,163 +50,110 @@ jobs:
           echo
           echo "### download"
           mkdir -p /tmp/raw && cd /tmp/raw
-          gdown --folder "$FOLDER" 2>&1 | tail -30
+          gdown --folder "$FOLDER" 2>&1 | grep -vE '^\r? *[0-9]+%|Downloading\.\.\.|From \(|From:' | tail -20
           echo "gdown exit: ${PIPESTATUS[0]}"
-          echo
-          echo "### downloaded listing"
           find /tmp/raw -type f -printf '%10s  %p\n' | sort -k2
-          echo "total bytes: $(du -sb /tmp/raw | cut -f1)"
+          echo "total: $(du -sh /tmp/raw | cut -f1)"
 
-      - name: Unpack archives and locate the APK
+      - name: Unpack everything
         run: |
           exec >> /tmp/diag.txt 2>&1
           set +e
           echo
           echo "### unpack"
           mkdir -p /tmp/x && cd /tmp/x
-          mapfile -t ZIPS < <(find /tmp/raw -type f -name '*.zip' | sort)
-          echo "zip parts: ${#ZIPS[@]}"
-          for z in "${ZIPS[@]}"; do
-            printf '%s -> ' "$z"
-            unzip -t "$z" >/dev/null 2>&1 && echo "standalone OK" || echo "NOT standalone"
-          done
-
-          # APKPure split downloads are sometimes one archive cut into parts,
-          # in which case only the concatenation is a valid archive.
-          if [ "${#ZIPS[@]}" -gt 1 ] && ! unzip -t "${ZIPS[0]}" >/dev/null 2>&1; then
-            echo "trying concatenation in name order"
-            cat "${ZIPS[@]}" > /tmp/joined.zip
-            echo "joined bytes: $(stat -c%s /tmp/joined.zip)"
-            if unzip -t /tmp/joined.zip >/dev/null 2>&1; then
-              echo "joined archive OK"
-              ZIPS=(/tmp/joined.zip)
-            else
-              echo "joined archive still invalid"
-            fi
-          fi
-
-          for z in "${ZIPS[@]}"; do
+          for z in $(find /tmp/raw -type f -name '*.zip' | sort); do
             d=/tmp/x/$(basename "$z" .zip | tr -d '+ ')
-            mkdir -p "$d"
-            unzip -q -o "$z" -d "$d" 2>&1 | tail -3
-            echo "extracted $(basename "$z") -> $d (exit ${PIPESTATUS[0]})"
+            mkdir -p "$d"; unzip -q -o "$z" -d "$d" 2>&1 | tail -2
+          done
+          echo "### full tree by extension"
+          find /tmp/x -type f | sed 's/.*\.//' | sort | uniq -c | sort -rn | head -25
+          echo
+          echo "### native libraries"
+          find /tmp/x -type f \( -name '*.so' -o -name 'libapp*' \) -printf '%12s  %p\n' | sort -k2
+          echo
+          echo "### manifest / identity"
+          MAN=$(find /tmp/x -name 'AndroidManifest.xml' | head -1)
+          echo "manifest: $MAN"
+          if [ -n "$MAN" ]; then strings "$MAN" | grep -iE 'package=|versionName|soundcore|oceanwing|minSdk|targetSdk' | head -12; fi
+          echo
+          echo "### nested zips inside assets"
+          find /tmp/x -type f -name '*.zip' -printf '%12s  %p\n' | sort -k2 | head -20
+          echo
+          echo "### unpack resource.zip and friends"
+          for rz in $(find /tmp/x -type f -name '*.zip' | grep -v '/tmp/raw' | sort); do
+            case "$rz" in
+              */assets/*|*/flutter_assets/*)
+                d="${rz%.zip}_unpacked"; mkdir -p "$d"
+                unzip -q -o "$rz" -d "$d" 2>&1 | tail -2
+                echo "$(basename "$rz") -> $d : $(find "$d" -type f | wc -l) files" ;;
+            esac
           done
 
-          echo
-          echo "### nested archives"
-          find /tmp/x -type f \( -iname '*.apk' -o -iname '*.xapk' -o -iname '*.zip' \) -printf '%10s  %p\n' | sort -k2 | head -40
-
-          # XAPK is a zip of zips: unwrap one more level.
-          while read -r apk; do
-            if unzip -l "$apk" 2>/dev/null | grep -qiE '\.apk$'; then
-              d="${apk%.*}_unpacked"; mkdir -p "$d"
-              unzip -q -o "$apk" -d "$d" 2>&1 | tail -2
-              echo "unwrapped $(basename "$apk") -> $d"
-            fi
-          done < <(find /tmp/x -type f \( -iname '*.apk' -o -iname '*.xapk' \) | sort)
-
-          echo
-          echo "### dex / manifest / assets"
-          find /tmp/x -type f -iname '*.dex' -printf '%10s  %p\n' | sort -k2 | head -20
-          find /tmp/x -type d -iname 'assets' | head -10
-          echo "asset files: $(find /tmp/x -type f -path '*/assets/*' | wc -l)"
-          echo
-          echo "### package identity"
-          for a in $(find /tmp/x -type f -name '*.apk' | sort); do
-            echo "--- $a ($(stat -c%s "$a") bytes)"
-            unzip -p "$a" AndroidManifest.xml 2>/dev/null | strings | grep -iE 'soundcore|anker|oceanwing|^[0-9]+\.[0-9]+\.[0-9]+' | head -8
-            unzip -l "$a" 2>/dev/null | grep -cE '\.dex$' | sed 's/^/    dex entries: /'
-          done
-
-      - name: Decompile with jadx
+      - name: Analyse the Dart binary and resources
         run: |
           exec >> /tmp/diag.txt 2>&1
           set +e
           echo
-          echo "### jadx decompile"
-          if [ ! -x /opt/tools/jadx/bin/jadx ]; then
-            echo "jadx unavailable, skipping (strings/androguard fallback covers extraction)"
-            exit 0
-          fi
-          # Decompiling every split APK blows the job budget; the base APK holds
-          # the protocol implementation, so take the largest one.
-          BIG=$(find /tmp/x -type f -name '*.apk' -printf '%s %p\n' | sort -rn | head -1 | awk '{print $2}')
-          echo "decompiling: $BIG"
-          mkdir -p /tmp/src
-          timeout 2400 /opt/tools/jadx/bin/jadx -d /tmp/src --no-res --show-bad-code "$BIG" > /tmp/jadx.log 2>&1
-          echo "jadx exit: $?"
-          tail -8 /tmp/jadx.log
-          echo "java files: $(find /tmp/src -name '*.java' | wc -l)"
-
-      - name: Extract protocol facts
-        run: |
-          exec >> /tmp/diag.txt 2>&1
-          set +e
-          echo
-          echo "### protocol extraction"
+          echo "### Dart AOT analysis"
           mkdir -p analysis/android
           OUT=analysis/android
-          SRC=/tmp/src
 
-          echo "--- DEX string inventory (works without decompilation)"
-          : > /tmp/dexstrings.txt
-          for d in $(find /tmp/x -name '*.dex' | sort); do
-            strings -n 6 "$d" >> /tmp/dexstrings.txt
+          : > /tmp/libapp_strings.txt
+          for so in $(find /tmp/x -type f -name 'libapp*.so' | sort); do
+            echo "-- $so ($(stat -c%s "$so") bytes)"
+            strings -n 5 "$so" >> /tmp/libapp_strings.txt
           done
-          echo "dex strings: $(wc -l < /tmp/dexstrings.txt)"
-          echo "soundcore/anker refs: $(grep -ciE 'soundcore|anker|oceanwing' /tmp/dexstrings.txt)"
-          sort -u /tmp/dexstrings.txt -o /tmp/dexstrings.txt
-          grep -iE 'soundcore|anker|oceanwing' /tmp/dexstrings.txt | head -20
+          sort -u /tmp/libapp_strings.txt -o /tmp/libapp_strings.txt
+          echo "libapp strings: $(wc -l < /tmp/libapp_strings.txt)"
 
           echo
-          echo "--- frame magic (08 EE / 09 FF) in decompiled sources"
-          grep -rlniE '0x0?8,?\s*\(?byte\)?\s*0x(ee|EE)' "$SRC" 2>/dev/null > /tmp/magic.txt
-          grep -rlniE '0x0?9,?\s*\(?byte\)?\s*0x(ff|FF)' "$SRC" 2>/dev/null >> /tmp/magic.txt
-          sort -u /tmp/magic.txt -o /tmp/magic.txt
-          echo "files with frame magic: $(wc -l < /tmp/magic.txt)"
-          head -40 /tmp/magic.txt
+          echo "--- protocol keyword hits in libapp"
+          grep -icE 'soundcore' /tmp/libapp_strings.txt
+          grep -iE '(anc|ambient|transparen|noise|cancel)' /tmp/libapp_strings.txt | head -20
+          echo
+          echo "--- frame-magic / opcode looking literals"
+          grep -iE '^[0-9a-f]{8,}$' /tmp/libapp_strings.txt | head -20
+          grep -E '08[ _]?[eE][eE]|09[ _]?[fF][fF]' /tmp/libapp_strings.txt | head -20
+          echo
+          echo "--- device / SKU references"
+          grep -oiE '\bA[0-9]{4}\b' /tmp/libapp_strings.txt | sort -u > "$OUT/skus-in-libapp.txt"
+          wc -l < "$OUT/skus-in-libapp.txt"
+          head -40 "$OUT/skus-in-libapp.txt"
+
+          # Curated, capped string dump: protocol/feature vocabulary only.
+          grep -iE 'anc|ambient|transparen|equaliz|equaliser|bassup|bass ?up|spatial|ldac|wear ?detect|in.?ear|find ?my|dual ?conn|multipoint|auto.?power|touch|gesture|firmware|battery|charg|hearid|hear ?id|gaming|latency|safe ?volume|wind ?noise|vocal' \
+            /tmp/libapp_strings.txt | sort -u | head -1500 > "$OUT/libapp-protocol-vocabulary.txt"
+          echo "vocabulary lines: $(wc -l < "$OUT/libapp-protocol-vocabulary.txt")"
 
           echo
-          echo "--- protocol-related class names"
-          grep -rliE '(protocol|command|packet|opcode|anc|equaliz|battery|firmware|ldac|spatial|bassup|weardetect|touchkey|gesture)' \
-            --include='*.java' "$SRC" 2>/dev/null | sed 's|.*/||' | sort | uniq -c | sort -rn | head -50
+          echo "### asset inventory / device tables"
+          find /tmp/x -type f -path '*/assets/*' ! -name '*.png' ! -name '*.webp' ! -name '*.ttf' ! -name '*.otf' \
+            -printf '%12s  %p\n' 2>/dev/null | sort -k2 > "$OUT/asset-inventory.txt"
+          echo "inventory lines: $(wc -l < "$OUT/asset-inventory.txt")"
+          head -30 "$OUT/asset-inventory.txt"
 
           echo
-          echo "--- model SKUs referenced"
-          grep -rhoE '\bA[0-9]{4}\b' --include='*.java' "$SRC" 2>/dev/null | sort | uniq -c | sort -rn | head -40
+          echo "--- SKUs seen in asset filenames (lottie + resource tables)"
+          grep -oiE 'a[0-9]{4}' "$OUT/asset-inventory.txt" | tr 'A-Z' 'a-z' | sort -u | tr '\n' ' '
+          echo
 
           echo
-          echo "--- model names referenced"
-          grep -rhoiE '\b(liberty|space one|q30|q35|q45|r50i|p20i|p25i|p30i|sleep a10|sport x10|life tune)\b' \
-            --include='*.java' "$SRC" 2>/dev/null | tr 'A-Z' 'a-z' | sort | uniq -c | sort -rn | head -30
+          echo "### resource zip contents"
+          if [ -d /tmp/x ]; then
+            for d in $(find /tmp/x -type d -name '*resource_unpacked*' -o -type d -name '*resource.zip_unpacked*'); do
+              echo "-- $d ($(find "$d" -type f | wc -l) files)"
+              find "$d" -type f -printf '%12s  %p\n' | sort -k2 | head -40
+            done > "$OUT/resource-zip-listing.txt"
+          fi
+          head -40 "$OUT/resource-zip-listing.txt" 2>/dev/null
 
           echo
-          echo "--- copying protocol sources"
-          grep -rliE 'protocol|command|opcode' --include='*.java' "$SRC" 2>/dev/null \
-            | head -60 | while read -r f; do
-              cp "$f" "$OUT/src_$(echo "$f" | sed 's|/tmp/src/||' | tr '/' '_')" 2>/dev/null
-            done
-          echo "copied: $(ls "$OUT" 2>/dev/null | wc -l) files"
+          echo "### searching all bytes for the 08 EE frame magic"
+          grep -rlaP '\x08\xee' /tmp/x 2>/dev/null | head -20 || echo "(no binary match)"
 
-          echo
-          echo "--- asset config files"
-          find /tmp/x -type f -path '*/assets/*' \( -name '*.json' -o -name '*.xml' \) \
-            -size -3M -printf '%10s  %p\n' 2>/dev/null | sort -rn | head -40
-          mkdir -p "$OUT/assets"
-          find /tmp/x -type f -path '*/assets/*' -name '*.json' -size -3M \
-            -printf '%s %p\n' 2>/dev/null | sort -rn | head -25 | awk '{print $2}' | while read -r a; do
-              cp "$a" "$OUT/assets/$(basename "$a")" 2>/dev/null
-            done
-          echo "copied assets: $(ls "$OUT/assets" 2>/dev/null | wc -l)"
-
-          # Save the DEX string inventory: it is plain factual data and very
-          # useful for cross-checking opcodes later.
-          grep -iE 'soundcore|anker|0x|command|anc|battery|ldac|equaliz|firmware' /tmp/dexstrings.txt \
-            | head -4000 > "$OUT/dex-strings-interesting.txt"
-          echo "interesting dex strings: $(wc -l < "$OUT/dex-strings-interesting.txt")"
-
-          find "$OUT" -type f -size +2M -delete
-          echo "payload: $(du -sh "$OUT" | cut -f1)  files: $(find "$OUT" -type f | wc -l)"
+          find "$OUT" -type f -size +3M -delete
+          echo "payload: $(du -sh "$OUT" | cut -f1) files: $(find "$OUT" -type f | wc -l)"
 
       - name: Write report
         if: always()
@@ -259,5 +177,5 @@ jobs:
           git config user.name  "soundcontrol-ci"
           git config user.email "ci@users.noreply.github.com"
           git add analysis
-          git commit -m "data: extract Soundcore protocol facts from the official Android app dump" || echo "nothing to commit"
+          git commit -m "data: inspect the Flutter soundcore app dump (Dart AOT + assets)" || echo "nothing to commit"
           git push origin HEAD:arena/01a0aa7c-soundcontrol
