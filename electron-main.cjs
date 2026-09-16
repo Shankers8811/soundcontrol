@@ -127,8 +127,10 @@ function pythonCandidates() {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Is something already serving the bridge port? (user-run bridge, leftover
-// instance). 700 ms is plenty for a loopback request and keeps startup snappy.
-function probeBridge(timeoutMs = 700) {
+// instance). Uses the fast /health endpoint: /scan enumerates Windows PnP /
+// Bluetooth devices and can take seconds, so probing it here used to report a
+// healthy helper as "not responding" on slow machines.
+function probeBridge(timeoutMs = 1200) {
   return new Promise((resolve) => {
     // Our own spawned bridge requires the token; a manually run (tokenless)
     // bridge simply ignores the extra header, so sending it unconditionally
@@ -137,7 +139,7 @@ function probeBridge(timeoutMs = 700) {
       {
         host: '127.0.0.1',
         port: 8765,
-        path: '/scan',
+        path: '/health',
         timeout: timeoutMs,
         headers: { Authorization: `Bearer ${bridgeToken}` },
       },
@@ -156,12 +158,14 @@ function probeBridge(timeoutMs = 700) {
 
 // Wait until the freshly spawned bridge actually answers HTTP — a definitive
 // signal, and much faster than "the process is still alive after N seconds".
-async function waitForBridgeReady(child, budgetMs = 5000) {
+// The budget covers cold-start antivirus scans of a fresh install; readiness
+// itself is the cheap /health check, never the slow PnP /scan enumeration.
+async function waitForBridgeReady(child, budgetMs = 12000) {
   const deadline = Date.now() + budgetMs;
   while (Date.now() < deadline) {
     if (child.exitCode !== null || child.signalCode !== null) return false;
-    if (await probeBridge(500)) return true;
-    await sleep(150);
+    if (await probeBridge(800)) return true;
+    await sleep(200);
   }
   return false;
 }

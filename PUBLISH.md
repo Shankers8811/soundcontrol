@@ -46,4 +46,6 @@ never stores the certificate in the release artifact.
 - Install it on a clean Windows machine.
 - Pair a Soundcore device in **Settings → Bluetooth & devices**.
 - Confirm **Add Windows device → Refresh paired devices** lists it.
-- Confirm the helper log is written to `%AppData%\soundcontrol\main.log`.
+- Confirm the helper log is written to `%AppData%\soundcontrol\main.log` and
+  contains `bridge started via …`.
+- Confirm **Diagnostics** decodes a pasted Base64 capture and shows Σ/XOR validity.

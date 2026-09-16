@@ -1,4 +1,5 @@
 import type { AncMode, AncScene, DeviceFamily } from '../types';
+import { describeBlePacket } from './ble';
 import { dbToByte, fromHex, withChecksum } from './codec';
 import type { EqPreset } from './presets';
 
@@ -123,7 +124,13 @@ export function buildBatteryQuery(): Uint8Array {
 }
 
 export function describePacket(data: ArrayLike<number>): string {
+  // Short Android BLE captures (08 EE cmd len … XOR) share the host magic
+  // but not the RFCOMM category/type layout; describe them instead of
+  // mislabeling the bytes as an RFCOMM category.
+  if (data.length >= 5 && data.length < 8) return describeBlePacket(data) ?? 'Short frame';
   if (data.length < 8) return 'Short frame';
+  const ble = data.length <= 16 ? describeBlePacket(data) : null;
+  if (ble && data[4] !== 0x00) return ble;
   const a = data[0];
   const b = data[1];
   const cat = data[5];
