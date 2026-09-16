@@ -150,6 +150,20 @@ npm run build:win
 ```
 Generates the NSIS Windows installer (`SoundControl Setup <version>.exe`) in `release/`.
 
+#### Upgrading an existing installation
+
+The installer is configured as an assisted NSIS installer with the permanent
+application ID `com.soundcontrol.desktop`. Running a newer
+`SoundControl-Setup.exe` detects an existing per-user or per-machine SoundControl
+installation, closes the running app when needed, reuses its installation
+location, and replaces the old application files instead of installing a
+side-by-side copy. App data is preserved during this upgrade. Do not change the
+application ID in `package.json`, because it is the Windows upgrade identity.
+
+The Windows CI smoke test installs the package, marks that installation as an
+older version, and runs the same installer again without an install-directory
+override to verify the in-place upgrade path.
+
 ### Publish a new Windows Release
 Tagged commits are built and published automatically by the **Release Windows**
 workflow (`.github/workflows/release-windows.yml`). It builds the NSIS installer
