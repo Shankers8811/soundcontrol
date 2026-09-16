@@ -6,23 +6,15 @@ Default channel is 4; over-ears sometimes answer on 12 or 15.
 
     python3 soundcore_bridge.py                      # loopback, port 8765
     python3 soundcore_bridge.py --mac AA:BB:CC:DD:EE:FF --channel 4
-    python3 soundcore_bridge.py --allow-origin https://you.github.io
 
-Access control: the bridge listens on the loopback interface, so it is not
-reachable from the network — but *your browser* can reach it from any page you
-visit, and /scan plus the WebSocket can read your paired-device list and write
-raw frames to your hearing. Requests from web content are therefore answered
-only for origins this project ships or develops against (see origin_allowed).
+Access control: the bridge listens on the loopback interface and is intended
+only for the packaged Windows desktop renderer. The renderer receives a fresh
+per-session secret from Electron and sends it on every request (see token_ok):
+HTTP callers send `Authorization: Bearer <token>` (or `X-Bridge-Token:`), and
+the renderer connects to `/ws?token=<token>`. Configure manual runs with the
+SOUNDCONTROL_BRIDGE_TOKEN environment variable or --token.
 
-On top of that, the desktop app mints a fresh per-session secret on every
-launch and requires it on every request (see token_ok): HTTP callers send
-`Authorization: Bearer <token>` (or `X-Bridge-Token:`), WebSocket clients
-connect to `/ws?token=<token>`. Configure it with the SOUNDCONTROL_BRIDGE_TOKEN
-environment variable (preferred: argv is visible to other processes) or --token.
-Without a token the bridge keeps the origin-allowlist behaviour, so running it
-by hand for development works exactly as before.
-
-Talk to it from the web UI over WebSocket JSON:
+Talk to it from the Windows renderer over WebSocket JSON:
 
     { "type": "connect", "mac": "AA:BB:CC:DD:EE:FF", "channel": 4 }
     { "type": "tx", "hex": "08EE00000001010A0002" }
@@ -112,6 +104,7 @@ class Bridge:
     def close(self) -> None:
         s = self.sock
         self.sock = None
+        self.mac = ""
         if s:
             try:
                 s.close()
@@ -119,10 +112,16 @@ class Bridge:
                 pass
 
     def _reader(self) -> None:
+        # Keep the socket identity local. A reconnect can replace
+        # self.sock while the previous reader thread is unwinding; the old
+        # thread must not consume or clear the new connection.
+        sock = self.sock
+        if sock is None:
+            return
         buf = b""
-        while self.sock:
+        while self.sock is sock:
             try:
-                chunk = self.sock.recv(1024)
+                chunk = sock.recv(1024)
             except socket.timeout:
                 continue
             except OSError:
@@ -131,25 +130,75 @@ class Bridge:
                 break
             buf += chunk
             while True:
-                frame, buf = split_frame(buf)
+                frame, remainder = split_frame(buf)
                 if frame is None:
+                    # split_frame may discard noise while it resynchronizes.
+                    if remainder != buf:
+                        buf = remainder
+                        continue
                     break
-                self.broadcast({"type": "rx", "hex": frame.hex().upper()})
+                buf = remainder
+                if frame:
+                    self.broadcast({"type": "rx", "hex": frame.hex().upper()})
+        if self.sock is sock:
+            self.sock = None
+            self.mac = ""
         self.broadcast({"type": "sys", "error": "RFCOMM closed"})
 
 
+def _frame_checksum(data: bytes) -> int:
+    return sum(data) & 0xFF
+
+
 def split_frame(buf: bytes) -> tuple[Optional[bytes], bytes]:
-    if len(buf) < 10:
+    """Extract one validated Soundcore frame from a stream buffer.
+
+    RFCOMM is a byte stream, so reads can split a frame or contain several
+    frames. The current Soundcore families put the total frame length in
+    bytes 7–8, but older captures are not always consistent. Trust a sane
+    length only when its checksum validates; otherwise scan for a checksum
+    boundary instead of consuming an arbitrary 64-byte chunk (which used to
+    merge adjacent responses and lose every frame after it).
+
+    ``b''`` is a progress sentinel: leading noise was discarded, but there is
+    not yet a complete frame to return.
+    """
+    if len(buf) < 2:
         return None, buf
-    if buf[0] in (0x08, 0x09) and buf[1] in (0xEE, 0xFF):
-        # Prefer explicit little-endian total_len when it looks sane.
-        total = buf[7] | (buf[8] << 8)
-        if 10 <= total <= 512 and total <= len(buf):
-            return buf[:total], buf[total:]
-        # Classic frames: consume a reasonable chunk (up to 64) ending at checksum.
-        take = min(len(buf), 64)
-        return buf[:take], buf[take:]
-    return buf[:1], buf[1:]
+
+    header_at = next(
+        (i for i in range(len(buf) - 1) if buf[i] in (0x08, 0x09) and buf[i + 1] in (0xEE, 0xFF)),
+        None,
+    )
+    if header_at is None:
+        # Keep a possible first half of the two-byte magic for the next read.
+        return b"", buf[-1:] if buf[-1] in (0x08, 0x09) else b""
+    if header_at:
+        return b"", buf[header_at:]
+    if len(buf) < 9:
+        return None, buf
+
+    indicated = buf[7] | (buf[8] << 8)
+    if 10 <= indicated <= 512 and len(buf) >= indicated:
+        candidate = buf[:indicated]
+        if _frame_checksum(candidate[:-1]) == candidate[-1]:
+            return candidate, buf[indicated:]
+
+    # Fallback for legacy frames with a missing or inaccurate length field.
+    # A few command families advertise a length one byte larger than the
+    # actual frame (for example the captured 0x0E TWS ANC frame), so do not
+    # wait forever for the indicated length when the checksum already closes
+    # a shorter frame.
+    limit = min(len(buf), 512)
+    for end in range(10, limit + 1):
+        if _frame_checksum(buf[: end - 1]) == buf[end - 1]:
+            return buf[:end], buf[end:]
+
+    # A complete frame may still be arriving. If the buffer is unreasonably
+    # large, drop one byte so a later valid header can be found.
+    if len(buf) > 512:
+        return b"", buf[1:]
+    return None, buf
 
 
 def b64sha(key: str) -> str:
@@ -213,47 +262,103 @@ def _normalize_mac(raw: str) -> str:
     return ":".join(hexed[i : i + 2] for i in range(0, 12, 2))
 
 
-def _parse_windows_scan_output(text: str) -> list[dict[str, str]]:
-    """Parse the 'MAC|Name' lines produced by the PowerShell snippet below."""
-    devices: list[dict[str, str]] = []
+def _parse_windows_scan_output(text: str) -> list[dict[str, object]]:
+    """Parse the ``MAC|Name|Battery`` lines produced by PowerShell.
+
+    Windows PowerShell can emit non-ASCII Bluetooth names using the active
+    console code page. The caller explicitly decodes UTF-8, and this parser
+    also removes the common all-question-mark placeholder instead of showing
+    it as a device name in the UI.
+    """
+    devices: list[dict[str, object]] = []
     seen: set[str] = set()
     for line in text.splitlines():
         line = line.strip()
         if not line:
             continue
-        mac_part, _, name = line.partition("|")
+        parts = line.split("|", 2)
+        mac_part = parts[0]
+        name = parts[1].strip() if len(parts) > 1 else ""
+        raw_battery = parts[2].strip() if len(parts) > 2 else ""
         mac = _normalize_mac(mac_part)
         if not mac or mac in seen:
             continue
         seen.add(mac)
-        devices.append({"mac": mac, "name": name.strip() or mac})
+        name = name.replace("\x00", "").strip()
+        if not name or not name.strip("?"):
+            name = mac
+        battery: Optional[int] = None
+        try:
+            value = int(raw_battery)
+            if 0 <= value <= 100:
+                battery = value
+        except (TypeError, ValueError):
+            pass
+        item: dict[str, object] = {"mac": mac, "name": name}
+        if battery is not None:
+            item["battery"] = battery
+        devices.append(item)
     return devices
 
 
-def _windows_paired_devices() -> list[dict[str, str]]:
-    """Enumerate devices Windows has paired, with their MAC addresses.
+def _windows_paired_devices() -> list[dict[str, object]]:
+    """Enumerate paired Bluetooth devices and Windows-reported battery levels.
 
-    HKLM\\SYSTEM\\CurrentControlSet\\Services\\BTHPORT\\Parameters\\Devices holds one
-    subkey per paired classic Bluetooth device: the key name is the BD_ADDR and the
-    (UTF-16) Name value the friendly name. Crucially this also lists earbuds that
-    are currently *connected* and playing audio — devices a BLE scan can never see,
-    which makes this exactly the right set for the RFCOMM bridge (it can only reach
-    paired devices anyway). PowerShell ships with Windows, so the bridge stays
-    zero-dependency.
+    The registry contains every paired address, including earbuds that are
+    already connected and playing audio. PnP exposes the friendly name and,
+    on Windows 10/11 devices that publish the standard battery property,
+    ``{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2`` contains the percentage.
     """
-    script = (
-        "Get-ChildItem 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\BTHPORT\\Parameters\\Devices' "
-        "| ForEach-Object { "
-        "$p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue; "
-        "$n = if ($p.Name -is [byte[]]) { [Text.Encoding]::Unicode.GetString($p.Name).Trim([char]0) } "
-        "elseif ($null -ne $p.Name) { [string]$p.Name } else { [string]$p.'(default)' }; "
-        "\"{0}|{1}\" -f $_.PSChildName, $n }"
-    )
+    script = r"""
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+$OutputEncoding = [Text.Encoding]::UTF8
+$levels = @{}
+$names = @{}
+Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | ForEach-Object {
+    $id = [string]$_.InstanceId
+    $friendly = [string]$_.FriendlyName
+    $mac = ""
+    if ($id -match '(?i)DEV_([0-9A-F]{12})') { $mac = $Matches[1].ToUpper() }
+    elseif ($id -match '(?i)([0-9A-F]{12})_C[0-9A-F]+$') { $mac = $Matches[1].ToUpper() }
+    if (-not $mac) { return }
+    if ($friendly -and $friendly -notmatch '(?i)Microsoft Bluetooth|Bluetooth Enumerator|RFCOMM Protocol|Generic Attribute|A2DP|AVRCP|Hands-Free|Audio Gateway') {
+        $existing = if ($names.ContainsKey($mac)) { [string]$names[$mac] } else { "" }
+        if (-not $existing -or $friendly -match '(?i)soundcore|anker|liberty|life |space ') {
+            $names[$mac] = $friendly
+        }
+    }
+    $v = Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName '{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Type -ne 'Empty' -and $null -ne $_.Data } |
+        Select-Object -First 1
+    if ($null -ne $v) {
+        try {
+            $n = [int]$v.Data
+            if ($n -ge 0 -and $n -le 100) { $levels[$mac] = $n }
+        } catch { }
+    }
+}
+Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Devices' -ErrorAction SilentlyContinue |
+    ForEach-Object {
+        $p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+        $n = if ($p.Name -is [byte[]]) {
+            [Text.Encoding]::Unicode.GetString([byte[]]$p.Name).Trim([char]0).Trim()
+        } elseif ($null -ne $p.Name) {
+            [string]$p.Name
+        } else { "" }
+        $key = $_.PSChildName.ToUpper()
+        if ($names.ContainsKey($key) -and $names[$key]) { $n = [string]$names[$key] }
+        if (-not $n -or -not $n.Trim("?")) { $n = $key }
+        $b = if ($levels.ContainsKey($key)) { $levels[$key] } else { "" }
+        "{0}|{1}|{2}" -f $key, $n, $b
+    }
+"""
     try:
         raw = subprocess.check_output(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
             stderr=subprocess.DEVNULL,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
         )
     except Exception:
@@ -261,48 +366,23 @@ def _windows_paired_devices() -> list[dict[str, str]]:
     return _parse_windows_scan_output(raw)
 
 
-def scan_devices() -> list[dict[str, str]]:
-    if sys.platform == "win32":
-        return _windows_paired_devices()
-    out: list[dict[str, str]] = []
-    try:
-        raw = subprocess.check_output(
-            ["bluetoothctl", "devices"], stderr=subprocess.DEVNULL, text=True, timeout=3
-        )
-        for line in raw.splitlines():
-            parts = line.split(None, 2)
-            if len(parts) >= 3 and parts[0] == "Device":
-                out.append({"mac": parts[1], "name": parts[2]})
-    except Exception:
-        pass
-    return out
+
+def scan_devices() -> list[dict[str, object]]:
+    # The packaged bridge is intentionally Windows-only. Windows registry and
+    # PnP enumeration are what let us find already-paired devices reliably.
+    return _windows_paired_devices() if sys.platform == "win32" else []
 
 
 BRIDGE = Bridge()
 
 
 # --- Access control -----------------------------------------------------------
-# Who may talk to the bridge from a browser. A web page can send a fetch() or a
-# WebSocket to http://127.0.0.1:8765, so "it only listens on loopback" is not a
-# defence: the attack path is the victim's own browser. Answers are restricted
-# to clients this project ships, plus any non-browser client (local code that
-# could already open RFCOMM by itself gains nothing from a browser check).
+# The packaged renderer loads from file:// and sends Origin: null. A local
+# development renderer may use http://localhost, so the bridge accepts only
+# those Electron/local origins and never a public website origin.
 LOCAL_ORIGIN_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
-# The published web app. It cannot reach an http/ws loopback service from an
-# https origin under Private Network Access rules, but allow it so a locally
-# hosted or proxied build keeps working.
-BUNDLED_WEB_ORIGINS = frozenset({"https://shankers8811.github.io"})
-# The packaged desktop app loads from file://, an opaque origin, so its requests
-# carry "Origin: null". A web page can arrange a null origin too (a sandboxed
-# iframe), so null alone is not proof — the desktop app is identified by its
-# Electron user agent, which a page cannot forge (User-Agent is a forbidden
-# header name for fetch() and WebSocket).
 DESKTOP_UA_MARKERS = ("Electron/", "soundcontrol/")
-EXTRA_ALLOWED_ORIGINS: set[str] = set()
-ALLOW_ANY_ORIGIN = False
-# Per-session secret minted by the desktop app (see electron-main.cjs). None
-# when the bridge is run by hand, in which case the origin allowlist above is
-# the whole boundary, exactly as before.
+# Per-session secret minted by the desktop app (see electron-main.cjs).
 BRIDGE_TOKEN: Optional[str] = None
 TOKEN_SOURCE = ""  # "environment" | "flag" | "" (logged at startup, never the value)
 
@@ -333,14 +413,10 @@ def bearer_from(headers) -> Optional[str]:
 
 
 def origin_allowed(origin: Optional[str], user_agent: str = "") -> bool:
-    """True when a browser request carrying `origin` may reach the bridge."""
-    if ALLOW_ANY_ORIGIN:
-        return True
+    """True when a request comes from the Windows renderer or local tooling."""
     if not origin:
-        # No Origin header at all: not web content (app main process probe,
-        # curl, tests, native helpers).
-        return True
-    if origin in EXTRA_ALLOWED_ORIGINS:
+        # Main-process probes, curl, tests, and native local tooling have no
+        # Origin header and are already protected by loopback/token policy.
         return True
     if origin == "null":
         return any(marker in user_agent for marker in DESKTOP_UA_MARKERS)
@@ -351,12 +427,7 @@ def origin_allowed(origin: Optional[str], user_agent: str = "") -> bool:
         return False
     if scheme in ("", "file"):
         return any(marker in user_agent for marker in DESKTOP_UA_MARKERS)
-    if scheme == "http":
-        # The dev server (http://localhost:5173) and the bridge's own origin.
-        return host in LOCAL_ORIGIN_HOSTS
-    if scheme == "https":
-        return origin in BUNDLED_WEB_ORIGINS
-    return False
+    return scheme == "http" and host in LOCAL_ORIGIN_HOSTS
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -408,11 +479,8 @@ class Handler(BaseHTTPRequestHandler):
     def _cors(self) -> None:
         origin = self._origin()
         self.send_header("Vary", "Origin")
-        if ALLOW_ANY_ORIGIN:
-            self.send_header("Access-Control-Allow-Origin", "*")
-        elif origin:
-            # Echo the exact origin so that *our* client can read the response.
-            # A wildcard here is what let any web page read /scan.
+        if origin:
+            # Echo only the renderer/local origin already accepted by _allowed.
             self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Allow-Headers", "content-type, authorization, x-bridge-token")
         self.send_header("Access-Control-Allow-Methods", "GET,OPTIONS")
@@ -430,8 +498,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self._allowed():
             return
         if self.headers.get("Upgrade", "").lower() == "websocket":
-            # _ws() enforces the token itself: handshakes cannot carry
-            # headers from a browser, so the secret travels as ?token=.
+            # _ws() enforces the token itself: renderer handshakes cannot carry
+            # custom headers, so the secret travels as ?token=.
             self._ws()
             return
         if not self._token_ok():
@@ -464,7 +532,7 @@ class Handler(BaseHTTPRequestHandler):
         page = (
             "<!doctype html><meta charset=utf-8><title>SoundControl bridge</title>"
             "<body style='font-family:sans-serif;background:#07080c;color:#f3efe6;padding:2rem'>"
-            "<h1>SoundControl RFCOMM bridge</h1><p>WebSocket endpoint: <code>/ws</code></p>"
+            "<h1>SoundControl Windows helper</h1><p>Local IPC endpoint: <code>/ws</code></p>"
         ).encode()
         self.send_response(200)
         self._cors()
@@ -474,9 +542,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(page)
 
     def _ws(self) -> None:
-        # Browsers cannot set headers on a WebSocket handshake, so the desktop
-        # app authenticates with ?token= instead (non-browser clients may use
-        # the Authorization / X-Bridge-Token header like on HTTP).
+        # The renderer cannot set custom headers on a WebSocket handshake, so
+        # the desktop app authenticates with ?token= instead. Local tooling may
+        # use the Authorization / X-Bridge-Token header like on HTTP.
         query = parse_qs(urlsplit(self.path).query)
         presented = (query.get("token", [None])[0]) or bearer_from(self.headers)
         if not token_ok(presented):
@@ -549,20 +617,13 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="SoundControl RFCOMM bridge")
+    if sys.platform != "win32":
+        raise SystemExit("SoundControl is a Windows-only desktop application")
+    p = argparse.ArgumentParser(description="SoundControl Windows Bluetooth helper")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--mac", default="")
     p.add_argument("--channel", type=int, default=4)
-    p.add_argument(
-        "--allow-origin",
-        action="append",
-        default=[],
-        metavar="ORIGIN",
-        help="Extra browser origin allowed to use the bridge, e.g. https://you.github.io. "
-        "Pass '*' to answer any origin (not recommended: any web page you visit could "
-        "then read your paired devices and write to your earbuds).",
-    )
     p.add_argument(
         "--token",
         default="",
@@ -578,7 +639,7 @@ def main() -> None:
         "SOUNDCONTROL_BRIDGE_TOKEN).",
     )
     args = p.parse_args()
-    global ALLOW_ANY_ORIGIN, BRIDGE_TOKEN, TOKEN_SOURCE
+    global BRIDGE_TOKEN, TOKEN_SOURCE
     if args.token.strip():
         BRIDGE_TOKEN = args.token.strip()
         TOKEN_SOURCE = "flag"
@@ -604,13 +665,6 @@ def main() -> None:
             "(fine for manual/dev use; the desktop app always sets a per-session token)",
             file=sys.stderr,
         )
-    for item in args.allow_origin:
-        value = item.strip().rstrip("/")
-        if value == "*":
-            ALLOW_ANY_ORIGIN = True
-            print("bridge: WARNING allowing any origin (--allow-origin *)", file=sys.stderr)
-        elif value:
-            EXTRA_ALLOWED_ORIGINS.add(value)
     if args.mac:
         try:
             BRIDGE.connect(args.mac, args.channel)

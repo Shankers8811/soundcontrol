@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { useApp } from '../state/store';
 import { IconChevron } from './Icons';
-import { DeployPanel } from './DeployPanel';
+import { WindowsReleasePanel } from './WindowsReleasePanel';
 
 export function SettingsPage() {
   const app = useApp();
@@ -106,7 +106,7 @@ export function SettingsPage() {
           }
         />
         <Row title="Reset Device" sub="Restore default factory settings" onClick={() => void handleReset()} />
-        <Row title="About SoundControl" sub="Desktop & web companion" onClick={() => app.push('about')} />
+        <Row title="About SoundControl" sub="Windows desktop companion" onClick={() => app.push('about')} />
       </section>
     </div>
   );
@@ -156,7 +156,7 @@ export function AboutPage() {
         chat feature.
       </p>
       <p className="text-sm text-mute">Not affiliated with Anker Innovations or soundcore.</p>
-      <DeployPanel />
+      <WindowsReleasePanel />
     </div>
   );
 }
