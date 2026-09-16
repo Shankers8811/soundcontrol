@@ -29,7 +29,9 @@ Suspected security problems are different: read
 
 1. Keep the UI close to the soundcore Android companion, **without Anker branding**
 2. New opcodes belong in `src/protocol/` with a comment and a hex example from a real
-   capture — do not guess a byte and ship it as a default button
+   capture — do not guess a byte and ship it as a default button. RFCOMM frames use
+   the additive Σ checksum; BLE captures use XOR and belong in `src/protocol/ble.ts`
+   as decode-only helpers, never as Web Bluetooth features.
 3. Do not add analytics, accounts, or AI chat
 4. One user-visible change per PR; the template's checklist is the review criteria
 5. Keep `public/` light: icons pre-rendered at their exact displayed sizes, device art as

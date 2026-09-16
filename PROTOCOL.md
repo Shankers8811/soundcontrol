@@ -186,8 +186,59 @@ A codec change typically forces an A2DP reconnect.
 
 1. **`soundcore_bridge.py`** — stdlib HTTP + WebSocket on loopback `:8765`, plus
    `socket.AF_BLUETOOTH` / `BTPROTO_RFCOMM` for the paired Windows device.
+   `/health` is the fast liveness probe; `/scan` enumerates Windows PnP /
+   Bluetooth devices (seconds on a cold machine) and is cached for 3 s —
+   pass `?fresh=1` for a manual refresh. The renderer polls `/health` and
+   only calls `/scan` when the helper is up.
 2. **Electron renderer** — authenticated local IPC to the helper.
 3. **Simulator** — local ACK generator so the UI is usable without hardware.
+
+While connected to real hardware the renderer re-sends the `01 03` battery
+query every 30 s so TWS levels stay fresh; the simulator skips this.
+
+## Appendix A — Android BLE captures (decode-only reference)
+
+The Windows app does **not** use BLE: Electron has no reliable Web Bluetooth
+stack on Windows, and the bundled helper reaches hardware over RFCOMM. This
+appendix exists so Android captures can be decoded in the diagnostics console
+(**Diagnostics → Base64 capture → hex**) and mapped to the RFCOMM frames above.
+
+GATT endpoints seen on Soundcore BLE captures:
+
+| Role | UUID |
+|---|---|
+| Primary service | `0000ab00-0000-1000-8000-00805f9b34fb` (alt `0000ff00-…`) |
+| TX (write) | `0000ab01-0000-1000-8000-00805f9b34fb` |
+| RX (notify) | `0000ab02-0000-1000-8000-00805f9b34fb` |
+
+Simplified BLE frame (captures only — never send over RFCOMM):
+
+```text
+08 EE | cmd (1B) | len (1B) | payload | XOR checksum (1B)
+```
+
+| BLE cmd | Meaning | RFCOMM equivalent SoundControl sends |
+|---|---|---|
+| `0x61` telemetry request (empty payload) | Device state | `01 01` handshake + `01 03` battery query |
+| `0x06` ANC toggle (`00`=off `01`=ANC `02`=transparency) | Ambient mode | `06 81` frame with level/scene bytes |
+| `0x01` EQ bands (8-byte gain array, −6…+6 dB) | Equalizer | `02 81` frame with preset byte + Σ checksum |
+
+Implementation: `src/protocol/ble.ts` (`buildBlePacket`, `parseBlePacket`,
+`describeBlePacket`), `base64ToBytes` / `base64ToHex` and `xorChecksum` in
+`src/protocol/codec.ts`. The HexConsole shows both Σ and XOR validity so a
+pasted capture is never misread as the wrong transport.
+
+Base64 → hex workflow for high-entropy blobs (obfuscated APK data or raw
+stream captures):
+
+```ts
+import { base64ToHex } from './src/protocol/codec';
+base64ToHex(pastedBlob); // "08 EE 06 01 …"
+```
+
+Worked BLE example — ANC on (`08 EE 06 01 01 E0`, XOR `E0`) encodes as
+`CO4GAQHg`; pasting that into **Diagnostics → Base64 capture** decodes to the
+same hex and reports `BLE ANC mode toggle · XOR ok`.
 
 ## Target units
 
