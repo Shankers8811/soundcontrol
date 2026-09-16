@@ -1,59 +1,41 @@
-# Put SoundControl on GitHub (no Node on your PC)
+# Put SoundControl on GitHub (Windows desktop only)
 
-> **Status:** `github.com/Shankers8811/soundcontrol` and its Pages site already exist, so
-> you only need this page if you are starting a fresh copy or a fork. Day-to-day changes go
-> through a normal PR — see [CONTRIBUTING.md](CONTRIBUTING.md).
+This repository publishes one supported product: the SoundControl Windows desktop
+installer. The browser application and GitHub Pages deployment have been removed.
 
-GitHub Pages gives you a real `https://you.github.io/...` tab. Brave can use Web Bluetooth there. The Arena sandbox URL cannot.
+## Create or update the repository
 
-You still need **Chrome, Edge, or Brave on a computer** — not the phone soundcore app, and not this Arena preview.
+1. Create a public GitHub repository named `soundcontrol`.
+2. Push the source, including `.github/workflows/`, `package.json`, `src/`, and `public/`.
+3. Keep GitHub Pages disabled; there is no public web deployment for this project.
+4. Open **Actions** and allow the Windows build workflow if GitHub asks for approval.
 
-## 1. Create the repo
+## Build locally on Windows
 
-1. Sign in at [github.com](https://github.com)
-2. **New repository**
-3. Name: `soundcontrol` (any name is fine)
-4. Public
-5. **Do not** add a README if you will upload this project zip
-6. Create
+Install Node.js 22 and Python 3.9+ only if you are building the helper from source. Then:
 
-## 2. Upload this project
-
-Easiest without Git:
-
-1. On the empty repo page, click **uploading an existing file**
-2. Drop **everything** from `soundcontrol-local.zip` (unzip first): `package.json`, `src/`, `public/`, `.github/`, etc.
-3. Commit
-
-Or with Git:
-
-```bash
-git init
-git add .
-git commit -m "SoundControl"
-git branch -M main
-git remote add origin https://github.com/YOUR_USER/soundcontrol.git
-git push -u origin main
+```cmd
+npm install
+npm run build:win
 ```
 
-## 3. Turn on Pages
+The NSIS installer is written to `release/`. The packaged installer includes its own
+Python runtime, so people installing the release do not need Python.
 
-1. Repo **Settings** → **Pages**
-2. **Source**: GitHub Actions
-3. Open the **Actions** tab and wait for **GitHub Pages** to go green (GitHub installs Node and builds — you do not)
+## Publish
 
-## 4. Open it in Brave or Chrome
+Tag the commit on `main` and push the tag:
 
-The site will be:
+```bash
+git tag vX.Y.Z main
+git push origin vX.Y.Z
+```
 
-`https://shankers8811.github.io/soundcontrol/`
+The **Release Windows** workflow builds on `windows-latest` and publishes exactly one
+installer asset named `SoundControl-Setup.exe`.
 
-Open that **as its own tab**. Then:
+## What the Windows app does
 
-1. Tap **Add Device** → **Search**
-2. Tap your soundcore earbuds or headphones in the Bluetooth picker
-3. No codes to type, works seamlessly!
-
-## What GitHub cannot do
-
-GitHub only hosts the website. It cannot talk to Classic Bluetooth RFCOMM. **Search** uses Web Bluetooth (battery / some EQ). Full ANC still needs the desktop helper on your PC later (`python3 soundcore_bridge.py`). For trying the UI, **Try the demo** works on the GitHub site too.
+SoundControl uses the bundled local helper to enumerate Bluetooth devices already paired
+with Windows, connect through Classic Bluetooth RFCOMM, and expose Soundcore controls.
+GitHub hosts the source and release files; it is not used to host or run the app.

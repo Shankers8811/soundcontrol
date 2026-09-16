@@ -1,11 +1,13 @@
 import { fromHex, toHex } from '../protocol/codec';
-import type { Transport } from '../types';
+import type { BatteryState, Transport } from '../types';
 
 export interface NearbyDevice {
   id: string;
   name: string;
   mac?: string;
   source: 'bridge' | 'demo';
+  /** Windows may expose one aggregate Bluetooth battery percentage. */
+  battery?: number | null;
 }
 
 // The packaged Electron app loads via file://, where location.hostname is
@@ -16,9 +18,8 @@ function isLocalHost(): boolean {
   return !h || h === 'localhost' || h === '127.0.0.1';
 }
 
-// Per-session bridge secret. The desktop app's main process mints a fresh
-// token on every launch and hands it to this renderer over IPC; the plain web
-// build has no token and can only talk to tokenless (manually run) bridges.
+// Per-session bridge secret. The Windows desktop app's main process mints a
+// fresh token on every launch and hands it to this renderer over IPC.
 // Fetched once and cached — the token never changes within a session.
 let cachedToken: string | null | undefined;
 async function bridgeToken(): Promise<string | null> {
@@ -39,8 +40,8 @@ function authHeaders(token: string | null): Record<string, string> {
 export function defaultBridgeUrl(token: string | null = null): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const base = `${proto}//${isLocalHost() ? '127.0.0.1' : location.hostname}:8765/ws`;
-  // A WebSocket handshake cannot carry headers, so the secret travels as a
-  // query parameter; loopback only, never logged by the bridge.
+  // The renderer's WebSocket handshake cannot carry custom headers, so the
+  // secret travels as a query parameter; loopback only, never logged by the bridge.
   return token ? `${base}?token=${encodeURIComponent(token)}` : base;
 }
 
@@ -77,11 +78,14 @@ export async function scanBridgeDevices(): Promise<NearbyDevice[]> {
       headers: authHeaders(token),
     });
     if (!res.ok) return [];
-    const json = (await res.json()) as { devices?: Array<{ mac: string; name: string }> };
+    const json = (await res.json()) as {
+      devices?: Array<{ mac: string; name: string; battery?: number | null }>;
+    };
     return (json.devices ?? []).map((d) => ({
       id: d.mac,
       name: d.name || d.mac,
       mac: d.mac,
+      battery: d.battery ?? null,
       source: 'bridge' as const,
     }));
   } catch {
@@ -91,7 +95,7 @@ export async function scanBridgeDevices(): Promise<NearbyDevice[]> {
 
 interface BridgeHello {
   type?: string;
-  devices?: Array<{ mac: string; name: string }>;
+  devices?: Array<{ mac: string; name: string; battery?: number | null }>;
   error?: string;
 }
 
@@ -99,7 +103,8 @@ export async function connectBridge(
   mac: string,
   onRx: (data: Uint8Array) => void,
   name = '',
-): Promise<{ transport: Transport; name: string }> {
+  windowsBattery: number | null = null,
+): Promise<{ transport: Transport; name: string; battery: Partial<BatteryState> | null }> {
   const url = defaultBridgeUrl(await bridgeToken());
   const ws = await openSocket(url);
 
@@ -123,7 +128,22 @@ export async function connectBridge(
   };
 
   await new Promise<void>((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error('Could not reach the earbuds. Put them in pairing mode and retry.')), 10000);
+    const fail = (message: string) => {
+      window.clearTimeout(timer);
+      ws.removeEventListener('message', onMsg);
+      ws.removeEventListener('close', onClose);
+      try {
+        ws.close();
+      } catch {
+        /* already closed */
+      }
+      reject(new Error(message));
+    };
+    const timer = window.setTimeout(
+      () => fail('Could not reach the earbuds. Put them in pairing mode and retry.'),
+      10000,
+    );
+    const onClose = () => fail('The desktop helper closed the connection before the earbuds connected.');
 
     const onMsg = (ev: MessageEvent) => {
       let msg: BridgeHello & { hex?: string };
@@ -143,6 +163,7 @@ export async function connectBridge(
       if (msg.type === 'connected') {
         window.clearTimeout(timer);
         ws.removeEventListener('message', onMsg);
+        ws.removeEventListener('close', onClose);
         ws.addEventListener('message', (e) => {
           try {
             const m = JSON.parse(String(e.data)) as { type?: string; hex?: string };
@@ -154,16 +175,27 @@ export async function connectBridge(
         resolve();
       }
       if (msg.type === 'error') {
-        window.clearTimeout(timer);
-        reject(new Error(msg.error ?? 'Could not connect'));
+        fail(msg.error ?? 'Could not connect');
       }
     };
 
     ws.addEventListener('message', onMsg);
-    ws.send(JSON.stringify({ type: 'connect', mac, channel: 4 }));
+    ws.addEventListener('close', onClose);
+    try {
+      ws.send(JSON.stringify({ type: 'connect', mac, channel: 4 }));
+    } catch {
+      fail('The desktop helper connection is not writable.');
+    }
   });
 
-  return { transport, name: name || mac || 'soundcore' };
+  return {
+    transport,
+    name: name || mac || 'soundcore',
+    battery:
+      windowsBattery !== null
+        ? { left: windowsBattery, right: windowsBattery, case: null, batteryScale: null }
+        : null,
+  };
 }
 
 function openSocket(url: string): Promise<WebSocket> {
@@ -177,7 +209,7 @@ function openSocket(url: string): Promise<WebSocket> {
     }
     const t = window.setTimeout(() => {
       ws.close();
-      reject(new Error('No desktop helper running. Use Search to pick a device in Chrome.'));
+      reject(new Error('No Windows Bluetooth helper running. Restart SoundControl and try again.'));
     }, 2500);
     ws.addEventListener('open', () => {
       window.clearTimeout(t);
@@ -185,7 +217,7 @@ function openSocket(url: string): Promise<WebSocket> {
     });
     ws.addEventListener('error', () => {
       window.clearTimeout(t);
-      reject(new Error('No desktop helper running. Use Search to pick a device in Chrome.'));
+      reject(new Error('No Windows Bluetooth helper running. Restart SoundControl and try again.'));
     });
   });
 }

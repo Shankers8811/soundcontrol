@@ -75,7 +75,7 @@ export function buildEq(presetIndex: number, bandsDb: number[]): Uint8Array {
     0x08, 0xee, 0x00, 0x00, 0x00, 0x02, 0x81, 0x14, 0x00,
     presetIndex & 0xff,
     0x00,
-    ...bandsDb.slice(0, 8).map(dbToByte),
+    ...Array.from({ length: 8 }, (_, i) => dbToByte(bandsDb[i] ?? 0)),
   ];
   return withChecksum(body);
 }
@@ -98,6 +98,11 @@ export function buildBassUp(on: boolean): Uint8Array {
   return withChecksum([0x08, 0xee, 0x00, 0x00, 0x00, 0x02, 0x82, 0x0b, 0x00, on ? 0x01 : 0x00]);
 }
 
+/** 3D/spatial audio toggle. The frame length byte includes the checksum. */
+export function buildSpatialAudio(on: boolean): Uint8Array {
+  return withChecksum([0x08, 0xee, 0x00, 0x00, 0x00, 0x02, 0x86, 0x0a, 0x00, on ? 0x01 : 0x00]);
+}
+
 /** Find My Device acoustic beacon command */
 export function buildFindDevice(left: boolean, right: boolean): Uint8Array {
   return withChecksum([0x08, 0xee, 0x00, 0x00, 0x00, 0x01, 0x88, 0x0c, 0x00, left ? 0x01 : 0x00, right ? 0x01 : 0x00]);
@@ -110,6 +115,11 @@ export function buildResetDevice(): Uint8Array {
 
 export function buildDeviceInfoQuery(): Uint8Array {
   return withChecksum([0x08, 0xee, 0x00, 0x00, 0x00, 0x01, 0x01, 0x0a, 0x00]);
+}
+
+/** Request the live left/right battery levels (cat=01, type=03). */
+export function buildBatteryQuery(): Uint8Array {
+  return withChecksum([0x08, 0xee, 0x00, 0x00, 0x00, 0x01, 0x03, 0x0a, 0x00]);
 }
 
 export function describePacket(data: ArrayLike<number>): string {
@@ -126,6 +136,7 @@ export function describePacket(data: ArrayLike<number>): string {
   if (typ === 0x88) return `${dir} Find Device`;
   if (typ === 0x85) return `${dir} Device Reset`;
   if (cat === 0x01 && typ === 0x01) return `${dir} Init / device info`;
+  if (cat === 0x01 && typ === 0x03) return `${dir} Battery query`;
   if (cat === 0x01 && typ === 0x7f) return `${dir} LDAC query`;
   if (cat === 0x01 && typ === 0xff) return `${dir} LDAC set`;
   if (cat === 0x0b && typ === 0x84) return `${dir} Dual connection`;

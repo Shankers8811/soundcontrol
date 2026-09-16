@@ -1,11 +1,12 @@
 name: Release Windows
 
 # Tagging a commit on main (e.g. `git tag v1.0.2 main && git push origin v1.0.2`)
-# builds the standard NSIS Windows installer and publishes it as TWO assets of
-# a new GitHub Release: SoundControl-Setup-<version>.exe (archival) and
-# SoundControl-Setup.exe (stable alias). The in-app download button deep-links
-# to the STABLE name via "/releases/latest/download/...": a versioned name
-# would 404 for every older client the moment a newer Release ships.
+# builds the standard NSIS Windows installer and publishes one asset on
+# a new GitHub Release. A commit on the session release branch whose message
+# contains [publish-windows] can also rebuild the existing stable release
+# without requiring an artifact download.
+# SoundControl-Setup.exe. The in-app download button deep-links to this name
+# via "/releases/latest/download/..." so every client gets the newest build.
 #
 # Authenticode code signing (which removes the SmartScreen "unknown
 # publisher" warning) is automatic when these repository secrets exist:
@@ -16,11 +17,18 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - 'arena/01a0aa09-soundcontrol'
   workflow_dispatch:
     inputs:
       tag:
         description: 'Existing tag to (re)build and publish, e.g. v1.0.2'
         required: true
+        type: string
+      source_ref:
+        description: 'Git ref to build (leave blank to use the selected ref)'
+        required: false
+        default: ''
         type: string
 
 permissions:
@@ -28,6 +36,7 @@ permissions:
 
 jobs:
   release-win:
+    if: ${{ github.event_name != 'push' || contains(github.event.head_commit.message, '[publish-windows]') }}
     runs-on: windows-latest
     # The `secrets` context is not available inside a step's `if:` expression,
     # so mirror the certificate secrets into job env for the gating check.
@@ -39,6 +48,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.source_ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -65,6 +75,9 @@ jobs:
         env:
           SOUNDCONTROL_PYTHON_REQUIRED: '1'
         run: npm run build:win -- --publish never
+      - name: Verify the installer upgrades an existing app
+        shell: pwsh
+        run: ./scripts/smoke-windows-upgrade.ps1
       - name: Verify the bundled Python runtime shipped
         shell: bash
         run: |
@@ -76,10 +89,8 @@ jobs:
         if: always()
         shell: bash
         run: rm -f cert.p12
-      - name: Stage installer .exe with stable, URL-safe names
+      - name: Stage the single installer asset
         shell: bash
-        env:
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
           echo "Built Windows distributables:"
@@ -89,24 +100,16 @@ jobs:
           test "$(find release -maxdepth 1 -name '*.exe' | wc -l)" -eq 1
           INSTALLER="$(find release -maxdepth 1 -name '*.exe' | head -n 1)"
           test -n "$INSTALLER"
-          # Asset version is the tag without its leading "v" (v1.0.2 -> 1.0.2).
-          VERSION="${RELEASE_TAG#v}"
-          # Rename on disk so the published asset names are deterministic and
-          # the deep links never depend on GitHub normalising spaces in
-          # filenames. Two assets: the versioned file for the record, and a
-          # stable alias the in-app button links to (a versioned name would
-          # 404 for older clients once a newer Release is latest).
           mkdir -p release-assets
-          cp "$INSTALLER" "release-assets/SoundControl-Setup-$VERSION.exe"
           cp "$INSTALLER" "release-assets/SoundControl-Setup.exe"
-          echo "Staged release assets:"
+          echo "Staged release asset:"
           ls -la release-assets/
-          test "$(find release-assets -maxdepth 1 -name '*.exe' | wc -l)" -eq 2
+          test "$(find release-assets -maxdepth 1 -name '*.exe' | wc -l)" -eq 1
       - name: Publish GitHub Release with the installer
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || (github.event_name == 'push' && github.ref_name == 'arena/01a0aa09-soundcontrol' && 'v1.0.4') || github.ref_name }}
         run: |
           set -euo pipefail
           echo "Publishing release for tag: $RELEASE_TAG"
