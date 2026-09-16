@@ -123,7 +123,22 @@ export async function connectBridge(
   };
 
   await new Promise<void>((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error('Could not reach the earbuds. Put them in pairing mode and retry.')), 10000);
+    const fail = (message: string) => {
+      window.clearTimeout(timer);
+      ws.removeEventListener('message', onMsg);
+      ws.removeEventListener('close', onClose);
+      try {
+        ws.close();
+      } catch {
+        /* already closed */
+      }
+      reject(new Error(message));
+    };
+    const timer = window.setTimeout(
+      () => fail('Could not reach the earbuds. Put them in pairing mode and retry.'),
+      10000,
+    );
+    const onClose = () => fail('The desktop helper closed the connection before the earbuds connected.');
 
     const onMsg = (ev: MessageEvent) => {
       let msg: BridgeHello & { hex?: string };
@@ -143,6 +158,7 @@ export async function connectBridge(
       if (msg.type === 'connected') {
         window.clearTimeout(timer);
         ws.removeEventListener('message', onMsg);
+        ws.removeEventListener('close', onClose);
         ws.addEventListener('message', (e) => {
           try {
             const m = JSON.parse(String(e.data)) as { type?: string; hex?: string };
@@ -154,13 +170,17 @@ export async function connectBridge(
         resolve();
       }
       if (msg.type === 'error') {
-        window.clearTimeout(timer);
-        reject(new Error(msg.error ?? 'Could not connect'));
+        fail(msg.error ?? 'Could not connect');
       }
     };
 
     ws.addEventListener('message', onMsg);
-    ws.send(JSON.stringify({ type: 'connect', mac, channel: 4 }));
+    ws.addEventListener('close', onClose);
+    try {
+      ws.send(JSON.stringify({ type: 'connect', mac, channel: 4 }));
+    } catch {
+      fail('The desktop helper connection is not writable.');
+    }
   });
 
   return { transport, name: name || mac || 'soundcore' };
