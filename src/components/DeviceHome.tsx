@@ -99,10 +99,17 @@ export function DeviceHome() {
         <h1 className="text-center text-xl font-bold tracking-wide text-ink">{app.profile.name.toUpperCase()}</h1>
         <p className="mt-0.5 text-center text-xs text-mute font-medium">{app.deviceName} · {app.profile.sku}</p>
         <div className="mt-3 flex justify-center gap-6">
-          <IconBattery label="L" level={app.battery.left} />
-          <IconBattery label="R" level={app.battery.right} />
-          {app.profile.kind === 'earbuds' && <IconBattery label="Case" level={app.battery.case} />}
+          <IconBattery label="L" level={toPercent(app.battery.left, app.battery.batteryScale)} />
+          <IconBattery label="R" level={toPercent(app.battery.right, app.battery.batteryScale)} />
+          {app.profile.kind === 'earbuds' && (
+            <IconBattery label="Case" level={toPercent(app.battery.case, app.battery.batteryScale)} />
+          )}
         </div>
+        {app.profile.kind === 'earbuds' && app.battery.presence && app.battery.presence !== 'unknown' && (
+          <p className="mt-2 text-center text-[11px] font-medium text-blue">
+            {presenceLabel(app.battery.presence)}
+          </p>
+        )}
         <div className="mt-2 flex items-center justify-center gap-2">
           {app.ldac && (
             <span className="rounded bg-blue/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-blue">
@@ -245,4 +252,16 @@ function Tile({
 
 function cap(s: string) {
   return s.slice(0, 1).toUpperCase() + s.slice(1);
+}
+
+function toPercent(level: number | null, scale?: number | null) {
+  if (level === null || scale === null || scale === undefined || level > scale) return level;
+  return Math.round((level * 100) / scale);
+}
+
+function presenceLabel(presence: 'both' | 'left' | 'right' | 'none') {
+  if (presence === 'both') return 'Both earbuds detected';
+  if (presence === 'left') return 'Left earbud detected';
+  if (presence === 'right') return 'Right earbud detected';
+  return 'No earbuds detected';
 }

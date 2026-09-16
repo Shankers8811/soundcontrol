@@ -105,7 +105,7 @@ export function ConnectSheet() {
       await app.connectSim().catch(() => {});
       return;
     }
-    if (d.mac) await app.connectBridge(d.mac, d.name).catch(() => {});
+    if (d.mac) await app.connectBridge(d.mac, d.name, d.battery).catch(() => {});
   };
 
   return (

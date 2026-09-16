@@ -270,47 +270,103 @@ def _normalize_mac(raw: str) -> str:
     return ":".join(hexed[i : i + 2] for i in range(0, 12, 2))
 
 
-def _parse_windows_scan_output(text: str) -> list[dict[str, str]]:
-    """Parse the 'MAC|Name' lines produced by the PowerShell snippet below."""
-    devices: list[dict[str, str]] = []
+def _parse_windows_scan_output(text: str) -> list[dict[str, object]]:
+    """Parse the ``MAC|Name|Battery`` lines produced by PowerShell.
+
+    Windows PowerShell can emit non-ASCII Bluetooth names using the active
+    console code page. The caller explicitly decodes UTF-8, and this parser
+    also removes the common all-question-mark placeholder instead of showing
+    it as a device name in the UI.
+    """
+    devices: list[dict[str, object]] = []
     seen: set[str] = set()
     for line in text.splitlines():
         line = line.strip()
         if not line:
             continue
-        mac_part, _, name = line.partition("|")
+        parts = line.split("|", 2)
+        mac_part = parts[0]
+        name = parts[1].strip() if len(parts) > 1 else ""
+        raw_battery = parts[2].strip() if len(parts) > 2 else ""
         mac = _normalize_mac(mac_part)
         if not mac or mac in seen:
             continue
         seen.add(mac)
-        devices.append({"mac": mac, "name": name.strip() or mac})
+        name = name.replace("\x00", "").strip()
+        if not name or not name.strip("?"):
+            name = mac
+        battery: Optional[int] = None
+        try:
+            value = int(raw_battery)
+            if 0 <= value <= 100:
+                battery = value
+        except (TypeError, ValueError):
+            pass
+        item: dict[str, object] = {"mac": mac, "name": name}
+        if battery is not None:
+            item["battery"] = battery
+        devices.append(item)
     return devices
 
 
-def _windows_paired_devices() -> list[dict[str, str]]:
-    """Enumerate devices Windows has paired, with their MAC addresses.
+def _windows_paired_devices() -> list[dict[str, object]]:
+    """Enumerate paired Bluetooth devices and Windows-reported battery levels.
 
-    HKLM\\SYSTEM\\CurrentControlSet\\Services\\BTHPORT\\Parameters\\Devices holds one
-    subkey per paired classic Bluetooth device: the key name is the BD_ADDR and the
-    (UTF-16) Name value the friendly name. Crucially this also lists earbuds that
-    are currently *connected* and playing audio — devices a BLE scan can never see,
-    which makes this exactly the right set for the RFCOMM bridge (it can only reach
-    paired devices anyway). PowerShell ships with Windows, so the bridge stays
-    zero-dependency.
+    The registry contains every paired address, including earbuds that are
+    already connected and playing audio. PnP exposes the friendly name and,
+    on Windows 10/11 devices that publish the standard battery property,
+    ``{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2`` contains the percentage.
     """
-    script = (
-        "Get-ChildItem 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\BTHPORT\\Parameters\\Devices' "
-        "| ForEach-Object { "
-        "$p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue; "
-        "$n = if ($p.Name -is [byte[]]) { [Text.Encoding]::Unicode.GetString($p.Name).Trim([char]0) } "
-        "elseif ($null -ne $p.Name) { [string]$p.Name } else { [string]$p.'(default)' }; "
-        "\"{0}|{1}\" -f $_.PSChildName, $n }"
-    )
+    script = r"""
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+$OutputEncoding = [Text.Encoding]::UTF8
+$levels = @{}
+$names = @{}
+Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | ForEach-Object {
+    $id = [string]$_.InstanceId
+    $friendly = [string]$_.FriendlyName
+    $mac = ""
+    if ($id -match '(?i)DEV_([0-9A-F]{12})') { $mac = $Matches[1].ToUpper() }
+    elseif ($id -match '(?i)([0-9A-F]{12})_C[0-9A-F]+$') { $mac = $Matches[1].ToUpper() }
+    if (-not $mac) { return }
+    if ($friendly -and $friendly -notmatch '(?i)Microsoft Bluetooth|Bluetooth Enumerator|RFCOMM Protocol|Generic Attribute|A2DP|AVRCP|Hands-Free|Audio Gateway') {
+        $existing = if ($names.ContainsKey($mac)) { [string]$names[$mac] } else { "" }
+        if (-not $existing -or $friendly -match '(?i)soundcore|anker|liberty|life |space ') {
+            $names[$mac] = $friendly
+        }
+    }
+    $v = Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName '{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Type -ne 'Empty' -and $null -ne $_.Data } |
+        Select-Object -First 1
+    if ($null -ne $v) {
+        try {
+            $n = [int]$v.Data
+            if ($n -ge 0 -and $n -le 100) { $levels[$mac] = $n }
+        } catch { }
+    }
+}
+Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Devices' -ErrorAction SilentlyContinue |
+    ForEach-Object {
+        $p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+        $n = if ($p.Name -is [byte[]]) {
+            [Text.Encoding]::Unicode.GetString([byte[]]$p.Name).Trim([char]0).Trim()
+        } elseif ($null -ne $p.Name) {
+            [string]$p.Name
+        } else { "" }
+        $key = $_.PSChildName.ToUpper()
+        if ($names.ContainsKey($key) -and $names[$key]) { $n = [string]$names[$key] }
+        if (-not $n -or -not $n.Trim("?")) { $n = $key }
+        $b = if ($levels.ContainsKey($key)) { $levels[$key] } else { "" }
+        "{0}|{1}|{2}" -f $key, $n, $b
+    }
+"""
     try:
         raw = subprocess.check_output(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
             stderr=subprocess.DEVNULL,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
         )
     except Exception:
@@ -318,10 +374,11 @@ def _windows_paired_devices() -> list[dict[str, str]]:
     return _parse_windows_scan_output(raw)
 
 
-def scan_devices() -> list[dict[str, str]]:
+
+def scan_devices() -> list[dict[str, object]]:
     if sys.platform == "win32":
         return _windows_paired_devices()
-    out: list[dict[str, str]] = []
+    out: list[dict[str, object]] = []
     try:
         raw = subprocess.check_output(
             ["bluetoothctl", "devices"], stderr=subprocess.DEVNULL, text=True, timeout=3
