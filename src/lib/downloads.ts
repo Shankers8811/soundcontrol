@@ -1,12 +1,11 @@
-// Direct-download links for the published Windows binaries.
+// Direct-download links for the published Windows app.
 //
 // The tag-triggered "Release Windows" workflow (.github/workflows/release-windows.yml)
-// builds the NSIS installer and the portable .exe and attaches both to the
-// newest GitHub Release under stable, URL-safe names:
+// builds the standard NSIS installer and attaches it to the newest GitHub
+// Release under a stable, URL-safe name:
 //   installer: SoundControl-Setup-<version>.exe
-//   portable:  SoundControl-<version>.exe
 // GitHub's "/releases/latest/download/<asset>" route always points at the
-// assets of the latest Release, so these links stay valid as new versions ship.
+// assets of the latest Release, so these links stay valid as versions ship.
 export const REPO_URL = __REPO_URL__;
 export const APP_VERSION = __APP_VERSION__;
 
@@ -17,5 +16,4 @@ function releaseAsset(assetName: string): string {
   return `${REPO_URL}/releases/latest/download/${encodeURIComponent(assetName)}`;
 }
 
-export const WINDOWS_INSTALLER_URL = releaseAsset(`SoundControl-Setup-${APP_VERSION}.exe`);
-export const WINDOWS_PORTABLE_URL = releaseAsset(`SoundControl-${APP_VERSION}.exe`);
+export const WINDOWS_DOWNLOAD_URL = releaseAsset(`SoundControl-Setup-${APP_VERSION}.exe`);
