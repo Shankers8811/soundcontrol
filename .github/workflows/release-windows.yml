@@ -1,6 +1,6 @@
 name: Release Windows
 
-# Tagging a commit on main (e.g. `git tag v1.0.0 main && git push origin v1.0.0`)
+# Tagging a commit on main (e.g. `git tag v1.0.2 main && git push origin v1.0.2`)
 # builds the standard NSIS Windows installer and publishes it as the single
 # asset of a new GitHub Release: SoundControl-Setup-<version>.exe.
 # The in-app download button and the README deep-link to the
@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing tag to (re)build and publish, e.g. v1.0.0'
+        description: 'Existing tag to (re)build and publish, e.g. v1.0.2'
         required: true
         type: string
 
@@ -88,7 +88,7 @@ jobs:
           test "$(find release -maxdepth 1 -name '*.exe' | wc -l)" -eq 1
           INSTALLER="$(find release -maxdepth 1 -name '*.exe' | head -n 1)"
           test -n "$INSTALLER"
-          # Asset version is the tag without its leading "v" (v1.0.0 -> 1.0.0).
+          # Asset version is the tag without its leading "v" (v1.0.2 -> 1.0.2).
           VERSION="${RELEASE_TAG#v}"
           # Rename on disk so the published asset name is deterministic and the
           # deep links never depend on GitHub normalising spaces in filenames.
