@@ -16,9 +16,32 @@ function isLocalHost(): boolean {
   return !h || h === 'localhost' || h === '127.0.0.1';
 }
 
-export function defaultBridgeUrl(): string {
+// Per-session bridge secret. The desktop app's main process mints a fresh
+// token on every launch and hands it to this renderer over IPC; the plain web
+// build has no token and can only talk to tokenless (manually run) bridges.
+// Fetched once and cached — the token never changes within a session.
+let cachedToken: string | null | undefined;
+async function bridgeToken(): Promise<string | null> {
+  if (cachedToken !== undefined) return cachedToken;
+  try {
+    const t = await window.electronAPI?.getBridgeToken?.();
+    cachedToken = typeof t === 'string' && t ? t : null;
+  } catch {
+    cachedToken = null;
+  }
+  return cachedToken;
+}
+
+function authHeaders(token: string | null): Record<string, string> {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export function defaultBridgeUrl(token: string | null = null): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${isLocalHost() ? '127.0.0.1' : location.hostname}:8765/ws`;
+  const base = `${proto}//${isLocalHost() ? '127.0.0.1' : location.hostname}:8765/ws`;
+  // A WebSocket handshake cannot carry headers, so the secret travels as a
+  // query parameter; loopback only, never logged by the bridge.
+  return token ? `${base}?token=${encodeURIComponent(token)}` : base;
 }
 
 function scanHttpBase(): string | null {
@@ -33,7 +56,11 @@ export async function bridgeAlive(): Promise<boolean> {
   const base = scanHttpBase();
   if (!base) return false;
   try {
-    const res = await fetch(`${base}/scan`, { signal: AbortSignal.timeout(1500) });
+    const token = await bridgeToken();
+    const res = await fetch(`${base}/scan`, {
+      signal: AbortSignal.timeout(1500),
+      headers: authHeaders(token),
+    });
     return res.ok;
   } catch {
     return false;
@@ -44,7 +71,11 @@ export async function scanBridgeDevices(): Promise<NearbyDevice[]> {
   const base = scanHttpBase();
   if (!base) return [];
   try {
-    const res = await fetch(`${base}/scan`, { signal: AbortSignal.timeout(1500) });
+    const token = await bridgeToken();
+    const res = await fetch(`${base}/scan`, {
+      signal: AbortSignal.timeout(1500),
+      headers: authHeaders(token),
+    });
     if (!res.ok) return [];
     const json = (await res.json()) as { devices?: Array<{ mac: string; name: string }> };
     return (json.devices ?? []).map((d) => ({
@@ -69,7 +100,7 @@ export async function connectBridge(
   onRx: (data: Uint8Array) => void,
   name = '',
 ): Promise<{ transport: Transport; name: string }> {
-  const url = defaultBridgeUrl();
+  const url = defaultBridgeUrl(await bridgeToken());
   const ws = await openSocket(url);
 
   const transport: Transport = {

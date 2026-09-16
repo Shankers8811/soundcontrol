@@ -2,11 +2,7 @@ import { useState } from 'react';
 import { buildProjectZip, downloadBlob, downloadText } from '../lib/exportZip';
 import { PROTOCOL_MD } from '../lib/protocolDoc';
 import { BRIDGE_PY, ELECTRON_MAIN } from '../lib/embedded';
-import {
-  APP_VERSION,
-  LATEST_RELEASE_URL,
-  WINDOWS_DOWNLOAD_URL,
-} from '../lib/downloads';
+import { LATEST_RELEASE_URL, WINDOWS_DOWNLOAD_URL } from '../lib/downloads';
 
 export function DeployPanel() {
   const [busy, setBusy] = useState(false);
@@ -45,7 +41,7 @@ export function DeployPanel() {
         <div className="grid gap-2">
           <LinkAction
             title="SoundControl for Windows"
-            body={`SoundControl-Setup-${APP_VERSION}.exe · installs the app`}
+            body="SoundControl-Setup.exe · always the newest release"
             cta="Download .exe"
             href={WINDOWS_DOWNLOAD_URL}
           />

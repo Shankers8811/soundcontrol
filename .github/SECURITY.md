@@ -42,22 +42,25 @@ release are the reward.
   that this project is not affiliated with Anker.
 - Devices, firmware, or the official soundcore app.
 
-## Trust model, as of v1.0.3
+## Trust model, as of v1.0.4
 
-- The RFCOMM bridge binds to `127.0.0.1` only, and answers browser requests solely from
-  origins this project ships: the packaged desktop app (`file://`, identified by its
-  Electron user agent), `http://localhost` / `http://127.0.0.1` dev servers, and
-  `https://shankers8811.github.io`. Foreign origins get `403` and
-  `null`-origin requests without that Electron marker (e.g. a sandboxed iframe) are
-  refused too, so a random web page cannot read your paired devices or write to them.
-- The bridge has **no authentication of its own**: any process already running as the
-  user can use it, and it speaks plain HTTP/WebSocket on loopback. Do not run it with
-  `--host` pointing at a network interface (the helper logs a warning if you do), and
-  treat `--allow-origin '*'` as disabling this section.
-- A per-session shared secret is the intended next step (tracked by the open
-  "bridge trust model" hardening issue). Until then, "loopback + origin allowlist" is
-  the boundary, not a strong access control — it stops drive-by web pages, not local
-  processes.
+- The RFCOMM bridge binds to `127.0.0.1` only, answers browser requests solely from
+  origins this project ships (the packaged desktop app's `file://`, identified by its
+  Electron user agent; `http://localhost` / `http://127.0.0.1` dev servers; and
+  `https://shankers8811.github.io`), and — when started by the desktop app — requires
+  a per-session secret on every request: `Authorization: Bearer <token>` on HTTP and
+  `?token=` on the WebSocket handshake. The secret is minted fresh by the Electron
+  main process on every launch (256 bits), passed to the helper via its environment
+  (never argv), and to the renderer over IPC. Foreign origins get `403`, and callers
+  without the secret get `401`, so a random web page can neither read your paired
+  devices nor write to them.
+- A bridge run by hand (no token configured) keeps the origin-allowlist behaviour, and
+  logs which mode it is in at startup; `--token-required` makes it refuse to start
+  without a secret instead. Any process already running as the user can still use the
+  bridge — the token stops drive-by web pages, not local processes — and the channel
+  is plain HTTP/WebSocket on loopback. Do not run it with `--host` pointing at a
+  network interface (the helper logs a warning if you do), and treat
+  `--allow-origin '*'` as disabling this section.
 - Browser builds use Web Bluetooth only, on a user gesture, and never touch the bridge;
   an https page cannot reach a loopback service, so the Pages deployment has no local
   attack surface.
@@ -72,3 +75,4 @@ release are the reward.
 | Release | Change |
 |---|---|
 | 1.0.3 | Bridge answers an allowlisted origin instead of `Access-Control-Allow-Origin: *`; refuses `null`-origin browser traffic that is not the desktop app; logs every rejection; warns when bound off-loopback. Dependencies updated so `npm audit` is clean (23 Electron advisories, 2 high). |
+| 1.0.4 | Per-session bridge secret: Electron mints 256 bits per launch, passes it via env + IPC, bridge enforces it (`401` without it) alongside the origin allowlist; `--token-required` hard-fails a tokenless start. |
