@@ -21,10 +21,11 @@ export function FindDeviceModal({ onClose }: { onClose: () => void }) {
     const lfo = ctx.createOscillator();
     const lfoGain = ctx.createGain();
     lfo.frequency.value = 4; // 4 pulses per second
-    lfoGain.gain.value = 0.5;
+    lfoGain.gain.value = 0.14;
     lfo.connect(lfoGain);
 
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.setValueAtTime(0.22, ctx.currentTime);
+    lfoGain.connect(gain.gain);
 
     // Stereo panner if supported
     if (ctx.createStereoPanner) {
@@ -59,7 +60,11 @@ export function FindDeviceModal({ onClose }: { onClose: () => void }) {
       stopTone();
       setPlayingSide(null);
       if (app.connected) {
-        await app.inject(buildFindDevice(false, false), 'Find Device Stop');
+        try {
+          await app.inject(buildFindDevice(false, false), 'Find Device Stop');
+        } catch {
+          /* the store displays the write error */
+        }
       }
       return;
     }
@@ -71,7 +76,14 @@ export function FindDeviceModal({ onClose }: { onClose: () => void }) {
     if (app.connected) {
       const isL = side === 'left' || side === 'both';
       const isR = side === 'right' || side === 'both';
-      await app.inject(buildFindDevice(isL, isR), `Find Device ${side}`);
+      try {
+        await app.inject(buildFindDevice(isL, isR), `Find Device ${side}`);
+      } catch {
+        // The UI error banner is populated by the store. Stop the local alarm
+        // as well so a failed hardware write cannot leave a tone running.
+        stopTone();
+        setPlayingSide(null);
+      }
     }
   };
 

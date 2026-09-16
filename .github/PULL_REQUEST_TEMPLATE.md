@@ -10,9 +10,9 @@ category/command from [PROTOCOL.md](../PROTOCOL.md).
 ## Verification
 
 - [ ] `npm run build` passes (typecheck + production build)
-- [ ] `npx serve dist` or `npm run dev` → connected to a real device **or** Demo Mode
-- [ ] Web Bluetooth path exercised (Chrome/Edge/Brave) — note explicitly if you only tested Demo Mode
-- [ ] Windows desktop path exercised (`npm run electron`) — if the change touches `electron-main.cjs`, `soundcore_bridge.py`, or `src/transports/bridge.ts`
+- [ ] Windows desktop path exercised (`npm run electron`) or Demo Mode
+- [ ] Paired-device discovery and the bundled helper checked if the change touches
+      `electron-main.cjs`, `soundcore_bridge.py`, or `src/transports/bridge.ts`
 - [ ] `npm audit` reports no new vulnerabilities
 
 ## Notes for the reviewer
@@ -23,6 +23,6 @@ Hardware behaviour you could **not** verify, and anything that ships a new opcod
 ## Housekeeping
 
 - [ ] `version` in `package.json` bumped **only** if this PR is meant to ship a Release
-- [ ] Assets keep the current budget: app icons pre-rendered at their exact manifest
-      sizes, device art as WebP — nothing over ~150 KB in `public/`
+- [ ] Assets keep the current budget: app icons pre-rendered at their exact sizes,
+      device art as WebP — nothing over ~150 KB in `public/`
 - [ ] No analytics, accounts, or remote calls added

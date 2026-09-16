@@ -1,4 +1,4 @@
-export type TransportKind = 'ble' | 'serial' | 'bridge' | 'sim';
+export type TransportKind = 'bridge' | 'sim';
 
 export type AncMode = 'anc' | 'adaptive' | 'transparency' | 'normal';
 
@@ -44,6 +44,8 @@ export interface TouchMap {
   rightHold: GestureAction;
 }
 
+export type EarbudPresence = 'both' | 'left' | 'right' | 'none' | 'unknown';
+
 export interface BatteryState {
   left: number | null;
   right: number | null;
@@ -51,6 +53,10 @@ export interface BatteryState {
   leftCharging?: boolean;
   rightCharging?: boolean;
   caseCharging?: boolean;
+  /** Null means the values are already percentages (for example Windows PnP). */
+  batteryScale?: number | null;
+  /** Reported only when the Soundcore telemetry identifies each TWS side. */
+  presence?: EarbudPresence;
 }
 
 export interface DeviceProfile {
@@ -64,6 +70,8 @@ export interface DeviceProfile {
   scenes: boolean;
   ldac: boolean;
   dual: boolean;
+  /** Raw Soundcore battery levels are often 0..5 or 0..10, not percentages. */
+  batteryMax: number;
   names: string[];
 }
 

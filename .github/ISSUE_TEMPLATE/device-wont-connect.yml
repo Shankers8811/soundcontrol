@@ -1,40 +1,23 @@
-name: "🎧 Device won't connect / drops out"
-description: "Report a pairing, connection, or disconnect problem with real diagnostic data."
+name: "🎧 Windows device won't connect / drops out"
+description: "Report a Windows pairing, connection, or disconnect problem with real diagnostic data."
 title: "[connect] "
 labels: ["bug", "needs triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        Connection bugs are almost always about **how the device was reachable**, not the app itself.
-        Please fill in every field — a report without a transport and a log line usually cannot be acted on.
+        Connection bugs are easiest to diagnose when the Windows state and helper log are included.
+        Please fill in every field — a report without a model and log line usually cannot be acted on.
   - type: dropdown
     id: surface
     attributes:
-      label: Which build?
-      description: The web app and the Windows app reach your earbuds through completely different transports.
+      label: Which Windows build?
+      description: Tell us whether this was the published installer or a local build.
       multiple: false
       options:
-        - Web app (shankers8811.github.io/soundcontrol)
         - Windows desktop app (SoundControl-Setup installer)
         - Built from source (`npm run electron`)
         - Other / not sure
-    validations:
-      required: true
-  - type: dropdown
-    id: browser
-    attributes:
-      label: Browser or OS
-      description: Web Bluetooth needs Chrome, Edge, Brave or Opera 117+. Firefox and Safari cannot connect at all — that is a browser limit, not a bug here.
-      multiple: false
-      options:
-        - Chrome (Windows)
-        - Edge (Windows)
-        - Brave (Windows)
-        - Chrome (macOS)
-        - Chrome (Linux)
-        - Firefox / Safari (known unsupported)
-        - Other
     validations:
       required: true
   - type: input
@@ -49,13 +32,13 @@ body:
     id: state
     attributes:
       label: What state were the earbuds in when you tried to connect?
-      description: A browser scan only sees devices in **pairing mode**; a device already connected to your laptop is invisible to it. This is the single most common cause of an empty scan list.
+      description: SoundControl reads devices paired with Windows, including devices already playing audio.
       multiple: false
       options:
-        - In pairing mode (case open, button held ~3s)
-        - Already connected to this computer
+        - Paired and already connected to this computer
+        - Paired but disconnected
+        - In pairing mode
         - Already connected to my phone
-        - Just out of the case, no button held
         - Not sure
     validations:
       required: true
@@ -63,18 +46,17 @@ body:
     id: what-happened
     attributes:
       label: What happened, step by step
-      description: "Example: Add device → Search → spinner runs ~30s → 'No devices found', even though the buds show in Windows Bluetooth settings."
+      description: "Example: Add device → Refresh paired devices → list is empty, even though Windows shows the buds."
       placeholder: "1. …\n2. …"
     validations:
       required: true
   - type: textarea
     id: logs
     attributes:
-      label: Diagnostics — hex console and desktop log
+      label: Diagnostics — hex console and Windows log
       description: >-
-        Paste the **Console** tab contents (TX/RX frames) from the app.
-        For the Windows app, also attach the tail of `%AppData%\soundcontrol\main.log`,
-        which records whether the bundled Bluetooth helper started.
+        Paste the **Console** tab contents from the app and attach the tail of
+        `%AppData%\soundcontrol\main.log`, which records whether the bundled helper started.
       render: shell
       placeholder: |
         TX 08 EE 01 01 00 00 02 ..

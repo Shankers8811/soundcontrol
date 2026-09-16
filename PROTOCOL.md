@@ -1,9 +1,8 @@
 # SoundControl protocol
 
-Soundcore companion traffic is a thin binary framing layer over **Classic Bluetooth RFCOMM**.
-Web Bluetooth (BLE GATT) can read the standard Battery service and sometimes a vendor
-characteristic, but **ANC is not accepted on GATT** on the units we care about. The DSP
-socket is RFCOMM — commonly **channel 4** (buds), **12** or **15** (some over-ears).
+SoundControl uses a thin binary framing layer over **Classic Bluetooth RFCOMM**.
+The DSP socket is commonly **channel 4** (buds), **12** or **15** (some over-ears).
+The Windows desktop renderer reaches RFCOMM through the bundled local Python helper.
 
 Service UUID (when advertised): `0cf12d31-fac3-4553-bd80-d6832e7b3947`
 
@@ -50,7 +49,22 @@ Example — handshake:
 
 Must be the first write after the RFCOMM socket is up. The device answers with a
 `09 FF … cat=01 type=01` info blob. On TWS firmware, left / right / case battery often
-sit at payload offsets 40 / 41 / 42 (values `0…100`).
+sit at payload offsets 40 / 41 / 42. Earbud values are model-scaled steps on
+many TWS families (for example `0…5` or `0…10`), while over-ear models commonly
+report percentages directly.
+
+A live TWS battery response can also be requested explicitly:
+
+```
+08 EE 00 00 00 01 03 0A 00 04
+```
+
+The `01 03` response starts with the raw left and right levels. `FF` means that
+side is disconnected from the host; it is not a zero-percent battery value and
+is used only for connected-side availability. This signal does not prove that an
+earbud is inserted in an ear: the Soundcore protocol exposes a wearing-detection
+setting on some models, but no confirmed per-side in-ear telemetry field is
+available to this app.
 
 ## ANC — Life Q30 / Q35 / Space Q45 / Life Tune (`classic`)
 
@@ -168,12 +182,12 @@ Dual disable   08 EE 00 00 00 0B 84 0B 00 00 90
 
 A codec change typically forces an A2DP reconnect.
 
-## Transports SoundControl implements
+## Windows transport
 
-1. **Web Bluetooth** — `navigator.bluetooth.requestDevice`, Battery GATT `0x180F`, opportunistic write to vendor characteristics. ANC writes often fail here; that is expected.
-2. **Web Serial** — virtual COM / SPP (`navigator.serial`).
-3. **`soundcore_bridge.py`** — stdlib HTTP + WebSocket on `:8765`, `socket.AF_BLUETOOTH` / `BTPROTO_RFCOMM`.
-4. **Simulator** — local ACK generator so the UI is usable without hardware.
+1. **`soundcore_bridge.py`** — stdlib HTTP + WebSocket on loopback `:8765`, plus
+   `socket.AF_BLUETOOTH` / `BTPROTO_RFCOMM` for the paired Windows device.
+2. **Electron renderer** — authenticated local IPC to the helper.
+3. **Simulator** — local ACK generator so the UI is usable without hardware.
 
 ## Target units
 

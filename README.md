@@ -1,38 +1,19 @@
-# SoundControl [Soundcore Desktop & Web Companion]
+# SoundControl — Windows Desktop Companion
 
 <p align="center">
   <img src="public/icon-512.png" width="128" height="128" alt="SoundControl">
 </p>
 
 <p align="center">
-  <b>Complete Web App & Windows App companion for Anker Soundcore earbuds and headphones.</b><br>
-  Engineered to replicate 100% of the core audio DSP and hardware control capabilities from the official Soundcore Android app without bloat, accounts, or telemetry.
-</p>
-
-<p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
-  <img src="https://img.shields.io/badge/Web%20App-Chrome%20%7C%20Edge%20%7C%20Brave-0084ff" alt="Web App">
-  <img src="https://img.shields.io/badge/Windows%20App-Electron%20%7C%20EXE-0084ff" alt="Windows App">
-  <img src="https://img.shields.io/badge/Android%20Parity-100%25-success" alt="Feature Complete">
+  <img src="https://img.shields.io/badge/Windows%20App-Electron%20%7C%20EXE-0084ff" alt="Windows app">
   <a href="https://github.com/Shankers8811/soundcontrol/releases/latest"><img src="https://img.shields.io/github/v/release/Shankers8811/soundcontrol?label=latest%20release&color=0084ff" alt="Latest release"></a>
   <a href="https://github.com/Shankers8811/soundcontrol/actions/workflows/build-windows.yml"><img src="https://github.com/Shankers8811/soundcontrol/actions/workflows/build-windows.yml/badge.svg?branch=main" alt="Windows build"></a>
-  <a href="https://github.com/Shankers8811/soundcontrol/actions/workflows/pages.yml"><img src="https://github.com/Shankers8811/soundcontrol/actions/workflows/pages.yml/badge.svg?branch=main" alt="Pages deploy"></a>
 </p>
 
 ---
 
-## 🚀 Two Ways to Use: Web App or Windows Desktop App
-
-### 1. 🌐 Web App (Browser Version)
-- **Live Deployment**: Access the web app hosted directly via GitHub Pages:  
-  **`https://shankers8811.github.io/soundcontrol/`**
-- **Browser Compatibility**: Chrome, Edge, Brave, or Opera (version 117+) on Windows, macOS, Linux, or ChromeOS.
-- **Connection**: Connects directly via the **Web Bluetooth API** (GATT Service `0000ffe0-0000-1000-8000-00805f9b34fb`).
-- **Installable PWA**: Click the Install icon in your browser address bar to install SoundControl as a standalone desktop application.
-- **Light app shell**: icons ship pre-rendered at their exact manifest sizes and device art is WebP, so the whole offline shell is under 350 KB instead of 6 MB — it installs and cold-boots fast on a weak connection.
-- **Demo Mode**: Includes full offline simulation with realistic hardware models and audio synthesis if no physical device is connected.
-
-### 2. 💻 Windows Desktop App (Electron & Native EXE)
+## Windows Desktop App
 
 **⬇️ Direct download (recommended) — no build required:**
 
@@ -41,14 +22,12 @@
 | 🪟 **Windows app (installer)** | [**Download the latest `SoundControl-Setup.exe`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup.exe) | NSIS setup, Start-menu & desktop shortcuts. Ships its own built-in Bluetooth runtime — no Python needed |
 
 - All builds and release notes live on the **[Releases page](https://github.com/Shankers8811/soundcontrol/releases/latest)**.
-- The same **Download for Windows** button is built into the app under **Settings → About → Desktop extras**.
+- The same **Download for Windows** button is built into the app under **Settings → About → Windows release**.
 - Windows SmartScreen may show an unsigned-publisher prompt on first run (the app is free and not code-signed); choose **More info → Run anyway** — see [Code signing & SmartScreen](#-code-signing--smartscreen) for how to make that warning disappear.
 
-**🔎 Connecting earbuds on Windows (important).** A browser-style scan only sees earbuds that
-are in **pairing mode** — buds already connected to your laptop are invisible to it, and the
-desktop app cannot use Web Bluetooth at all (Electron implements it on Linux only). The desktop
-app instead talks to devices **already paired with Windows** through a small local bridge that
-runs on a Python runtime **bundled inside the installer** — no Python to install, nothing to configure:
+**🔎 Connecting earbuds on Windows (important).** SoundControl talks to devices **already paired
+with Windows** through a small local bridge that runs on a Python runtime **bundled inside the
+installer** — no Python to install, nothing to configure:
 
 1. Pair the earbuds in **Settings → Bluetooth & devices** and leave them connected.
 2. Launch SoundControl → **Add device** → **Refresh paired devices**. Your paired buds are listed
@@ -57,15 +36,12 @@ runs on a Python runtime **bundled inside the installer** — no Python to insta
    The helper's start-up is logged to `%AppData%\soundcontrol\main.log`.
    The helper only listens on `127.0.0.1`, answers the app's own origins (never
    `Access-Control-Allow-Origin: *`), and requires a per-session token the desktop
-   app mints on every launch — so a random web page can neither enumerate your paired
-   devices nor write to them — see [SECURITY.md](.github/SECURITY.md).
+   app mints on every launch — so an untrusted local caller can neither enumerate your
+   paired devices nor write to them — see [SECURITY.md](.github/SECURITY.md).
 
 The very first launch after installing can take a few extra seconds while Windows inspects a
 freshly downloaded app — it is not hung. If SmartScreen appears, choose **More info → Run anyway**
 (see [Code signing & SmartScreen](#-code-signing--smartscreen)).
-
-Prefer no installs at all? Open the [web app](https://shankers8811.github.io/soundcontrol/) in Chrome
-or Edge and put the earbuds in pairing mode instead (open the case, hold its button ~3s).
 
 **Or build/run it yourself from source.** Run directly on Windows with hardware Bluetooth support:
   ```cmd
@@ -83,16 +59,16 @@ or Edge and put the earbuds in pairing mode instead (open the case, hold its but
 
 ---
 
-## 🎧 Complete Android App Feature Parity
+## 🎧 Windows desktop feature coverage
 
-| Feature | Official Android App | SoundControl (Web & Windows) |
+| Feature | Official Android App | SoundControl for Windows |
 |---|:---:|:---:|
 | **Ambient Sound (ANC)** | ✅ 5-Level Manual, Adaptive, Multi-Scene | ✅ Level 1–5, Adaptive, Transport/Outdoor/Indoor |
 | **Transparency Mode** | ✅ Fully Transparent & Talk Mode | ✅ Fully Transparent & Talk Mode |
 | **Equalizer Presets** | ✅ 22 Soundcore Curated Presets | ✅ All 22 Exact Soundcore Presets |
 | **Custom Graphic EQ** | ✅ 8-Band Slider Curve (-6 to +6 dB) | ✅ Interactive 8-Band SVG Bezier EQ |
 | **BassUp™ Technology** | ✅ Dynamic Low-End Boost | ✅ Dynamic BassUp Command & Curve |
-| **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ✅ Interactive Left/Right Web Audio Test |
+| **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ✅ Interactive Left/Right Audio Test |
 | **Superior Sleep** | ✅ Ambient White Noise Mixer | ✅ Procedural Nature Sound Synthesizer |
 | **Touch Remapping** | ✅ 1-Tap, 2-Tap, 3-Tap, Hold per ear | ✅ Left & Right Earbud Gestures |
 | **Game Mode** | ✅ 80ms Low Latency | ✅ 0x87 Packet Low-Latency Switch |
@@ -106,10 +82,10 @@ or Edge and put the earbuds in pairing mode instead (open the case, hold its but
 
 ## 🔬 Protocol Reverse Engineering & Technical Architecture
 
-The official Soundcore Android application (`com.oceanwing.soundcore`) communicates with Soundcore Bluetooth hardware using two primary protocols:
+The Windows desktop app communicates with Soundcore Bluetooth hardware over:
 
-1. **Bluetooth Low Energy (BLE)**: Custom GATT service UUID `0000ffe0-0000-1000-8000-00805f9b34fb` with characteristic `0000ffe1-0000-1000-8000-00805f9b34fb` (and companion notify UUIDs).
-2. **Bluetooth Classic RFCOMM (SPP)**: Bound to Channel 4 (or Channels 12/15 on Q-series over-ear models).
+1. **Bluetooth Classic RFCOMM (SPP)**: Bound to Channel 4 (or Channels 12/15 on Q-series over-ear models).
+2. **Local Electron-to-helper IPC**: The packaged renderer talks to the bundled Python helper over an authenticated loopback HTTP/WebSocket connection; the helper performs the RFCOMM work.
 
 ### Packet Framing & Checksum Calculation
 
@@ -151,21 +127,22 @@ Every packet transmitted between the host application and the hardware device fo
 - **Node.js 20.19+ or 22.12+** (Node 22 recommended) — Vite 8 refuses older runtimes
 - **Python 3.9+** — only for running the bridge from source. Release installers carry their own
   bundled Python runtime (`python-embed/`, fetched automatically by `npm run fetch:python-embed`
-  during `npm run build:win`), so desktop users install nothing extra. The web app in Chrome/Edge
-  needs no Python either.
+  during `npm run build:win`), so desktop users install nothing extra.
 
-### Setup & Development Server
+### Development
 ```bash
 npm install
 npm run dev
 ```
-Preview at `http://localhost:5173`.
 
-### Build for Web Production
+This starts the local Vite renderer used while developing the Windows Electron app.
+Use `npm run electron` with the renderer available when testing the desktop shell.
+
+### Build the renderer
 ```bash
 npm run build
 ```
-Generates production assets in `dist/`.
+Generates the renderer assets in `dist/` for packaging into the Windows app.
 
 ### Package Windows Desktop App
 ```bash
@@ -173,16 +150,29 @@ npm run build:win
 ```
 Generates the NSIS Windows installer (`SoundControl Setup <version>.exe`) in `release/`.
 
+#### Upgrading an existing installation
+
+The installer is configured as an assisted NSIS installer with the permanent
+application ID `com.soundcontrol.desktop`. Running a newer
+`SoundControl-Setup.exe` detects an existing per-user or per-machine SoundControl
+installation, closes the running app when needed, reuses its installation
+location, and replaces the old application files instead of installing a
+side-by-side copy. App data is preserved during this upgrade. Do not change the
+application ID in `package.json`, because it is the Windows upgrade identity.
+
+The Windows CI smoke test installs the package, marks that installation as an
+older version, and runs the same installer again without an install-directory
+override to verify the in-place upgrade path.
+
 ### Publish a new Windows Release
 Tagged commits are built and published automatically by the **Release Windows**
 workflow (`.github/workflows/release-windows.yml`). It builds the NSIS installer
-on `windows-latest`, creates a GitHub Release, and attaches two assets — the
-versioned `SoundControl-Setup-<version>.exe` for the record, and a stable
-`SoundControl-Setup.exe` alias the in-app button links to (a versioned name
-would 404 for older clients once a newer Release is latest):
+on `windows-latest`, creates a GitHub Release with one stable installer asset:
+`SoundControl-Setup.exe`. The in-app download button always links to the
+latest release through that stable filename:
 
 ```bash
-# Bump "version" in package.json first — the asset name is derived from it.
+# Bump "version" in package.json first so the release metadata stays accurate.
 git tag vX.Y.Z main
 git push origin vX.Y.Z
 ```

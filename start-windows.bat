@@ -19,7 +19,7 @@ if not exist node_modules (
 )
 
 if not exist dist (
-    echo Building web bundle...
+    echo Building Windows app renderer...
     call npm run build
 )
 
