@@ -160,6 +160,14 @@ def split_frame(buf: bytes) -> tuple[Optional[bytes], bytes]:
     boundary instead of consuming an arbitrary 64-byte chunk (which used to
     merge adjacent responses and lose every frame after it).
 
+    A partial buffer is never scanned for a boundary. An additive checksum
+    matches a false boundary roughly once every 256 byte positions, so
+    scanning a response that is still arriving used to emit a truncated
+    garbage frame about 11% of the time — and RFCOMM splits responses across
+    reads constantly. The advertised length is therefore authoritative until
+    it has fully arrived; only then are the documented ±1 length variants of
+    legacy firmware considered.
+
     ``b''`` is a progress sentinel: leading noise was discarded, but there is
     not yet a complete frame to return.
     """
@@ -179,23 +187,36 @@ def split_frame(buf: bytes) -> tuple[Optional[bytes], bytes]:
         return None, buf
 
     indicated = buf[7] | (buf[8] << 8)
-    if 10 <= indicated <= 512 and len(buf) >= indicated:
-        candidate = buf[:indicated]
-        if _frame_checksum(candidate[:-1]) == candidate[-1]:
-            return candidate, buf[indicated:]
 
-    # Fallback for legacy frames with a missing or inaccurate length field.
-    # A few command families advertise a length one byte larger than the
-    # actual frame (for example the captured 0x0E TWS ANC frame), so do not
-    # wait forever for the indicated length when the checksum already closes
-    # a shorter frame.
+    if 10 <= indicated <= 512:
+        if len(buf) >= indicated:
+            # The advertised length has fully arrived, so it is safe to judge
+            # the frame. Prefer the advertised length, then the documented
+            # off-by-one variants of legacy firmware.
+            for end in (indicated, indicated - 1, indicated + 1):
+                if 10 <= end <= len(buf):
+                    candidate = buf[:end]
+                    if _frame_checksum(candidate[:-1]) == candidate[-1]:
+                        return candidate, buf[end:]
+        if len(buf) <= indicated:
+            # Still arriving. Waiting is the only safe option: an additive
+            # checksum matches a false boundary roughly once every 256 byte
+            # positions, so scanning here emits truncated garbage. A legacy
+            # off-by-one frame resolves on the next read, once the advertised
+            # length (or anything beyond it) has arrived.
+            return None, buf
+
+    # The advertised length is missing, insane, or wrong by more than the
+    # tolerable one byte, so resynchronize by scanning for a checksum
+    # boundary. This only runs on a buffer that is complete as far as the
+    # length field claims, or whose length field cannot be trusted at all.
     limit = min(len(buf), 512)
     for end in range(10, limit + 1):
         if _frame_checksum(buf[: end - 1]) == buf[end - 1]:
             return buf[:end], buf[end:]
 
-    # A complete frame may still be arriving. If the buffer is unreasonably
-    # large, drop one byte so a later valid header can be found.
+    # No boundary yet. If the buffer is unreasonably large, drop one byte so a
+    # later valid header can be found.
     if len(buf) > 512:
         return b"", buf[1:]
     return None, buf

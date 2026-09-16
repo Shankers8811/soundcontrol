@@ -8,13 +8,25 @@ export function SettingsPage() {
   const [fwChecking, setFwChecking] = useState(false);
   const [fwStatus, setFwStatus] = useState<string | null>(null);
 
+  // An update check needs the device's own version string. Until the version
+  // field is confirmed against the official app's device-info dump, this
+  // reports what the hardware actually told us instead of asserting that the
+  // firmware is current.
   const checkFirmware = () => {
     setFwChecking(true);
     setFwStatus(null);
     setTimeout(() => {
       setFwChecking(false);
-      setFwStatus(`Firmware v${app.firmware} is up to date!`);
-    }, 1200);
+      if (!app.connected) {
+        setFwStatus('Connect a device to check its firmware version');
+        return;
+      }
+      setFwStatus(
+        app.firmware
+          ? `Device reports firmware v${app.firmware}. Update checks need an Anker account.`
+          : 'This model did not report a firmware version over Bluetooth',
+      );
+    }, 600);
   };
 
   const handleReset = async () => {
@@ -48,7 +60,8 @@ export function SettingsPage() {
         </div>
 
         <p className="mt-2.5 font-mono text-[11px] text-mute">
-          Firmware v{app.firmware} · Protocol: {app.transportLabel}
+          Firmware {app.firmware ? `v${app.firmware}` : 'not reported'} · Protocol:{' '}
+          {app.transportLabel}
         </p>
 
         {app.connected ? (
@@ -94,7 +107,12 @@ export function SettingsPage() {
       <section className="overflow-hidden rounded-2xl bg-wash border border-line">
         <Row
           title="Firmware Update"
-          sub={fwStatus ?? `Latest firmware installed`}
+          sub={
+            fwStatus ??
+            (app.connected
+              ? 'Read the version reported by the device'
+              : 'Connect a device to read its firmware version')
+          }
           right={
             <button
               onClick={checkFirmware}
