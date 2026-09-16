@@ -4,12 +4,11 @@ name: Android dump probe
 # Google Drive folder, download the four APK parts, and push a small report
 # back to this branch? The agent's own sandbox cannot reach Google at all.
 on:
-  workflow_dispatch:
-    inputs:
-      folder_url:
-        description: Public Drive folder containing the Anker soundcore APK parts
-        required: true
-        default: 'https://drive.google.com/drive/folders/1wdOXUZhINDk2UH-o8LA6-RisQRHjjv7L'
+  # workflow_dispatch requires the file to exist on the default branch, so this
+  # probe is triggered by touching a path marker on the working branch instead.
+  push:
+    paths:
+      - 'ci-triggers/android-dump-probe'
 
 permissions:
   contents: write
@@ -36,7 +35,8 @@ jobs:
           set -x
           mkdir -p /tmp/dump
           cd /tmp/dump
-          gdown --folder "${{ inputs.folder_url }}" --remaining-ok 2>&1 | tail -40
+          FOLDER='https://drive.google.com/drive/folders/1wdOXUZhINDk2UH-o8LA6-RisQRHjjv7L'
+          gdown --folder "$FOLDER" --remaining-ok 2>&1 | tail -40
           set +x
           echo "--- downloaded ---"
           ls -la /tmp/dump
