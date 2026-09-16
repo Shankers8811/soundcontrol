@@ -38,7 +38,7 @@
 
 | Download | File | Notes |
 |---|---|---|
-| 🪟 **Windows app (installer)** | [**Download the latest `SoundControl-Setup-<version>.exe`**](https://github.com/Shankers8811/soundcontrol/releases/latest) | NSIS setup, Start-menu & desktop shortcuts. Ships its own built-in Bluetooth runtime — no Python needed |
+| 🪟 **Windows app (installer)** | [**Download the latest `SoundControl-Setup.exe`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup.exe) | NSIS setup, Start-menu & desktop shortcuts. Ships its own built-in Bluetooth runtime — no Python needed |
 
 - All builds and release notes live on the **[Releases page](https://github.com/Shankers8811/soundcontrol/releases/latest)**.
 - The same **Download for Windows** button is built into the app under **Settings → About → Desktop extras**.
@@ -55,9 +55,10 @@ runs on a Python runtime **bundled inside the installer** — no Python to insta
    automatically (even while playing audio) — tap to connect. If the list stays empty, use the
    **Connect by MAC** field (the address appears in Settings → device → Device properties).
    The helper's start-up is logged to `%AppData%\soundcontrol\main.log`.
-   The helper only listens on `127.0.0.1` and answers the app's own origins (never
-   `Access-Control-Allow-Origin: *`), so a random web page cannot enumerate your paired
-   devices or write to them — see [SECURITY.md](.github/SECURITY.md).
+   The helper only listens on `127.0.0.1`, answers the app's own origins (never
+   `Access-Control-Allow-Origin: *`), and requires a per-session token the desktop
+   app mints on every launch — so a random web page can neither enumerate your paired
+   devices nor write to them — see [SECURITY.md](.github/SECURITY.md).
 
 The very first launch after installing can take a few extra seconds while Windows inspects a
 freshly downloaded app — it is not hung. If SmartScreen appears, choose **More info → Run anyway**
@@ -175,8 +176,10 @@ Generates the NSIS Windows installer (`SoundControl Setup <version>.exe`) in `re
 ### Publish a new Windows Release
 Tagged commits are built and published automatically by the **Release Windows**
 workflow (`.github/workflows/release-windows.yml`). It builds the NSIS installer
-on `windows-latest`, creates a GitHub Release, and attaches the single
-`SoundControl-Setup-<version>.exe` asset:
+on `windows-latest`, creates a GitHub Release, and attaches two assets — the
+versioned `SoundControl-Setup-<version>.exe` for the record, and a stable
+`SoundControl-Setup.exe` alias the in-app button links to (a versioned name
+would 404 for older clients once a newer Release is latest):
 
 ```bash
 # Bump "version" in package.json first — the asset name is derived from it.

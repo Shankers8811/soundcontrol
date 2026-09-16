@@ -14,6 +14,14 @@ visit, and /scan plus the WebSocket can read your paired-device list and write
 raw frames to your hearing. Requests from web content are therefore answered
 only for origins this project ships or develops against (see origin_allowed).
 
+On top of that, the desktop app mints a fresh per-session secret on every
+launch and requires it on every request (see token_ok): HTTP callers send
+`Authorization: Bearer <token>` (or `X-Bridge-Token:`), WebSocket clients
+connect to `/ws?token=<token>`. Configure it with the SOUNDCONTROL_BRIDGE_TOKEN
+environment variable (preferred: argv is visible to other processes) or --token.
+Without a token the bridge keeps the origin-allowlist behaviour, so running it
+by hand for development works exactly as before.
+
 Talk to it from the web UI over WebSocket JSON:
 
     { "type": "connect", "mac": "AA:BB:CC:DD:EE:FF", "channel": 4 }
@@ -30,6 +38,9 @@ Responses:
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
+import hmac
 import json
 import os
 import socket
@@ -37,11 +48,9 @@ import struct
 import subprocess
 import sys
 import threading
-import hashlib
-import base64
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 RFCOMM = getattr(socket, "BTPROTO_RFCOMM", 3)
@@ -291,6 +300,36 @@ BUNDLED_WEB_ORIGINS = frozenset({"https://shankers8811.github.io"})
 DESKTOP_UA_MARKERS = ("Electron/", "soundcontrol/")
 EXTRA_ALLOWED_ORIGINS: set[str] = set()
 ALLOW_ANY_ORIGIN = False
+# Per-session secret minted by the desktop app (see electron-main.cjs). None
+# when the bridge is run by hand, in which case the origin allowlist above is
+# the whole boundary, exactly as before.
+BRIDGE_TOKEN: Optional[str] = None
+TOKEN_SOURCE = ""  # "environment" | "flag" | "" (logged at startup, never the value)
+
+
+def token_ok(presented: Optional[str]) -> bool:
+    """True when `presented` matches the configured per-session secret.
+
+    With no secret configured this is vacuously true: a manually run bridge
+    stays usable without one, and the origin allowlist still applies.
+    """
+    if not BRIDGE_TOKEN:
+        return True
+    if not presented:
+        return False
+    try:
+        return hmac.compare_digest(presented, BRIDGE_TOKEN)
+    except TypeError:
+        return False
+
+
+def bearer_from(headers) -> Optional[str]:
+    """Extract the caller's secret from an HTTP request, if it sent one."""
+    auth = headers.get("Authorization", "")
+    if auth[:7].lower() == "bearer ":
+        return auth[7:].strip() or None
+    token = headers.get("X-Bridge-Token", "").strip()
+    return token or None
 
 
 def origin_allowed(origin: Optional[str], user_agent: str = "") -> bool:
@@ -348,6 +387,24 @@ class Handler(BaseHTTPRequestHandler):
             pass
         return False
 
+    def _token_ok(self) -> bool:
+        """Enforce the per-session secret (a no-op when none is configured)."""
+        if token_ok(bearer_from(self.headers)):
+            return True
+        sys.stderr.write(f"bridge: rejected {self.command} {self.path}: bad or missing token\n")
+        self.send_response(401)
+        self._cors()
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        body = json.dumps({"ok": False, "error": "bridge token required"}).encode()
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except OSError:
+            pass
+        return False
+
     def _cors(self) -> None:
         origin = self._origin()
         self.send_header("Vary", "Origin")
@@ -357,10 +414,12 @@ class Handler(BaseHTTPRequestHandler):
             # Echo the exact origin so that *our* client can read the response.
             # A wildcard here is what let any web page read /scan.
             self.send_header("Access-Control-Allow-Origin", origin)
-        self.send_header("Access-Control-Allow-Headers", "content-type")
+        self.send_header("Access-Control-Allow-Headers", "content-type, authorization, x-bridge-token")
         self.send_header("Access-Control-Allow-Methods", "GET,OPTIONS")
 
     def do_OPTIONS(self) -> None:  # noqa: N802
+        # Preflights carry no Authorization header by design, so only the
+        # origin gate applies here; the token is checked on the real request.
         if not self._allowed():
             return
         self.send_response(204)
@@ -371,7 +430,11 @@ class Handler(BaseHTTPRequestHandler):
         if not self._allowed():
             return
         if self.headers.get("Upgrade", "").lower() == "websocket":
+            # _ws() enforces the token itself: handshakes cannot carry
+            # headers from a browser, so the secret travels as ?token=.
             self._ws()
+            return
+        if not self._token_ok():
             return
         if self.path.startswith("/health"):
             body = json.dumps(
@@ -411,6 +474,23 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(page)
 
     def _ws(self) -> None:
+        # Browsers cannot set headers on a WebSocket handshake, so the desktop
+        # app authenticates with ?token= instead (non-browser clients may use
+        # the Authorization / X-Bridge-Token header like on HTTP).
+        query = parse_qs(urlsplit(self.path).query)
+        presented = (query.get("token", [None])[0]) or bearer_from(self.headers)
+        if not token_ok(presented):
+            sys.stderr.write("bridge: rejected WebSocket handshake: bad or missing token\n")
+            body = json.dumps({"ok": False, "error": "bridge token required"}).encode()
+            self.send_response(401)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            try:
+                self.wfile.write(body)
+            except OSError:
+                pass
+            return
         key = self.headers.get("Sec-WebSocket-Key", "")
         accept = b64sha(key)
         self.send_response(101, "Switching Protocols")
@@ -483,8 +563,47 @@ def main() -> None:
         "Pass '*' to answer any origin (not recommended: any web page you visit could "
         "then read your paired devices and write to your earbuds).",
     )
+    p.add_argument(
+        "--token",
+        default="",
+        metavar="SECRET",
+        help="Per-session secret required on every request. Prefer the "
+        "SOUNDCONTROL_BRIDGE_TOKEN environment variable instead: command-line "
+        "arguments are visible to other processes on the machine.",
+    )
+    p.add_argument(
+        "--token-required",
+        action="store_true",
+        help="Refuse to start unless a token is configured (via --token or "
+        "SOUNDCONTROL_BRIDGE_TOKEN).",
+    )
     args = p.parse_args()
-    global ALLOW_ANY_ORIGIN
+    global ALLOW_ANY_ORIGIN, BRIDGE_TOKEN, TOKEN_SOURCE
+    if args.token.strip():
+        BRIDGE_TOKEN = args.token.strip()
+        TOKEN_SOURCE = "flag"
+        print(
+            "bridge: WARNING --token puts the secret in argv, which other processes can "
+            "read; prefer SOUNDCONTROL_BRIDGE_TOKEN",
+            file=sys.stderr,
+        )
+    elif os.environ.get("SOUNDCONTROL_BRIDGE_TOKEN", "").strip():
+        BRIDGE_TOKEN = os.environ["SOUNDCONTROL_BRIDGE_TOKEN"].strip()
+        TOKEN_SOURCE = "environment"
+    if args.token_required and not BRIDGE_TOKEN:
+        p.error("--token-required was given but no token is configured")
+    if BRIDGE_TOKEN:
+        print(
+            f"bridge: token auth enabled (secret from {TOKEN_SOURCE}); "
+            "origin allowlist still applies",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            "bridge: no token configured — origin allowlist only "
+            "(fine for manual/dev use; the desktop app always sets a per-session token)",
+            file=sys.stderr,
+        )
     for item in args.allow_origin:
         value = item.strip().rstrip("/")
         if value == "*":
@@ -499,11 +618,13 @@ def main() -> None:
         except Exception as exc:  # noqa: BLE001
             print(f"preconnect failed: {exc}", file=sys.stderr)
     if args.host not in ("127.0.0.1", "localhost", "::1"):
-        # Anyone on the LAN could then write raw frames to the paired device:
-        # the bridge has no authentication and no encryption of its own.
+        # Anyone on the LAN could then write raw frames to the paired device.
+        # A token authenticates the caller but the channel is still plain
+        # HTTP, so loopback remains the only supported binding.
         print(
-            f"bridge: WARNING binding {args.host}:{args.port} exposes unauthenticated "
-            "Bluetooth writes to the network; use the default 127.0.0.1",
+            f"bridge: WARNING binding {args.host}:{args.port} exposes Bluetooth writes "
+            f"to the network ({'token required' if BRIDGE_TOKEN else 'no token configured'}); "
+            "use the default 127.0.0.1",
             file=sys.stderr,
         )
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)

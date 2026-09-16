@@ -15,7 +15,6 @@ if %errorlevel% neq 0 (
 
 if not exist node_modules (
     echo Installing dependencies...
-    set ELECTRON_SKIP_BINARY_DOWNLOAD=1
     call npm install
 )
 
