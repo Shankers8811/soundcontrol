@@ -77,6 +77,8 @@ freshly downloaded app — it is not hung. If SmartScreen appears, choose **More
 | **Safe Volume** | ✅ Decibel Limiter & Warnings | ✅ Interactive Volume Limiter |
 | **Find My Device** | ✅ Acoustic Locator Chirps | ✅ Left/Right/Both Audio Beacon |
 | **Diagnostics / Console**| ❌ Hidden / Unavailable | ✅ Live Hex Frame Inspector & TX/RX Logger |
+| **Battery telemetry** | ✅ Live L/R/Case Levels | ✅ Auto-Refresh Every 30s + Windows % Fallback |
+| **Capture decoding** | ❌ Hidden / Unavailable | ✅ Base64→Hex + BLE→RFCOMM Map in Diagnostics |
 
 ---
 
@@ -85,7 +87,7 @@ freshly downloaded app — it is not hung. If SmartScreen appears, choose **More
 The Windows desktop app communicates with Soundcore Bluetooth hardware over:
 
 1. **Bluetooth Classic RFCOMM (SPP)**: Bound to Channel 4 (or Channels 12/15 on Q-series over-ear models).
-2. **Local Electron-to-helper IPC**: The packaged renderer talks to the bundled Python helper over an authenticated loopback HTTP/WebSocket connection; the helper performs the RFCOMM work.
+2. **Local Electron-to-helper IPC**: The packaged renderer talks to the bundled Python helper over an authenticated loopback HTTP/WebSocket connection; the helper performs the RFCOMM work. Liveness uses the fast `/health` endpoint; `/scan` enumerates Windows PnP devices (slow on cold machines, cached 3 s) and is only called when the helper is up.
 
 ### Packet Framing & Checksum Calculation
 
@@ -118,6 +120,24 @@ Every packet transmitted between the host application and the hardware device fo
   - Mapping gesture indices (Single tap, Double tap, Triple tap, Long press) to action IDs (Volume, Play/Pause, Skip, ANC cycle, Voice Assistant).
 - **Category `0x0B` (Connectivity)**:
   - `0x84`: Dual Connection (Multipoint pairing) toggle.
+
+### Android BLE captures (decode-only)
+
+The Windows app does **not** use Web Bluetooth — Electron has no reliable BLE stack on Windows, and the bundled helper reaches hardware over RFCOMM. Android BLE captures are still documented in [PROTOCOL.md](PROTOCOL.md#appendix-a--android-ble-captures-decode-only-reference) so they can be decoded in **Diagnostics → Base64 capture → hex** and mapped to the RFCOMM frames above:
+
+| BLE capture | RFCOMM equivalent |
+|---|---|
+| `0x61` telemetry request | `01 01` handshake + `01 03` battery query |
+| `0x06` ANC toggle | `06 81` ambient frame |
+| `0x01` EQ gain array | `02 81` 8-band EQ frame |
+
+BLE frames use an XOR checksum; RFCOMM frames use the additive Σ checksum. The diagnostics console shows both, and `src/protocol/ble.ts` holds the GATT UUIDs (`ab00` service, `ab01` TX, `ab02` RX) plus the parsers.
+
+### Troubleshooting connections
+
+- **"Windows helper: not responding"** means the renderer could not reach `/health`. Restart SoundControl and check `%AppData%\soundcontrol\main.log` for `bridge started via …` or a Python startup error. The status no longer depends on the slow PnP scan, so a slow machine will not false-positive.
+- **Empty paired-device list** with the helper running means Windows has no paired RFCOMM device to enumerate. Pair in **Settings → Bluetooth & devices**, then use **Refresh paired devices** (which forces a fresh `?fresh=1` scan).
+- **Battery stuck?** The app re-queries `01 03` every 30 s while connected to real hardware and falls back to the Windows PnP percentage when protocol telemetry is unavailable.
 
 ---
 

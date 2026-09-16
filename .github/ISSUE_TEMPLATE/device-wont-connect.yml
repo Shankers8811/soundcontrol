@@ -55,8 +55,10 @@ body:
     attributes:
       label: Diagnostics — hex console and Windows log
       description: >-
-        Paste the **Console** tab contents from the app and attach the tail of
-        `%AppData%\soundcontrol\main.log`, which records whether the bundled helper started.
+        Paste the **Diagnostics** tab contents from the app, state whether the
+        connect screen shows "Windows helper: running" or "not responding",
+        and attach the tail of `%AppData%\soundcontrol\main.log`, which records
+        whether the bundled helper started (`bridge started via …`).
       render: shell
       placeholder: |
         TX 08 EE 01 01 00 00 02 ..
