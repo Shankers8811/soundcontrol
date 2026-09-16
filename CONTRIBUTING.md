@@ -7,20 +7,20 @@ product. Everyone participating is covered by the
 ## Before you write code
 
 - **Node.js 20.19+ or 22.12+** is required (Vite 8 refuses older runtimes).
-- `npm ci && npm run build` must pass. That command is the whole gate: it typechecks
-  (`tsc --noEmit`) and builds the production site.
-- `npm run dev` then open `http://localhost:5173`, or run **Try the demo** — the
-  simulator needs no hardware and is a legitimate way to review UI work.
+- `npm ci && npm run build` must pass. That command typechecks (`tsc --noEmit`)
+  and builds the renderer packaged into the Windows application.
+- Use the simulator or run the Electron shell while reviewing UI work. Hardware testing
+  requires a Windows machine with a paired Soundcore device.
 - `npm audit` should stay clean; dependency changes land in the same PR as the
   lockfile update.
 
 ## Reporting an issue
 
 Use one of the two templates — **🎧 Device won't connect** or **✨ Feature request**.
-They ask for the details that actually decide a fix: which build, which browser, what
-state the earbuds were in when you tried to connect, and the hex console output. Search
-open and closed issues first; connection reports without a transport and a log line are
-usually closed as unreproducible.
+They ask for the details that actually decide a fix: which Windows build, what state the
+earbuds were in when you tried to connect, and the hex console output. Search open and
+closed issues first; connection reports without a helper log line are usually closed as
+unreproducible.
 
 Suspected security problems are different: read
 [SECURITY.md](.github/SECURITY.md) and open a **private** report instead of an issue.
@@ -32,7 +32,7 @@ Suspected security problems are different: read
    capture — do not guess a byte and ship it as a default button
 3. Do not add analytics, accounts, or AI chat
 4. One user-visible change per PR; the template's checklist is the review criteria
-5. Keep `public/` light: icons pre-rendered at their exact manifest size, device art as
+5. Keep `public/` light: icons pre-rendered at their exact displayed sizes, device art as
    WebP at 2× the largest size it is displayed at, nothing over ~150 KB per file
 
 A PR that touches a release path (`package.json` version, `.github/workflows/`,

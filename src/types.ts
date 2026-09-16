@@ -1,4 +1,4 @@
-export type TransportKind = 'ble' | 'serial' | 'bridge' | 'sim';
+export type TransportKind = 'bridge' | 'sim';
 
 export type AncMode = 'anc' | 'adaptive' | 'transparency' | 'normal';
 

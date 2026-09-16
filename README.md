@@ -22,14 +22,12 @@
 | 🪟 **Windows app (installer)** | [**Download the latest `SoundControl-Setup.exe`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup.exe) | NSIS setup, Start-menu & desktop shortcuts. Ships its own built-in Bluetooth runtime — no Python needed |
 
 - All builds and release notes live on the **[Releases page](https://github.com/Shankers8811/soundcontrol/releases/latest)**.
-- The same **Download for Windows** button is built into the app under **Settings → About → Desktop extras**.
+- The same **Download for Windows** button is built into the app under **Settings → About → Windows release**.
 - Windows SmartScreen may show an unsigned-publisher prompt on first run (the app is free and not code-signed); choose **More info → Run anyway** — see [Code signing & SmartScreen](#-code-signing--smartscreen) for how to make that warning disappear.
 
-**🔎 Connecting earbuds on Windows (important).** A browser-style scan only sees earbuds that
-are in **pairing mode** — buds already connected to your laptop are invisible to it, and the
-desktop app cannot use Web Bluetooth at all (Electron implements it on Linux only). The desktop
-app instead talks to devices **already paired with Windows** through a small local bridge that
-runs on a Python runtime **bundled inside the installer** — no Python to install, nothing to configure:
+**🔎 Connecting earbuds on Windows (important).** SoundControl talks to devices **already paired
+with Windows** through a small local bridge that runs on a Python runtime **bundled inside the
+installer** — no Python to install, nothing to configure:
 
 1. Pair the earbuds in **Settings → Bluetooth & devices** and leave them connected.
 2. Launch SoundControl → **Add device** → **Refresh paired devices**. Your paired buds are listed
@@ -38,8 +36,8 @@ runs on a Python runtime **bundled inside the installer** — no Python to insta
    The helper's start-up is logged to `%AppData%\soundcontrol\main.log`.
    The helper only listens on `127.0.0.1`, answers the app's own origins (never
    `Access-Control-Allow-Origin: *`), and requires a per-session token the desktop
-   app mints on every launch — so a random web page can neither enumerate your paired
-   devices nor write to them — see [SECURITY.md](.github/SECURITY.md).
+   app mints on every launch — so an untrusted local caller can neither enumerate your
+   paired devices nor write to them — see [SECURITY.md](.github/SECURITY.md).
 
 The very first launch after installing can take a few extra seconds while Windows inspects a
 freshly downloaded app — it is not hung. If SmartScreen appears, choose **More info → Run anyway**
@@ -61,16 +59,16 @@ freshly downloaded app — it is not hung. If SmartScreen appears, choose **More
 
 ---
 
-## 🎧 Complete Android App Feature Parity
+## 🎧 Windows desktop feature coverage
 
-| Feature | Official Android App | SoundControl (Web & Windows) |
+| Feature | Official Android App | SoundControl for Windows |
 |---|:---:|:---:|
 | **Ambient Sound (ANC)** | ✅ 5-Level Manual, Adaptive, Multi-Scene | ✅ Level 1–5, Adaptive, Transport/Outdoor/Indoor |
 | **Transparency Mode** | ✅ Fully Transparent & Talk Mode | ✅ Fully Transparent & Talk Mode |
 | **Equalizer Presets** | ✅ 22 Soundcore Curated Presets | ✅ All 22 Exact Soundcore Presets |
 | **Custom Graphic EQ** | ✅ 8-Band Slider Curve (-6 to +6 dB) | ✅ Interactive 8-Band SVG Bezier EQ |
 | **BassUp™ Technology** | ✅ Dynamic Low-End Boost | ✅ Dynamic BassUp Command & Curve |
-| **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ✅ Interactive Left/Right Web Audio Test |
+| **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ✅ Interactive Left/Right Audio Test |
 | **Superior Sleep** | ✅ Ambient White Noise Mixer | ✅ Procedural Nature Sound Synthesizer |
 | **Touch Remapping** | ✅ 1-Tap, 2-Tap, 3-Tap, Hold per ear | ✅ Left & Right Earbud Gestures |
 | **Game Mode** | ✅ 80ms Low Latency | ✅ 0x87 Packet Low-Latency Switch |
@@ -84,10 +82,10 @@ freshly downloaded app — it is not hung. If SmartScreen appears, choose **More
 
 ## 🔬 Protocol Reverse Engineering & Technical Architecture
 
-The official Soundcore Android application (`com.oceanwing.soundcore`) communicates with Soundcore Bluetooth hardware using two primary protocols:
+The Windows desktop app communicates with Soundcore Bluetooth hardware over:
 
-1. **Bluetooth Low Energy (BLE)**: Custom GATT service UUID `0000ffe0-0000-1000-8000-00805f9b34fb` with characteristic `0000ffe1-0000-1000-8000-00805f9b34fb` (and companion notify UUIDs).
-2. **Bluetooth Classic RFCOMM (SPP)**: Bound to Channel 4 (or Channels 12/15 on Q-series over-ear models).
+1. **Bluetooth Classic RFCOMM (SPP)**: Bound to Channel 4 (or Channels 12/15 on Q-series over-ear models).
+2. **Local Electron-to-helper IPC**: The packaged renderer talks to the bundled Python helper over an authenticated loopback HTTP/WebSocket connection; the helper performs the RFCOMM work.
 
 ### Packet Framing & Checksum Calculation
 
@@ -131,18 +129,20 @@ Every packet transmitted between the host application and the hardware device fo
   bundled Python runtime (`python-embed/`, fetched automatically by `npm run fetch:python-embed`
   during `npm run build:win`), so desktop users install nothing extra.
 
-### Setup & Development Server
+### Development
 ```bash
 npm install
 npm run dev
 ```
-Preview at `http://localhost:5173`.
 
-### Build for Web Production
+This starts the local Vite renderer used while developing the Windows Electron app.
+Use `npm run electron` with the renderer available when testing the desktop shell.
+
+### Build the renderer
 ```bash
 npm run build
 ```
-Generates production assets in `dist/`.
+Generates the renderer assets in `dist/` for packaging into the Windows app.
 
 ### Package Windows Desktop App
 ```bash

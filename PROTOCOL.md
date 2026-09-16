@@ -1,9 +1,8 @@
 # SoundControl protocol
 
-Soundcore companion traffic is a thin binary framing layer over **Classic Bluetooth RFCOMM**.
-Web Bluetooth (BLE GATT) can read the standard Battery service and sometimes a vendor
-characteristic, but **ANC is not accepted on GATT** on the units we care about. The DSP
-socket is RFCOMM — commonly **channel 4** (buds), **12** or **15** (some over-ears).
+SoundControl uses a thin binary framing layer over **Classic Bluetooth RFCOMM**.
+The DSP socket is commonly **channel 4** (buds), **12** or **15** (some over-ears).
+The Windows desktop renderer reaches RFCOMM through the bundled local Python helper.
 
 Service UUID (when advertised): `0cf12d31-fac3-4553-bd80-d6832e7b3947`
 
@@ -183,12 +182,12 @@ Dual disable   08 EE 00 00 00 0B 84 0B 00 00 90
 
 A codec change typically forces an A2DP reconnect.
 
-## Transports SoundControl implements
+## Windows transport
 
-1. **Web Bluetooth** — `navigator.bluetooth.requestDevice`, Battery GATT `0x180F`, opportunistic write to vendor characteristics. ANC writes often fail here; that is expected.
-2. **Web Serial** — virtual COM / SPP (`navigator.serial`).
-3. **`soundcore_bridge.py`** — stdlib HTTP + WebSocket on `:8765`, `socket.AF_BLUETOOTH` / `BTPROTO_RFCOMM`.
-4. **Simulator** — local ACK generator so the UI is usable without hardware.
+1. **`soundcore_bridge.py`** — stdlib HTTP + WebSocket on loopback `:8765`, plus
+   `socket.AF_BLUETOOTH` / `BTPROTO_RFCOMM` for the paired Windows device.
+2. **Electron renderer** — authenticated local IPC to the helper.
+3. **Simulator** — local ACK generator so the UI is usable without hardware.
 
 ## Target units
 

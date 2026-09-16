@@ -1,54 +1,41 @@
-# Put SoundControl on GitHub (no Node on your PC)
+# Put SoundControl on GitHub (Windows desktop only)
 
-> **Status:** `github.com/Shankers8811/soundcontrol` exists, but the public web deployment is
-> intentionally paused while the Pages configuration is cleaned up. Day-to-day changes go
-> through a normal PR — see [CONTRIBUTING.md](CONTRIBUTING.md).
+This repository publishes one supported product: the SoundControl Windows desktop
+installer. The browser application and GitHub Pages deployment have been removed.
 
-The public README currently documents the Windows desktop app only. Do not advertise or rely
-on a `github.io` web-app URL until the Pages deployment is deliberately relaunched.
+## Create or update the repository
 
-You still need **Chrome, Edge, or Brave on a computer** — not the phone soundcore app, and not this Arena preview.
+1. Create a public GitHub repository named `soundcontrol`.
+2. Push the source, including `.github/workflows/`, `package.json`, `src/`, and `public/`.
+3. Keep GitHub Pages disabled; there is no public web deployment for this project.
+4. Open **Actions** and allow the Windows build workflow if GitHub asks for approval.
 
-## 1. Create the repo
+## Build locally on Windows
 
-1. Sign in at [github.com](https://github.com)
-2. **New repository**
-3. Name: `soundcontrol` (any name is fine)
-4. Public
-5. **Do not** add a README if you will upload this project zip
-6. Create
+Install Node.js 22 and Python 3.9+ only if you are building the helper from source. Then:
 
-## 2. Upload this project
-
-Easiest without Git:
-
-1. On the empty repo page, click **uploading an existing file**
-2. Drop **everything** from `soundcontrol-local.zip` (unzip first): `package.json`, `src/`, `public/`, `.github/`, etc.
-3. Commit
-
-Or with Git:
-
-```bash
-git init
-git add .
-git commit -m "SoundControl"
-git branch -M main
-git remote add origin https://github.com/YOUR_USER/soundcontrol.git
-git push -u origin main
+```cmd
+npm install
+npm run build:win
 ```
 
-## 3. Pages deployment (when the web app is ready)
+The NSIS installer is written to `release/`. The packaged installer includes its own
+Python runtime, so people installing the release do not need Python.
 
-The web app is not being launched from this repository right now. Before relaunching it:
+## Publish
 
-1. Repo **Settings** → **Pages**
-2. Choose exactly one publisher: **GitHub Actions**
-3. Restore or add a reviewed Pages workflow, then wait for that workflow to go green
-4. Verify the generated site before adding its URL back to the README
+Tag the commit on `main` and push the tag:
 
-Do not enable both **Deploy from a branch** and an Actions deployment for the same site.
+```bash
+git tag vX.Y.Z main
+git push origin vX.Y.Z
+```
 
-## What GitHub cannot do
+The **Release Windows** workflow builds on `windows-latest` and publishes exactly one
+installer asset named `SoundControl-Setup.exe`.
 
-GitHub hosts the source and Windows release artifacts. It cannot talk to Classic Bluetooth RFCOMM;
-the Windows desktop installer starts the local helper that provides that hardware path.
+## What the Windows app does
+
+SoundControl uses the bundled local helper to enumerate Bluetooth devices already paired
+with Windows, connect through Classic Bluetooth RFCOMM, and expose Soundcore controls.
+GitHub hosts the source and release files; it is not used to host or run the app.
