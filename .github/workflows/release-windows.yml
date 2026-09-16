@@ -75,6 +75,9 @@ jobs:
         env:
           SOUNDCONTROL_PYTHON_REQUIRED: '1'
         run: npm run build:win -- --publish never
+      - name: Verify the installer upgrades an existing app
+        shell: pwsh
+        run: ./scripts/smoke-windows-upgrade.ps1
       - name: Verify the bundled Python runtime shipped
         shell: bash
         run: |
