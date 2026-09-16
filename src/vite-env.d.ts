@@ -75,3 +75,12 @@ interface Navigator {
   bluetooth?: Bluetooth;
   serial?: Serial;
 }
+
+interface Window {
+  // Exposed by preload.cjs inside the packaged desktop app only.
+  electronAPI?: {
+    isElectron: boolean;
+    platform: string;
+    version: string;
+  };
+}
