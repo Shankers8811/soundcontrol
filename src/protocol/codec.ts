@@ -23,8 +23,14 @@ export function toHex(data: ArrayLike<number>, sep = ' '): string {
 }
 
 export function fromHex(hex: string): Uint8Array {
-  const clean = hex.replace(/[^0-9a-fA-F]/g, '');
+  // Accept the formats people commonly paste into the diagnostics console,
+  // but do not silently discard arbitrary characters: "08 zz" previously
+  // became a valid one-byte payload and could send the wrong frame.
+  const clean = hex.replace(/0x/gi, '').replace(/[\s,:-]/g, '');
   if (!clean.length) return new Uint8Array();
+  if (/[^0-9a-fA-F]/.test(clean)) {
+    throw new Error('Hex payload contains an invalid character');
+  }
   if (clean.length % 2) {
     throw new Error('Hex payload has an odd number of digits');
   }
@@ -41,7 +47,8 @@ export function verifyFrame(data: ArrayLike<number>): boolean | null {
 }
 
 export function dbToByte(db: number): number {
-  const clamped = Math.max(-6, Math.min(6, db));
+  const safe = Number.isFinite(db) ? db : 0;
+  const clamped = Math.max(-6, Math.min(6, safe));
   return Math.max(0x3c, Math.min(0xb4, Math.round(120 + clamped * 10)));
 }
 

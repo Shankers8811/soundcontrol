@@ -20,6 +20,7 @@ import {
   buildEqPreset,
   buildGameMode,
   buildResetDevice,
+  buildSpatialAudio,
   describePacket,
 } from '../protocol/packets';
 import type { EqPreset } from '../protocol/presets';
@@ -216,6 +217,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (prompts) await beep('ok');
           return;
         }
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg);
+        pushLog('sys', '', msg);
         throw err;
       }
     },
@@ -326,8 +330,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setSpatialAudio = useCallback(
     async (on: boolean) => {
       setSpatialAudioState(on);
-      // In Soundcore protocol, spatial audio / 3D sound is opcode category 0x02, type 0x86
-      await write(new Uint8Array([0x08, 0xee, 0x00, 0x00, 0x00, 0x02, 0x86, 0x0a, 0x00, on ? 0x01 : 0x00]), `Spatial Audio ${on ? 'on' : 'off'}`);
+      await write(buildSpatialAudio(on), `Spatial Audio ${on ? 'on' : 'off'}`);
       if (prompts) await beep('ok');
     },
     [prompts, write],
@@ -360,12 +363,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [pushLog]);
 
   const setAnc = useCallback(
-    async (mode: AncMode, level = ancLevel, scene = ancScene) => {
+    async (mode: AncMode, level?: number, scene = ancScene) => {
+      // Adaptive ANC uses level 0 on TWS models. Keep that protocol value in
+      // state too, otherwise the UI jumps back to the old level on the next
+      // render and the following ANC command can use stale data.
+      const appliedLevel = mode === 'adaptive' ? 0 : level ?? ancLevel;
       setAncMode(mode);
-      if (level) setAncLevel(level);
-      if (scene) setAncScene(scene);
-      const pkt = buildAnc(profile.family, mode, level, scene);
-      await write(pkt, `ANC ${mode}${profile.family === 'tws' ? ` L${level}` : ` ${scene}`}`);
+      setAncLevel(appliedLevel);
+      setAncScene(scene);
+      const pkt = buildAnc(profile.family, mode, appliedLevel, scene);
+      await write(pkt, `ANC ${mode}${profile.family === 'tws' ? ` L${appliedLevel}` : ` ${scene}`}`);
       if (prompts) await beep('mode');
     },
     [ancLevel, ancScene, profile.family, prompts, write],
