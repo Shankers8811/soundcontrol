@@ -34,11 +34,26 @@
 
 | Download | File | Notes |
 |---|---|---|
-| 🪟 **Windows app (installer)** | [`SoundControl-Setup-1.0.0.exe`](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup-1.0.0.exe) | NSIS setup, Start-menu & desktop shortcuts |
+| 🪟 **Windows app (installer)** | [`SoundControl-Setup-1.0.1.exe`](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup-1.0.1.exe) | NSIS setup, Start-menu & desktop shortcuts |
 
 - All builds and release notes live on the **[Releases page](https://github.com/Shankers8811/soundcontrol/releases/latest)**.
 - The same **Download for Windows** button is built into the app under **Settings → About → Desktop extras**.
 - Windows SmartScreen may show an unsigned-publisher prompt on first run (the app is free and not code-signed); choose **More info → Run anyway** — see [Code signing & SmartScreen](#-code-signing--smartscreen) for how to make that warning disappear.
+
+**🔎 Connecting earbuds on Windows (important).** A browser-style scan only sees earbuds that
+are in **pairing mode** — buds already connected to your laptop are invisible to it, and the
+desktop app cannot use Web Bluetooth at all (Electron implements it on Linux only). The desktop
+app instead talks to devices **already paired with Windows** through a tiny local Python bridge:
+
+1. Install Python once: `winget install -e --id Python.Python.3.12` (or the python.org installer with “Add to PATH”).
+2. Pair the earbuds in **Settings → Bluetooth & devices** and leave them connected.
+3. Launch SoundControl → **Add device** → **Refresh paired devices**. Your paired buds are listed
+   automatically (even while playing audio) — tap to connect. If the list stays empty, use the
+   **Connect by MAC** field (the address appears in Settings → device → Device properties).
+   Bridge start-up is logged to `%AppData%\soundcontrol\main.log`.
+
+Prefer no installs? Open the [web app](https://shankers8811.github.io/soundcontrol/) in Chrome
+or Edge and put the earbuds in pairing mode instead (open the case, hold its button ~3s).
 
 **Or build/run it yourself from source.** Run directly on Windows with hardware Bluetooth support:
   ```cmd
@@ -122,7 +137,8 @@ Every packet transmitted between the host application and the hardware device fo
 
 ### Prerequisites
 - Node.js 18+ (Node 20 or 22 recommended)
-- Python 3.9+ (Optional, for the Classic Bluetooth RFCOMM bridge)
+- **Python 3.9+** — required for earbud control in the **Windows desktop app**: it powers the local
+  RFCOMM bridge that finds earbuds already paired with Windows. The web app in Chrome/Edge needs no Python.
 
 ### Setup & Development Server
 ```bash
@@ -150,8 +166,8 @@ on `windows-latest`, creates a GitHub Release, and attaches the single
 `SoundControl-Setup-<version>.exe` asset:
 
 ```bash
-git tag v1.0.0 main
-git push origin v1.0.0
+git tag v1.0.1 main
+git push origin v1.0.1
 ```
 
 The in-app download button and the links above resolve through

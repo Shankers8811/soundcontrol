@@ -75,21 +75,114 @@ function bridgeScriptPath() {
   return path.join(__dirname, 'soundcore_bridge.py');
 }
 
+// Windows has no guaranteed 'python' on PATH — it may be missing entirely or be
+// the Microsoft Store stub that exits immediately. Try candidates in order and
+// keep the first interpreter that stays alive long enough to serve the bridge.
+function pythonCandidates() {
+  if (process.platform === 'win32') {
+    return [
+      { cmd: 'py', args: ['-3'] },
+      { cmd: 'py', args: [] },
+      { cmd: 'python', args: [] },
+      { cmd: 'python3', args: [] },
+    ];
+  }
+  return [
+    { cmd: 'python3', args: [] },
+    { cmd: 'python', args: [] },
+  ];
+}
+
 function startBridgeIfAvailable() {
+  const scriptPath = bridgeScriptPath();
   try {
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-    const scriptPath = bridgeScriptPath();
-    bridgeProcess = spawn(pythonCmd, [scriptPath, '--host', '127.0.0.1', '--port', '8765']);
-    bridgeProcess.stderr.on('data', (d) => {
-      log(`[bridge] ${d}`);
+    if (!fs.existsSync(scriptPath)) {
+      log(`bridge script not found at ${scriptPath}; skipping helper`);
+      return;
+    }
+  } catch {
+    /* proceed optimistically if existsSync misbehaves */
+  }
+
+  const candidates = pythonCandidates();
+  const tryFrom = (i) => {
+    if (i >= candidates.length) {
+      onBridgeMissing();
+      return;
+    }
+    const { cmd, args } = candidates[i];
+    let child;
+    try {
+      child = spawn(cmd, [...args, scriptPath, '--host', '127.0.0.1', '--port', '8765'], {
+        windowsHide: true,
+      });
+    } catch (err) {
+      log(`spawn ${cmd} threw: ${err}`);
+      tryFrom(i + 1);
+      return;
+    }
+
+    // phase: 'probing' → 'promoted' (usable) | 'failed' | 'done' (exited later).
+    // One state machine keeps error/exit/timeout from double-advancing candidates.
+    let phase = 'probing';
+    const fail = (why) => {
+      if (phase !== 'probing') return;
+      phase = 'failed';
+      log(`bridge candidate ${cmd} failed (${why})`);
+      try {
+        child.kill();
+      } catch {
+        /* already gone */
+      }
+      tryFrom(i + 1);
+    };
+    child.on('error', (err) => fail(err.code || err.message));
+    child.stderr.on('data', (d) => log(`[bridge] ${String(d).trimEnd()}`));
+    child.stdout.on('data', (d) => log(`[bridge] ${String(d).trimEnd()}`));
+    child.on('exit', (code) => {
+      if (phase === 'probing') fail(`exited with code ${code}`);
+      else if (phase === 'promoted') {
+        phase = 'done';
+        log(`bridge exited with code ${code}`);
+        if (bridgeProcess === child) bridgeProcess = null;
+      }
     });
-    bridgeProcess.on('error', () => {
-      // Python not installed or not in PATH, fallback to Web Bluetooth
-      log('bridge unavailable (python not found); falling back to Web Bluetooth');
-      bridgeProcess = null;
+    // Store stubs die almost instantly; real interpreters keep serving.
+    setTimeout(() => {
+      if (phase !== 'probing') return;
+      if (child.exitCode === null && child.signalCode === null) {
+        phase = 'promoted';
+        bridgeProcess = child;
+        log(`bridge started via ${cmd}`);
+      } else {
+        fail(`exited with code ${child.exitCode}`);
+      }
+    }, 2000);
+  };
+  tryFrom(0);
+}
+
+// If no Python helper could start at all, tell the Windows user once — without
+// it there is no way to find earbuds already connected to the machine.
+function onBridgeMissing() {
+  log('no usable Python interpreter found — RFCOMM bridge disabled');
+  if (process.platform !== 'win32' || !app.isPackaged) return;
+  try {
+    const flag = path.join(app.getPath('userData'), 'bridge-help-shown');
+    if (fs.existsSync(flag)) return;
+    fs.mkdirSync(path.dirname(flag), { recursive: true });
+    fs.writeFileSync(flag, String(Date.now()));
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Desktop pairing needs Python',
+      message:
+        'SoundControl can control earbuds that are already paired with Windows, but the local bridge requires Python 3.\n\n' +
+        'Install Python once, then restart SoundControl:\n    winget install -e --id Python.Python.3.12\n\n' +
+        'Alternatively, open https://shankers8811.github.io/soundcontrol/ in Chrome or Edge and pair earbuds that are in pairing mode (no Python needed).',
+      buttons: ['OK'],
     });
   } catch {
-    bridgeProcess = null;
+    /* guidance is best-effort */
   }
 }
 
