@@ -188,7 +188,65 @@ def recvn(sock: socket.socket, n: int) -> bytes:
     return buf
 
 
+def _normalize_mac(raw: str) -> str:
+    """Coerce 'a4c494123456' or 'A4:C4:94:12:34:56' into upper colon form; '' if invalid."""
+    hexed = "".join(ch for ch in raw if ch in "0123456789abcdefABCDEF").upper()
+    if len(hexed) != 12:
+        return ""
+    return ":".join(hexed[i : i + 2] for i in range(0, 12, 2))
+
+
+def _parse_windows_scan_output(text: str) -> list[dict[str, str]]:
+    """Parse the 'MAC|Name' lines produced by the PowerShell snippet below."""
+    devices: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        mac_part, _, name = line.partition("|")
+        mac = _normalize_mac(mac_part)
+        if not mac or mac in seen:
+            continue
+        seen.add(mac)
+        devices.append({"mac": mac, "name": name.strip() or mac})
+    return devices
+
+
+def _windows_paired_devices() -> list[dict[str, str]]:
+    """Enumerate devices Windows has paired, with their MAC addresses.
+
+    HKLM\\SYSTEM\\CurrentControlSet\\Services\\BTHPORT\\Parameters\\Devices holds one
+    subkey per paired classic Bluetooth device: the key name is the BD_ADDR and the
+    (UTF-16) Name value the friendly name. Crucially this also lists earbuds that
+    are currently *connected* and playing audio — devices a BLE scan can never see,
+    which makes this exactly the right set for the RFCOMM bridge (it can only reach
+    paired devices anyway). PowerShell ships with Windows, so the bridge stays
+    zero-dependency.
+    """
+    script = (
+        "Get-ChildItem 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\BTHPORT\\Parameters\\Devices' "
+        "| ForEach-Object { "
+        "$p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue; "
+        "$n = if ($p.Name -is [byte[]]) { [Text.Encoding]::Unicode.GetString($p.Name).Trim([char]0) } "
+        "elseif ($null -ne $p.Name) { [string]$p.Name } else { [string]$p.'(default)' }; "
+        "\"{0}|{1}\" -f $_.PSChildName, $n }"
+    )
+    try:
+        raw = subprocess.check_output(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return []
+    return _parse_windows_scan_output(raw)
+
+
 def scan_devices() -> list[dict[str, str]]:
+    if sys.platform == "win32":
+        return _windows_paired_devices()
     out: list[dict[str, str]] = []
     try:
         raw = subprocess.check_output(
