@@ -112,6 +112,7 @@ class Bridge:
     def close(self) -> None:
         s = self.sock
         self.sock = None
+        self.mac = ""
         if s:
             try:
                 s.close()
@@ -119,10 +120,16 @@ class Bridge:
                 pass
 
     def _reader(self) -> None:
+        # Keep the socket identity local. A reconnect can replace
+        # self.sock while the previous reader thread is unwinding; the old
+        # thread must not consume or clear the new connection.
+        sock = self.sock
+        if sock is None:
+            return
         buf = b""
-        while self.sock:
+        while self.sock is sock:
             try:
-                chunk = self.sock.recv(1024)
+                chunk = sock.recv(1024)
             except socket.timeout:
                 continue
             except OSError:
@@ -131,25 +138,75 @@ class Bridge:
                 break
             buf += chunk
             while True:
-                frame, buf = split_frame(buf)
+                frame, remainder = split_frame(buf)
                 if frame is None:
+                    # split_frame may discard noise while it resynchronizes.
+                    if remainder != buf:
+                        buf = remainder
+                        continue
                     break
-                self.broadcast({"type": "rx", "hex": frame.hex().upper()})
+                buf = remainder
+                if frame:
+                    self.broadcast({"type": "rx", "hex": frame.hex().upper()})
+        if self.sock is sock:
+            self.sock = None
+            self.mac = ""
         self.broadcast({"type": "sys", "error": "RFCOMM closed"})
 
 
+def _frame_checksum(data: bytes) -> int:
+    return sum(data) & 0xFF
+
+
 def split_frame(buf: bytes) -> tuple[Optional[bytes], bytes]:
-    if len(buf) < 10:
+    """Extract one validated Soundcore frame from a stream buffer.
+
+    RFCOMM is a byte stream, so reads can split a frame or contain several
+    frames. The current Soundcore families put the total frame length in
+    bytes 7–8, but older captures are not always consistent. Trust a sane
+    length only when its checksum validates; otherwise scan for a checksum
+    boundary instead of consuming an arbitrary 64-byte chunk (which used to
+    merge adjacent responses and lose every frame after it).
+
+    ``b''`` is a progress sentinel: leading noise was discarded, but there is
+    not yet a complete frame to return.
+    """
+    if len(buf) < 2:
         return None, buf
-    if buf[0] in (0x08, 0x09) and buf[1] in (0xEE, 0xFF):
-        # Prefer explicit little-endian total_len when it looks sane.
-        total = buf[7] | (buf[8] << 8)
-        if 10 <= total <= 512 and total <= len(buf):
-            return buf[:total], buf[total:]
-        # Classic frames: consume a reasonable chunk (up to 64) ending at checksum.
-        take = min(len(buf), 64)
-        return buf[:take], buf[take:]
-    return buf[:1], buf[1:]
+
+    header_at = next(
+        (i for i in range(len(buf) - 1) if buf[i] in (0x08, 0x09) and buf[i + 1] in (0xEE, 0xFF)),
+        None,
+    )
+    if header_at is None:
+        # Keep a possible first half of the two-byte magic for the next read.
+        return b"", buf[-1:] if buf[-1] in (0x08, 0x09) else b""
+    if header_at:
+        return b"", buf[header_at:]
+    if len(buf) < 9:
+        return None, buf
+
+    indicated = buf[7] | (buf[8] << 8)
+    if 10 <= indicated <= 512 and len(buf) >= indicated:
+        candidate = buf[:indicated]
+        if _frame_checksum(candidate[:-1]) == candidate[-1]:
+            return candidate, buf[indicated:]
+
+    # Fallback for legacy frames with a missing or inaccurate length field.
+    # A few command families advertise a length one byte larger than the
+    # actual frame (for example the captured 0x0E TWS ANC frame), so do not
+    # wait forever for the indicated length when the checksum already closes
+    # a shorter frame.
+    limit = min(len(buf), 512)
+    for end in range(10, limit + 1):
+        if _frame_checksum(buf[: end - 1]) == buf[end - 1]:
+            return buf[:end], buf[end:]
+
+    # A complete frame may still be arriving. If the buffer is unreasonably
+    # large, drop one byte so a later valid header can be found.
+    if len(buf) > 512:
+        return b"", buf[1:]
+    return None, buf
 
 
 def b64sha(key: str) -> str:

@@ -75,7 +75,7 @@ export function buildEq(presetIndex: number, bandsDb: number[]): Uint8Array {
     0x08, 0xee, 0x00, 0x00, 0x00, 0x02, 0x81, 0x14, 0x00,
     presetIndex & 0xff,
     0x00,
-    ...bandsDb.slice(0, 8).map(dbToByte),
+    ...Array.from({ length: 8 }, (_, i) => dbToByte(bandsDb[i] ?? 0)),
   ];
   return withChecksum(body);
 }
@@ -96,6 +96,11 @@ export function buildGameMode(on: boolean): Uint8Array {
 /** BassUp dynamic bass boost command */
 export function buildBassUp(on: boolean): Uint8Array {
   return withChecksum([0x08, 0xee, 0x00, 0x00, 0x00, 0x02, 0x82, 0x0b, 0x00, on ? 0x01 : 0x00]);
+}
+
+/** 3D/spatial audio toggle. The frame length byte includes the checksum. */
+export function buildSpatialAudio(on: boolean): Uint8Array {
+  return withChecksum([0x08, 0xee, 0x00, 0x00, 0x00, 0x02, 0x86, 0x0a, 0x00, on ? 0x01 : 0x00]);
 }
 
 /** Find My Device acoustic beacon command */
