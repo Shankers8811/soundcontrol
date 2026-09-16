@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc --noEmit && vite build",
-    "test": "python3 -m unittest discover -s tests -v",
+    "test": "npm run test:device-profiles && npm run test:framing",
+    "test:device-profiles": "node --experimental-strip-types --test tests/devices.test.ts",
+    "test:framing": "python3 -m unittest discover -s tests -v",
     "electron": "electron electron-main.cjs",
     "build:win": "npm run build && electron-builder --win",
     "bridge": "python3 soundcore_bridge.py",

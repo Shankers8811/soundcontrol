@@ -73,6 +73,14 @@ export interface DeviceProfile {
   /** Raw Soundcore battery levels are often 0..5 or 0..10, not percentages. */
   batteryMax: number;
   names: string[];
+  /**
+   * True when the capability flags were derived from the product family and
+   * published specs rather than confirmed on real hardware. The official app
+   * keeps per-device feature data server-side, so these profiles cannot be
+   * verified from its APK. Surfaced in the UI instead of being presented as
+   * fact.
+   */
+  inferred?: boolean;
 }
 
 export interface LogEntry {
