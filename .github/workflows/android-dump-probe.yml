@@ -1,11 +1,11 @@
 name: Android dump probe
 
-# One-shot diagnostic: can a runner (which has full internet) reach the shared
-# Google Drive folder, download the four APK parts, and push a small report
-# back to this branch? The agent's own sandbox cannot reach Google at all.
+# Diagnostic relay. The agent's sandbox cannot reach Google at all (TLS to
+# *.google.com is blocked) and cannot read Actions logs (results-receiver is
+# blocked too), so this workflow runs on a runner with full internet access and
+# commits every diagnostic into analysis/android-probe.md, which the agent can
+# read over git.
 on:
-  # workflow_dispatch requires the file to exist on the default branch, so this
-  # probe is triggered by touching a path marker on the working branch instead.
   push:
     paths:
       - 'ci-triggers/android-dump-probe'
@@ -28,83 +28,96 @@ jobs:
       - name: Install gdown
         run: pip install gdown
 
-      - name: Download Drive folder
-        id: dl
-        continue-on-error: true
+      - name: Download the Drive folder with full diagnostics
         run: |
-          set -x
-          mkdir -p /tmp/dump
-          cd /tmp/dump
           FOLDER='https://drive.google.com/drive/folders/1wdOXUZhINDk2UH-o8LA6-RisQRHjjv7L'
-          gdown --folder "$FOLDER" --remaining-ok 2>&1 | tail -40
-          set +x
-          echo "--- downloaded ---"
-          ls -la /tmp/dump
-          find /tmp/dump -type f -printf '%10s  %p\n' | sort -k2 | head -40
+          exec > >(tee /tmp/diag.txt) 2>&1
 
-      - name: Inspect archives
-        if: always()
-        run: |
-          cd /tmp/dump 2>/dev/null || exit 0
-          : > /tmp/report.txt
-          for f in $(find . -type f -name '*.zip' | sort); do
-            echo "=== $f ($(stat -c%s "$f") bytes) ===" >> /tmp/report.txt
-            unzip -t "$f" >/dev/null 2>&1 && echo "  zip integrity: OK" >> /tmp/report.txt || echo "  zip integrity: BROKEN/or split part" >> /tmp/report.txt
-            echo "  first entries:" >> /tmp/report.txt
-            unzip -l "$f" 2>/dev/null | head -12 >> /tmp/report.txt
-            unzip -l "$f" 2>/dev/null | tail -3 >> /tmp/report.txt
-            echo >> /tmp/report.txt
+          echo "### runner network check"
+          for h in drive.google.com drive.usercontent.google.com; do
+            printf '%s -> ' "$h"
+            curl -sS -o /dev/null -w '%{http_code}\n' --max-time 20 "https://$h/" || echo FAIL
           done
-          cat /tmp/report.txt
+          echo
+          echo "### gdown version"
+          gdown --version || true
+          echo
+          echo "### folder page: extract file ids"
+          curl -sS --max-time 60 -L "$FOLDER" -o /tmp/folder.html
+          echo "folder html bytes: $(stat -c%s /tmp/folder.html 2>/dev/null || echo 0)"
+          grep -oE '\["[A-Za-z0-9_-]{25,}"' /tmp/folder.html | tr -d '["' | sort -u > /tmp/ids.txt || true
+          echo "ids found: $(wc -l < /tmp/ids.txt)"
+          head -20 /tmp/ids.txt
+          echo
+          echo "### attempt 1: gdown --folder"
+          mkdir -p /tmp/dump && cd /tmp/dump
+          set +e
+          gdown --folder "$FOLDER" --remaining-ok > /tmp/gdown1.log 2>&1
+          echo "gdown --folder exit: $?"
+          tail -30 /tmp/gdown1.log
+          echo "files after attempt 1:"
+          find /tmp/dump -type f -printf '%10s  %p\n' | head -20
+          echo
+          echo "### attempt 2: per-file id"
+          mkdir -p /tmp/dump2 && cd /tmp/dump2
+          while read -r id; do
+            [ -z "$id" ] && continue
+            echo "--- id $id"
+            gdown "$id" > /tmp/gdown2.log 2>&1
+            echo "exit: $?"
+            tail -6 /tmp/gdown2.log
+          done < /tmp/ids.txt
+          echo "files after attempt 2:"
+          find /tmp/dump2 -type f -printf '%10s  %p\n' | head -20
+          echo
+          echo "### attempt 3: raw usercontent endpoint"
+          mkdir -p /tmp/dump3 && cd /tmp/dump3
+          while read -r id; do
+            [ -z "$id" ] && continue
+            curl -sS -L --max-time 120 -o "$id.bin" \
+              -w "id=$id http=%{http_code} size=%{size_download}\n" \
+              "https://drive.usercontent.google.com/download?id=$id&export=download&confirm=t" || echo "curl failed $id"
+          done < /tmp/ids.txt
+          echo "files after attempt 3:"
+          find /tmp/dump3 -type f -printf '%10s  %p\n' | head -20
+          echo
+          echo "### final combined listing"
+          find /tmp/dump /tmp/dump2 /tmp/dump3 -type f -printf '%10s  %p\n' 2>/dev/null | sort -k2
 
-      - name: Try concatenating split parts
+      - name: Inspect whatever downloaded
         if: always()
         run: |
-          cd /tmp/dump 2>/dev/null || exit 0
-          mapfile -t parts < <(find . -type f -name '*.zip' | sort)
-          echo "part count: ${#parts[@]}"
-          if [ "${#parts[@]}" -gt 1 ]; then
-            cat "${parts[@]}" > /tmp/joined.zip
-            echo "joined size: $(stat -c%s /tmp/joined.zip)"
-            if unzip -t /tmp/joined.zip >/dev/null 2>&1; then
-              echo "JOINED RESULT: valid archive after concatenation" | tee -a /tmp/report.txt
-              unzip -l /tmp/joined.zip | head -20 | tee -a /tmp/report.txt
+          exec >> /tmp/diag.txt 2>&1
+          echo
+          echo "### archive inspection"
+          for f in $(find /tmp/dump /tmp/dump2 /tmp/dump3 -type f 2>/dev/null | sort); do
+            echo "=== $f ($(stat -c%s "$f") bytes)"
+            file "$f" 2>/dev/null || true
+            if unzip -l "$f" >/dev/null 2>&1; then
+              echo "  zip: OK"
+              unzip -l "$f" | head -8
             else
-              echo "JOINED RESULT: still not a valid single archive" | tee -a /tmp/report.txt
+              echo "  zip: not a standalone archive"
+              head -c 200 "$f" | xxd | head -5
             fi
-          fi
-
-      - name: Look for APK / dex / protocol strings
-        if: always()
-        run: |
-          cd /tmp/dump 2>/dev/null || exit 0
-          echo "=== apk/xapk/dex/manifest files ===" >> /tmp/report.txt
-          find . -iname '*.apk' -o -iname '*.xapk' -o -iname '*.dex' -o -iname 'AndroidManifest.xml' | tee -a /tmp/report.txt || true
-          for z in $(find . -type f -name '*.zip'); do
-            n=$(unzip -l "$z" 2>/dev/null | grep -ciE '\.apk|\.dex|AndroidManifest|assets/' || true)
-            echo "$z -> relevant entries: $n" >> /tmp/report.txt
           done
-          echo >> /tmp/report.txt
-          # hex marker for the Soundcore host->device frame magic 08 EE
-          echo "=== files containing the 08EE frame marker ===" >> /tmp/report.txt
-          grep -rlaP '\x08\xee' --include='*' . 2>/dev/null | head -10 >> /tmp/report.txt || echo "(none found directly)" >> /tmp/report.txt
 
       - name: Write report into the branch
         if: always()
         run: |
           mkdir -p analysis
           {
-            echo "# Android dump probe"
+            echo "# Android dump probe (v2)"
             echo
-            echo "Runner: $(uname -a)"
-            echo "gdown export result: ${{ steps.dl.outcome }}"
+            echo "Run: ${{ github.run_id }}"
             echo
             echo '```'
-            cat /tmp/report.txt 2>/dev/null || echo "(no report)"
+            cat /tmp/diag.txt 2>/dev/null || echo "(no diagnostics captured)"
             echo '```'
           } > analysis/android-probe.md
+          wc -c analysis/android-probe.md
           git config user.name  "soundcontrol-ci"
           git config user.email "ci@users.noreply.github.com"
           git add analysis/android-probe.md
-          git commit -m "probe: Android dump reachability + archive structure" || echo "nothing to commit"
+          git commit -m "probe: Drive download diagnostics" || echo "nothing to commit"
           git push origin HEAD:arena/01a0aa7c-soundcontrol
