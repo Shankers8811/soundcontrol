@@ -79,12 +79,18 @@ Then: **Add Device → Search** or **Try the demo**.
 
 ---
 
-## F. Make the README show your real link
+## F. Make the fork yours (links, buttons, bridge)
 
-1. Open `README.md` on GitHub
-2. Click the pencil
-3. Replace `YOUR_GITHUB_USERNAME` with your username
-4. Commit
+The repo hard-codes the original owner's name in four places — search for
+`Shankers8811` (in the GitHub web UI: open each file, click the pencil) and
+replace it with your username:
+
+1. `README.md` — the live-site, download, and badge links
+2. `vite.config.ts` — `REPO_URL`, which drives the in-app download buttons
+3. `soundcore_bridge.py` — `BUNDLED_WEB_ORIGINS`, the web origin the bridge answers
+4. `GITHUB.md` — the example site URL in step 4
+
+Then commit. Your Pages site is `https://YOUR_NAME.github.io/soundcontrol/`.
 
 Optional: repo page → ⚙️ **About** (right side) → tick **Use your GitHub Pages website** → save. The homepage link then shows like ear-web’s `earweb.bttl.xyz`.
 
