@@ -117,6 +117,11 @@ export function buildDeviceInfoQuery(): Uint8Array {
   return withChecksum([0x08, 0xee, 0x00, 0x00, 0x00, 0x01, 0x01, 0x0a, 0x00]);
 }
 
+/** Request the live left/right battery levels (cat=01, type=03). */
+export function buildBatteryQuery(): Uint8Array {
+  return withChecksum([0x08, 0xee, 0x00, 0x00, 0x00, 0x01, 0x03, 0x0a, 0x00]);
+}
+
 export function describePacket(data: ArrayLike<number>): string {
   if (data.length < 8) return 'Short frame';
   const a = data[0];
@@ -131,6 +136,7 @@ export function describePacket(data: ArrayLike<number>): string {
   if (typ === 0x88) return `${dir} Find Device`;
   if (typ === 0x85) return `${dir} Device Reset`;
   if (cat === 0x01 && typ === 0x01) return `${dir} Init / device info`;
+  if (cat === 0x01 && typ === 0x03) return `${dir} Battery query`;
   if (cat === 0x01 && typ === 0x7f) return `${dir} LDAC query`;
   if (cat === 0x01 && typ === 0xff) return `${dir} LDAC set`;
   if (cat === 0x0b && typ === 0x84) return `${dir} Dual connection`;

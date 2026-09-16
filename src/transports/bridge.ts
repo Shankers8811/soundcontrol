@@ -1,11 +1,13 @@
 import { fromHex, toHex } from '../protocol/codec';
-import type { Transport } from '../types';
+import type { BatteryState, Transport } from '../types';
 
 export interface NearbyDevice {
   id: string;
   name: string;
   mac?: string;
   source: 'bridge' | 'demo';
+  /** Windows may expose one aggregate Bluetooth battery percentage. */
+  battery?: number | null;
 }
 
 // The packaged Electron app loads via file://, where location.hostname is
@@ -77,11 +79,14 @@ export async function scanBridgeDevices(): Promise<NearbyDevice[]> {
       headers: authHeaders(token),
     });
     if (!res.ok) return [];
-    const json = (await res.json()) as { devices?: Array<{ mac: string; name: string }> };
+    const json = (await res.json()) as {
+      devices?: Array<{ mac: string; name: string; battery?: number | null }>;
+    };
     return (json.devices ?? []).map((d) => ({
       id: d.mac,
       name: d.name || d.mac,
       mac: d.mac,
+      battery: d.battery ?? null,
       source: 'bridge' as const,
     }));
   } catch {
@@ -91,7 +96,7 @@ export async function scanBridgeDevices(): Promise<NearbyDevice[]> {
 
 interface BridgeHello {
   type?: string;
-  devices?: Array<{ mac: string; name: string }>;
+  devices?: Array<{ mac: string; name: string; battery?: number | null }>;
   error?: string;
 }
 
@@ -99,7 +104,8 @@ export async function connectBridge(
   mac: string,
   onRx: (data: Uint8Array) => void,
   name = '',
-): Promise<{ transport: Transport; name: string }> {
+  windowsBattery: number | null = null,
+): Promise<{ transport: Transport; name: string; battery: Partial<BatteryState> | null }> {
   const url = defaultBridgeUrl(await bridgeToken());
   const ws = await openSocket(url);
 
@@ -183,7 +189,14 @@ export async function connectBridge(
     }
   });
 
-  return { transport, name: name || mac || 'soundcore' };
+  return {
+    transport,
+    name: name || mac || 'soundcore',
+    battery:
+      windowsBattery !== null
+        ? { left: windowsBattery, right: windowsBattery, case: null, batteryScale: null }
+        : null,
+  };
 }
 
 function openSocket(url: string): Promise<WebSocket> {
