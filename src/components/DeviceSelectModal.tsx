@@ -16,6 +16,15 @@ export function DeviceSelectModal({ onClose }: { onClose: () => void }) {
         Select your Soundcore model profile. This adapts available features (ANC levels, multi-scene modes, LDAC, gaming mode).
       </p>
 
+      {app.profile.inferred && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900">
+          <span className="font-semibold">{app.profile.name}</span> was added from the
+          official app&apos;s model list. Its feature flags are inferred from the product
+          family rather than confirmed on your hardware, so a control may not apply.
+          The ANC frame family (TWS vs over-ear) is reliable.
+        </div>
+      )}
+
       <div className="grid gap-2.5">
         {DEVICES.map((d) => {
           const isCurrent = app.profile.id === d.id;
@@ -49,6 +58,11 @@ export function DeviceSelectModal({ onClose }: { onClose: () => void }) {
                   {d.ldac && <span className="rounded bg-white px-1.5 py-0.5 border border-line text-blue font-medium">High-Res Audio</span>}
                   {d.gaming && <span className="rounded bg-white px-1.5 py-0.5 border border-line">Game Mode</span>}
                   {d.dual && <span className="rounded bg-white px-1.5 py-0.5 border border-line">Dual Connect</span>}
+                  {d.inferred && (
+                    <span className="rounded bg-amber-50 px-1.5 py-0.5 border border-amber-200 text-amber-700">
+                      inferred
+                    </span>
+                  )}
                 </div>
               </div>
               {isCurrent && (

@@ -32,6 +32,10 @@ jobs:
           node-version: 22
       - name: Syntax-check the Electron entry point
         run: node --check electron-main.cjs
+      # Node 22.6+ can strip TypeScript types, so the device-profile table is
+      # tested straight from source with no bundler or test framework.
+      - name: Device profile / SKU tests
+        run: npm run test:device-profiles
 
   renderer:
     name: Renderer typecheck + build

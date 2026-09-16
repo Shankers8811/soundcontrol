@@ -1,5 +1,10 @@
 # SoundControl protocol
 
+> Looking for why these frames are not simply copied out of the official
+> Android app? See [ANDROID-APP-FINDINGS.md](ANDROID-APP-FINDINGS.md) — that app
+> is Flutter with AOT-compiled Dart, ships no frame tables and no transport
+> UUIDs, so captures like the ones documented below remain the only source.
+
 SoundControl uses a thin binary framing layer over **Classic Bluetooth RFCOMM**.
 The DSP socket is commonly **channel 4** (buds), **12** or **15** (some over-ears).
 The Windows desktop renderer reaches RFCOMM through the bundled local Python helper.

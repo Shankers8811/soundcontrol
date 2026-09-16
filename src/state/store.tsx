@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { beep } from '../lib/feedback';
 import { toHex, verifyFrame } from '../protocol/codec';
-import { DEVICES, matchDevice } from '../protocol/devices';
+import { DEFAULT_DEVICE, findDeviceById, matchDevice } from '../protocol/devices';
 import {
   DUAL,
   INIT,
@@ -139,7 +139,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [connecting, setConnecting] = useState(false);
   const [transportLabel, setTransportLabel] = useState('Not connected');
   const [deviceName, setDeviceName] = useState('No device');
-  const [profile, setProfile] = useState<DeviceProfile>(matchDevice('R50i'));
+  // An explicit default rather than matchDevice('R50i'): once the SKU table was
+  // corrected, that string resolves to the non-ANC R50i profile, and the
+  // startup placeholder should not depend on alias ordering.
+  const [profile, setProfile] = useState<DeviceProfile>(DEFAULT_DEVICE);
   const profileRef = useRef(profile);
   const [battery, setBattery] = useState<BatteryState>({ left: null, right: null, case: null });
   const [ancMode, setAncMode] = useState<AncMode>('anc');
@@ -335,7 +338,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (customProfileId?: string) =>
       wrapConnect(async () => {
         const { transport, name, battery: b } = connectSimulator(onRx);
-        const targetProfile = customProfileId ? DEVICES.find((d) => d.id === customProfileId) : undefined;
+        const targetProfile = customProfileId ? findDeviceById(customProfileId) : undefined;
         await attach(transport, targetProfile ? `${targetProfile.name} (sim)` : name, b);
         if (targetProfile) {
           setProfile(targetProfile);
@@ -489,7 +492,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const setProfileId = useCallback((id: string) => {
-    const hit = DEVICES.find((d) => d.id === id);
+    const hit = findDeviceById(id);
     if (hit) {
       profileRef.current = hit;
       setProfile(hit);
