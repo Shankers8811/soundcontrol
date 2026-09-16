@@ -1,4 +1,5 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
 const os = require('os');
@@ -12,6 +13,14 @@ app.commandLine.appendSwitch('enable-experimental-web-platform-features');
 let bridgeProcess = null;
 let mainWindow = null;
 let windowEverShown = false;
+
+// Per-session secret for the RFCOMM bridge. Minted fresh on every launch,
+// handed to the helper through its (private) environment — never argv, which
+// other processes can read — and to our own renderer over IPC, so only this
+// app's window can use the helper's Bluetooth writes. A random web page knows
+// neither the token nor, realistically, that a bridge is even running.
+const bridgeToken = crypto.randomBytes(32).toString('hex');
+ipcMain.handle('soundcontrol:bridge-token', () => bridgeToken);
 
 // ---------------------------------------------------------------------------
 // Startup diagnostics.
@@ -126,10 +135,22 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // instance). 700 ms is plenty for a loopback request and keeps startup snappy.
 function probeBridge(timeoutMs = 700) {
   return new Promise((resolve) => {
-    const req = http.get({ host: '127.0.0.1', port: 8765, path: '/scan', timeout: timeoutMs }, (res) => {
-      res.resume();
-      resolve(res.statusCode === 200);
-    });
+    // Our own spawned bridge requires the token; a manually run (tokenless)
+    // bridge simply ignores the extra header, so sending it unconditionally
+    // keeps both cases working.
+    const req = http.get(
+      {
+        host: '127.0.0.1',
+        port: 8765,
+        path: '/scan',
+        timeout: timeoutMs,
+        headers: { Authorization: `Bearer ${bridgeToken}` },
+      },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      },
+    );
     req.on('timeout', () => {
       req.destroy();
       resolve(false);
@@ -174,6 +195,7 @@ async function startBridgeIfAvailable() {
     try {
       child = spawn(cmd, [...args, scriptPath, '--host', '127.0.0.1', '--port', '8765'], {
         windowsHide: true,
+        env: { ...process.env, SOUNDCONTROL_BRIDGE_TOKEN: bridgeToken },
       });
     } catch (err) {
       log(`spawn ${label} threw: ${err}`);

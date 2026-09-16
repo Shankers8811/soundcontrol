@@ -13,15 +13,11 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo [1/3] Checking dependencies...
+echo [1/2] Checking dependencies...
 call npm install
 
 echo.
-echo [2/3] Building application bundle...
-call npm run build
-
-echo.
-echo [3/3] Packaging into Windows NSIS installer...
+echo [2/2] Building the app and packaging the Windows NSIS installer...
 call npm run build:win
 
 echo.
