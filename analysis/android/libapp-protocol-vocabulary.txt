@@ -1,0 +1,919 @@
+        touched integer,
+ HearID!
+ ancestor was
+ anche possibile scegliere taglie diverse per gli auricolari interni sinistro e destro.
+ fornecer durante o "Teste de Som HearID" ("Teste"), que tem o intuito de oferecer aos usu
+ la liste blanche de la batterie pour une r
+ lista branca da bateria para melhorar a capacidade de resposta.
+ widgets require an Overlay widget ancestor.
+" ancestor.
+&planck;
+&planckh;
+' has no instance 
+(distance: 
+*Lea "{value}" con detenimiento antes de empezar la "Prueba de sonido HearID"
+*Please read "{value}" carefully before you start "HearID Sound Test"
+*Por favor, leia "{value}" cuidadosamente antes de iniciar o "Teste de som HearID"
+*Si prega di leggere attentamente "{value}" prima di avviare il "Test audio HearID"
+*Silakan baca "{value}" dengan saksama sebelum Anda memulai "Pengujian Suara HearID"
+*Silakan baca "{value}" dengan saksama sebelum Anda memulai "Pengujian Suara HearID"2
+, canClose: 
+, canClose: 2
+, canceledMessageId == 
+/hearidTestPage
+/hearidTestPreparePage
+/hearidTestStep
+4. Can I cancel, return, or exchange redeemed products?
+9. What happens to my soundcoreCredits if I return a product or cancel an order?
+: stop setHearIdAudio
+A more efficient solution is to split your build function into several widgets. This introduces a new context from which you can obtain the Scaffold. In this solution, you would have an outer widget that creates the Scaffold populated by instances of your new inner widgets, and then in these inner widgets you would use Scaffold.of().
+Active noise cancellation will be automatically enabled.
+Ambiente sonoro
+Anda berhasil menyelesaikan pengujian Suara HearID!
+Appearance
+Audio Spatial Sense
+Audio spatial
+Audio spatial activ
+Audio spatial d
+AudioBalanceLeft
+AudioBalanceRight
+BaseHearidState
+BaseTapAndDragGestureRecognizer
+BaseTapAndDragGestureRecognizer.
+BaseTapGestureRecognizer
+BaseTapGestureRecognizer.
+BlockParser.parseLines is not advancing
+By clicking the "Start" button at the bottom of this Anker function page you provide Anker Innovations Technology Co., Ltd. your freely given consent to process any hearing data("Data") which you feed back during the "HearID Sound Test" ("Test")for providing users with appropriate sound effects. You can always quit the Test during the Test. Your Data will only be used by Anker. Anker will not sell the Data, and Anker do not share the Data with third parties for any reason, including cross context behavioral advertising. You can delete the Data which you fed back any time by sending your request to <support@anker.com>. You can also withdraw your consent to the Test anytime. This can also be done via sending your request to <support@anker.com>. However, this will not affect the Data feedback carried out before you withdraw your consent. More information on how we process your personal data can be found in our {value}.
+Cancel
+Cancelar
+Cancella
+Cancella cronologia chat
+Cancella cronologia chat 
+Cancellare la cronologia chat? L'operazione non pu
+Chargement...
+Cobalah dan rasakan fungsi suara hearid 
+ColorFilter.linearToSrgbGamma()
+ColorFilter.srgbToLinearGamma()
+ColorFilter::initLinearToSrgbGamma
+ColorFilter::initSrgbToLinearGamma
+Condividi i dati vocali per migliorare l'assistente IA.
+Connection attempt cancelled, host: 
+Connection attempt cancelled, host: 2
+Current HearId Test Done Page,Skip Dialog
+DIMANCHE
+DartPerformanceMode
+DartPerformanceMode.
+DartPerformanceMode.2
+Dengan mengklik tombol "Mulai" di bagian bawah halaman fungsi Anker ini, Anda memberikan persetujuan Anda secara sukarela kepada Anker Innovations Technology Co., Ltd. untuk memproses data pendengaran ("Data") yang Anda berikan selama "Pengujian Suara HearID" ("Pengujian") berlangsung untuk memberikan efek suara yang sesuai kepada pengguna. Anda selalu dapat keluar dari Pengujian ini selama Pengujian berlangsung. Data Anda hanya akan digunakan oleh Anker. Anker tidak akan menjual Data dan Anker tidak membagikan Data tersebut kepada pihak ketiga untuk alasan apa pun, termasuk iklan perilaku lintas konteks. Anda dapat menghapus Data yang Anda berikan kapan saja dengan mengirimkan permintaan Anda ke <support@anker.com>. Anda juga dapat menarik persetujuan Anda untuk Pengujian ini kapan saja. Penarikan persetujuan ini juga dapat dilakukan dengan mengirimkan permintaan Anda ke <support@anker.com>. Namun, hal ini tidak akan memengaruhi Data yang sudah diberikan sebelum Anda menarik persetujuan Anda. Informasi selengkapnya tentang cara kami memproses data pribadi Anda dapat ditemukan di {value} kami.
+Der HearID Sound-Test kann Ihnen helfen, Ihr H
+DeviceGestureSettings
+DeviceGestureSettings(touchSlop: 
+DeviceGestureSettings.fromView
+Distance
+DoubleTapGestureRecognizer
+DoubleTapGestureRecognizer.
+DragGestureRecognizer
+DragGestureRecognizer.
+DrawableLinearGradient
+DrawableTextAnchorPosition
+DrawableTextAnchorPosition.
+Due to the system's power-saving settings, the app may not respond and fail to activate AI Assistant. Please add the soundcore app to the battery whitelist for improved responsiveness.
+FfiTrampoline___initLinear$Method$FfiNative$Ptr
+FfiTrampoline___initLinearToSrgbGamma$Method$FfiNative$Ptr
+FfiTrampoline___initSrgbToLinearGamma$Method$FfiNative$Ptr
+FfiTrampoline___requestDartPerformanceMode$Method$FfiNative$Ptr
+FirebaseCrashlyticsPlatform.instanceFor
+ForcePressGestureRecognizer
+ForcePressGestureRecognizer.
+ForcePressGestureRecognizer.2
+ForcePressGestureRecognizerY
+Gestionnaire de lancement d'applications
+GestureArenaEntry
+GestureArenaManager
+GestureArenaManager.
+GestureArenaManager.2
+GestureArenaMember
+GestureArenaTeam
+GestureArenaTeam.
+GestureBinding
+GestureDetector
+GestureDetector.
+GestureDisposition
+GestureDisposition.
+GestureRecognizer
+GestureRecognizer.
+GestureRecognizerFactory
+GestureRecognizerFactoryWithHandlers
+GestureRecognizerFactoryWithHandlers2
+GestureRecognizerState
+GestureRecognizerState.
+GestureSettings
+GestureSettings(physicalTouchSlop: 
+GetInstance
+GetInstance.
+GetInstance.2
+Gradient.linear
+Gradient::initLinear
+Gradient::initLinear2
+Gwarancja na
+Gwarancja na2
+HEARID_SOUND
+HEARID_SOUND2
+Ha completado correctamente la prueba de sonido de HearID.
+HearID Ses Testi
+HearID Sound Test
+HearID Sound Test can help you understand your hearing ability and get more professional listening suggestions.
+HearID-Klangtest
+HearIDTestPreparePage
+HearIDTestPreparePageState dispose==========>
+HearIDTestPrepareProgress
+HearIdAgeRange
+HearIdCircleSpreadWidget
+HearIdCircleSpreadWidget dispose
+HearIdCircleSpreadWidget init
+HearIdProgressIconSate
+HearIdProgressIconWidget
+HearidHistory
+HearidHistoryVM
+HearidHistoryVM.
+HearidPlatform
+HearidPlatform.
+HearidTestPrepareProgressNotifier
+HearidTestStep
+HorizontalDragGestureRecognizer
+If you return a product or cancel an order, the soundcoreCredits earned from that purchase will be reversed or decreased. soundcoreCredits will also be deducted for partial refunds due to price adjustments.
+Il semble qu'il y ait trop de bruit. Veuillez passer le test HearID Sound dans un endroit calme.
+Il test acustico HearID 
+Il test acustico HearID consente di valutare le proprie capacit
+Immerse yourself in the calming tones of the guqin. This traditional instrument produces soft melodies that soothe your mind and enhance relaxation, setting the stage for a restorative night's sleep.
+Instance "
+Instance of '
+It appears there're too many noises. Please take the HearID Sound Test in a quiet place.
+L'ambiente attuale 
+L'ambiente era molto rumoroso e mi ha disturbato durante il test.
+La cancelaci
+La cancellazione attiva del rumore verr
+La prueba de sonido de HearID puede ayudarle a saber cu
+Lancement automatique
+Le test HearID Sound peut vous aider 
+Libere para enviar. Deslize para cima para cancelar.
+Libere para enviar. Deslize para cima para cancelar.2
+LinearBorder
+LinearBorder2
+LinearBorderEdge
+LinearGradient
+LongPressGestureRecognizer
+LongPressGestureRecognizer.
+Manchmal kann die soundcore-App aus Versehen geschlossen werden. Damit der KI-Assistent auch funktioniert, wenn die App im Hintergrund l
+MeanCalculator
+Mergulhe nos tons calmantes do guqin. Este instrumento tradicional produz melodias suaves que acalmam sua mente e aumentam o relaxamento, preparando o ambiente para uma noite de sono restauradora.
+Mergulhe nos tons calmantes do guqin. Este instrumento tradicional produz melodias suaves que acalmam sua mente e aumentam o relaxamento, preparando o ambiente para uma noite de sono restauradora.2
+MethodChannelHearid
+MethodChannelHearid.
+MethodChannelHearid.2
+MixinHearid
+No Scaffold ancestor could be found starting from the context that was passed to Scaffold.of(). This usually happens when the context provided is from the same StatefulWidget as that whose build function actually creates the Scaffold widget being sought.
+No, once you confirm your redemption, you cannot cancel, return, or exchange the product. Please double-check before confirming the redemption. Contact soundcore Customer Service at support@soundcore.com within 7 days if the products arrive damaged.
+No, soundcoreCredits are not earned for shipping charges or taxes.
+O ambiente atual 
+O ambiente era muito barulhento, e tive interfer
+O cancelamento ativo de ru
+O teste de som HearID foi conclu
+O teste de som HearID pode ajudar voc
+Object_instanceOf
+Object_simpleInstanceOf
+OneSequenceGestureRecognizer
+OneSequenceGestureRecognizer.
+OneSequenceGestureRecognizer2
+PanGestureRecognizer
+PanGestureRecognizer2
+Parece que hay demasiados ruidos. Realice la prueba de sonido de HearID en un lugar tranquilo.
+Pengujian Suara HearID
+Pengujian Suara HearID dapat membantu Anda memahami kemampuan pendengaran Anda dan mendapatkan saran mendengarkan yang lebih profesional.
+PerformanceModeRequestHandle
+PerformanceModeRequestHandle2
+PerformanceOverlay
+PerformanceTracker
+PerformanceTracker.
+PlatformConfigurationNativeApi::RequestDartPerformanceMode
+Please consult soundcore Customer Service for questions about soundcore Gift Card terms of use. For questions about other gift cards, please contact the third-party provider for assistance.
+PointerCancelEvent
+PointerScrollInertiaCancelEvent
+PrimaryPointerGestureRecognizer
+PrimaryPointerGestureRecognizer.
+Prova la funzione di ascolto HearID di 
+Prueba de sonido HearID
+Puoi terminare la chat quando vuoi, anche quando sto rispondendo.
+Quelles sont les tendances dans la technologie
+RawGestureDetector
+RawGestureDetectorState
+RcLowBattery
+RcLowBattery2
+Release to send. Swipe up to cancel.
+Release to send. Swipe up to cancel.2
+RenderSemanticsGestureHandler
+RenderSemanticsGestureHandler.
+SCShareHearIDWidget
+ScanChannelsToggle
+SemanticsGestureDelegate
+SemanticsGestureDelegate()
+Sembra ci siano troppi rumori. Eseguire il test acustico HearID in un luogo silenzioso.
+Sepertinya ada terlalu banyak suara bising. Silakan lakukan Pengujian Suara HearID di tempat yang tenang.
+Sie haben den HearID Sound-Test erfolgreich abgeschlossen!
+Sie haben den HearID Sound-Test erfolgreich abgeschlossen!J
+Simula il dolce suono naturale della pioggia e libera la mente con l'uso del bastone della pioggia. Il suono nitido e il ritmo rilassante creano un rumore bianco che maschera le distrazioni esterne ed evoca pace interiore e relax, favorendo un sonno pi
+Soltar para enviar. Deslizar hacia arriba para cancelar.
+Spatial Audio
+Spatial Audio Off
+Spatial Audio On
+Step 1: After enabling "Auto-launch", tap "Battery Usage" on the next screen.
+Step 1: After enabling "Auto-launch", tap "Battery" on the next screen.
+Step 2: On the battery screen, select "Unrestricted".
+Tanca
+Tanca $modalRouteContentName2
+Tanca $modalRouteContentNameN
+TapAndDragGestureRecognizer
+TapAndHorizontalDragGestureRecognizer
+TapAndPanGestureRecognizer
+TapGestureRecognizer
+TapGestureRecognizer.
+TapGestureRecognizer2
+Test HearID Sound
+Test audio HearID
+Test sonore HearID
+Teste de som HearID
+TextSelectionGestureDetector
+TextSelectionGestureDetector2
+TextSelectionGestureDetectorBuilder
+TextSelectionGestureDetectorBuilderDelegate
+TextSelectionToolbarAnchors
+TextSelectionToolbarAnchors.fromSelection
+The BackgroundIsolateBinaryMessenger.instance value is invalid until BackgroundIsolateBinaryMessenger.ensureInitialized is executed.
+The BackgroundIsolateBinaryMessenger.instance value is invalid until BackgroundIsolateBinaryMessenger.ensureInitialized is executed.2
+The ticker was canceled before the "orCancel" property was first used.
+This instance is already disposed. Please create timer object.
+This soundcore Care code has already been bound to another account. Please contact service@soundcore.com for assistance.
+This ticker was canceled: 
+This widget is the root of the tree, so it has no ancestors, let alone a "
+TickerCanceled
+Tolerance
+VerticalDragGestureRecognizer
+Was ist in der Technologiebranche gerade angesagt?
+You have successfully completed the HearID Sound test!
+You may have difficulty hearing mid-frequencies such as vocals, guitars, and string instruments.
+_AiChatContentBottomWidgetState._buildHoldSpeak: buildHoldSpeak onLongPressEnd, isCanceling = 
+_AnyTapGestureRecognizer@206005443
+_AnyTapGestureRecognizer@206005443.
+_AnyTapGestureRecognizerFactory@206005443
+_BaseHearidState&BaseStatefulWidgetState&MixinHearid@818362880
+_BaseTapAndDragGestureRecognizer&OneSequenceGestureRecognizer&_TapStatusTrackerMixin@80288344
+_BottomSheetGestureDetector@335001611
+_ColorFilter@15065589.linearToSrgbGamma
+_ColorFilter@15065589.srgbToLinearGamma
+_CombiningGestureArenaEntry@81419575
+_CombiningGestureArenaEntry@814195752
+_CombiningGestureArenaMember@81419575
+_CombiningGestureArenaMember@81419575.
+_CopyPointerCancelEvent@66050165
+_CopyPointerScrollInertiaCancelEvent@66050165
+_CupertinoBackGestureController@460053933
+_CupertinoBackGestureController@460053933.
+_CupertinoBackGestureDetector@460053933
+_CupertinoBackGestureDetectorState@460053933
+_CupertinoBackGestureDetectorState@4600539332
+_DefaultSemanticsGestureDelegate@188132872
+_ElementExt|footnoteAnchor@680296720
+_ElementExt|footnoteAnchor@6802967202
+_FfiInlineArray
+_FfiInlineArray@8050071
+_FlingGestureKind.
+_FlingGestureKind@178238936
+_GestureArena@61060655
+_GestureArena@61060655.
+_GestureRecognizer&GestureArenaMember&DiagnosticableTreeMixin@76296176
+_GestureSemantics@188132872
+_HearIDTestPreparePageState calling
+_HearIDTestPreparePageState@1064048657
+_HearIDTestPreparePageState@1064048657.
+_HearIDTestPrepareProgressState@1105169167
+_HearIdCircleSpreadState@1124370586
+_HearIdProgressIconSate&State&TickerProviderStateMixin@1121431321
+_HearidHistoryState@1063258583
+_HearidHistoryState@1063258583.
+_HearidTestStepState@1065130189
+_InstanceBuilderFactory@774009652
+_Linear@578484502
+_LinearTextScaler@525255635
+_ModalBarrierGestureDetector@206005443
+_MultipleGestureRecognizer@535279144
+_MultipleGestureRecognizer@5352791442
+_PointerCancelEvent&PointerEvent&_PointerEventDescription&_CopyPointerCancelEvent@66050165
+_PointerScrollInertiaCancelEvent&PointerSignalEvent&_PointerEventDescription&_CopyPointerScrollInertiaCancelEvent@66050165
+_RendererBinding&BindingBase&ServicesBinding&SchedulerBinding&GestureBinding&SemanticsBinding&HitTestable@276452173
+_RendererBinding&BindingBase&ServicesBinding&SchedulerBinding&GestureBinding&SemanticsBinding@276452173
+_RendererBinding&BindingBase&ServicesBinding&SchedulerBinding&GestureBinding@276452173
+_SCShareHearIDWidgetState@1066076320
+_SCShareHearIDWidgetState@1066076320.
+_SCShareHearIDWidgetState@10660763202
+_SelectableTextSelectionGestureDetectorBuilder@415286899
+_TextFieldSelectionGestureDetectorBuilder@430181401
+_TextSelectionGestureDetectorState@262111801
+_TextSelectionGestureDetectorState@2621118012
+_ThumbPressGestureRecognizer@243211710
+_TrackTapGestureRecognizer@243211710
+_TrackTapGestureRecognizer@243211710.
+_TrackTapGestureRecognizer@2432117102
+_TransformedPointerCancelEvent@66050165
+_TransformedPointerScrollInertiaCancelEvent@66050165
+_TransformedPointerScrollInertiaCancelEvent@660501652
+_WidgetsBinding&BindingBase&ServicesBinding&SchedulerBinding&GestureBinding&RendererBinding&SemanticsBinding@169399801
+_WidgetsBinding&BindingBase&ServicesBinding&SchedulerBinding&GestureBinding&RendererBinding@169399801
+_WidgetsFlutterBinding&BindingBase&GestureBinding&SchedulerBinding&ServicesBinding&PaintingBinding&SemanticsBinding&RendererBinding&WidgetsBinding@169399801
+_WidgetsFlutterBinding&BindingBase&GestureBinding&SchedulerBinding&ServicesBinding&PaintingBinding&SemanticsBinding&RendererBinding&WidgetsBinding@169399801.
+_WidgetsFlutterBinding&BindingBase&GestureBinding&SchedulerBinding&ServicesBinding&PaintingBinding&SemanticsBinding&RendererBinding&WidgetsBinding@1693998012
+_WidgetsFlutterBinding&BindingBase&GestureBinding&SchedulerBinding&ServicesBinding&PaintingBinding&SemanticsBinding&RendererBinding@169399801
+_WidgetsFlutterBinding&BindingBase&GestureBinding&SchedulerBinding&ServicesBinding&PaintingBinding&SemanticsBinding&RendererBinding@169399801.
+_WidgetsFlutterBinding&BindingBase&GestureBinding&SchedulerBinding&ServicesBinding&PaintingBinding&SemanticsBinding@169399801
+_WidgetsFlutterBinding&BindingBase&GestureBinding&SchedulerBinding&ServicesBinding&PaintingBinding&SemanticsBinding@169399801.
+_WidgetsFlutterBinding&BindingBase&GestureBinding&SchedulerBinding&ServicesBinding&PaintingBinding@169399801
+_WidgetsFlutterBinding&BindingBase&GestureBinding&SchedulerBinding&ServicesBinding&PaintingBinding@169399801.
+_WidgetsFlutterBinding&BindingBase&GestureBinding&SchedulerBinding&ServicesBinding&PaintingBinding@1693998012
+_WidgetsFlutterBinding&BindingBase&GestureBinding&SchedulerBinding&ServicesBinding@169399801
+_WidgetsFlutterBinding&BindingBase&GestureBinding&SchedulerBinding&ServicesBinding@1693998012
+_WidgetsFlutterBinding&BindingBase&GestureBinding&SchedulerBinding@169399801
+_WidgetsFlutterBinding&BindingBase&GestureBinding&SchedulerBinding@169399801.
+_WidgetsFlutterBinding&BindingBase&GestureBinding&SchedulerBinding@1693998012
+_WidgetsFlutterBinding&BindingBase&GestureBinding@169399801
+_WidgetsFlutterBinding&BindingBase&GestureBinding@169399801.
+_WidgetsFlutterBinding&BindingBase&GestureBinding@169399801.2
+__HearIdCircleSpreadState&State&TickerProviderStateMixin@1124370586
+__TransformedPointerCancelEvent&_TransformedPointerEvent&_CopyPointerCancelEvent@66050165
+__TransformedPointerScrollInertiaCancelEvent&_TransformedPointerEvent&_CopyPointerScrollInertiaCancelEvent@66050165
+__initLinear$Method$FfiNative$Ptr@15065589
+__initLinearToSrgbGamma$Method$FfiNative$Ptr@15065589
+__initSrgbToLinearGamma$Method$FfiNative$Ptr@15065589
+__requestDartPerformanceMode$Method$FfiNative$Ptr@15065589
+_advanceEnd@536424462
+_advanceWakeupTime@1026248
+_banContinue@722281035
+_callOnCancel@4048458
+_canComputeDryLayoutForInlineWidgets@281245603
+_canComputeDryLayoutForInlineWidgets@289149678
+_canComputeIntrinsics@289149678
+_cancel@4048458
+_cancel@530494659
+_cancelActivePointers@208124995
+_cancelActivePointers@601487007
+_cancelAndError@4048458
+_cancelAndErrorClosure@4048458
+_cancelAndValue@4048458
+_cancelWakeup@1026248
+_checkCancel@72099969
+_checkCancel@79069716
+_checkCancel@80288344
+_checkLongPressCancel@70232524
+_cleanChildRelayoutBoundary@288266271
+_closestToAnchorPoint@179163077
+_describeFlingGesture@178238936
+_disposePerformanceModeRequest@528222615
+_distance@239443839
+_distance@853064377
+_distanceFromPointToRect@179163077
+_entranceTurnTween@409420462
+_entranceTurnTween@4094204622
+_fallbackAnchorPoint@179163077
+_findAncestorParentDataElements@187042623
+_findAncestorRenderObjectElement@187042623
+_findAncestorRenderObjectElement@187042623Q
+_flingDistance@239443839
+_getAncestor@186280150
+_getGlobalDistance@76296176
+_getGlobalDistance@80288344
+_getLinearGradient@872455522
+_getLinearGradient@8724555222
+_getLinearGradient@876469591
+_getLinearGradient@8764695912
+_globalDistanceMoved@72099969
+_globalDistanceMoved@80288344
+_globalDistanceMovedAllAxes@80288344
+_globalDistanceMovedAllAxes@802883442
+_handleDragCancel@241019050
+_handleDragCancel@460053933
+_handlePointerUpOrCancel@208124995
+_handlePointerUpOrCancel@601487007
+_handleTapCancel@262111801
+_handleTapCancel@345318349
+_handleTapCancel@449145554
+_handleTapCancel@464325306
+_hasSufficientGlobalDistanceToAccept@72099969
+_hasSufficientGlobalDistanceToAccept@80288344
+_initLinear@15065589
+_initLinear@150655892
+_initLinearToSrgbGamma@15065589
+_initSrgbToLinearGamma@15065589
+_instance@1005177756
+_instance@10051777562
+_instance@1009391681
+_instance@10093916812
+_instance@1010058105
+_instance@10100581052
+_instance@1053466267
+_instance@10534662672
+_instance@1130375761
+_instance@11303757612
+_instance@1150184899
+_instance@11501848992
+_instance@1192436587
+_instance@11924365872
+_instance@1197000480
+_instance@11970004802
+_instance@1254348855
+_instance@12543488552
+_instance@1256045225
+_instance@12560452252
+_instance@12900089002
+_instance@1290008900]
+_instance@1294094188
+_instance@12940941882
+_instance@15065589
+_instance@489037955
+_instance@547483225
+_instance@553502559
+_instance@565397154
+_instance@58206165
+_instance@599437242
+_instance@60137573
+_instance@604311063
+_instance@702084504
+_instance@811139055
+_instanceOf
+_instanceOf@0150898
+_instanceTokens@156304592
+_isPopGestureEnabled@460053933
+_isWithinConsecutiveTapTolerance@80288344
+_onCancel@4048458
+_onCancelTest@1067080366
+_onTapCancel@468370134
+_pathsToCommonAncestor@285518307
+_recordCancel@4048458
+_requestDartPerformanceMode@15065589
+_requestDartPerformanceMode@150655892
+_scanCodeUnits@0150898
+_selectionGestureDetectorBuilder@415286899
+_selectionGestureDetectorBuilder@430181401
+_simpleInstanceOf
+_simpleInstanceOf@0150898
+_simpleInstanceOfFalse
+_simpleInstanceOfFalse@0150898
+_simpleInstanceOfTrue
+_simpleInstanceOfTrue@0150898
+_sortByDistancePreferHorizontal@186280150
+_sortByDistancePreferVertical@186280150
+_sortClosestEdgesByDistancePreferHorizontal@186280150
+_sortClosestEdgesByDistancePreferVertical@186280150
+_startPopGesture@460053933
+_touch@511034022
+_transparentInterior@386372823
+_updateInheritance@187042623
+_updateInheritance@1870426232
+_visitActionsAncestors@159441002
+a o teste de som HearID em um local tranquilo.
+acceptGesture
+addAncestor
+advance
+advanceBy
+ancestor
+anchorPoint
+appInstances2
+appInstancesJ
+appTrackingTransparency
+application/vnd.llamagraphics.life-balance.desktop
+application/vnd.llamagraphics.life-balance.exchange+xml
+application/vnd.lotus-freelance
+assets/hearid_tick.json
+banContinue
+blanchedalmond
+buildGestureDetector
+buildGestureDetector2
+buildHearIdContent
+buildHoldSpeak onTapCancel
+buildHoldSpeak: cancelRecord
+buildHoldSpeak: cancelRecord2
+canChooseWithElement
+canChooseWithElement2
+cancel
+cancelFrameCallbackWithId
+cancelLastDelay
+cancelOnError
+cancelOperation:
+cancelPointer
+cancelRecord
+cancelRecord2
+cancelSchedule
+canceled
+checkInstance
+computeDistanceToActualBaseline
+computeLuminance
+couteurs pendant 2 secondes pour lancer Assistant IA - pas besoin de dire un mot.
+couvrir la fonction sonore HearID de 
+defaultComputeDistanceToFirstActualBaseline
+defaultComputeDistanceToHighestActualBaseline
+describeMissingAncestor
+didStartUserGesture
+didStopUserGesture
+dimanche
+disablePopGesture
+distance
+distanceMax
+do branco que mascara distra
+enablePopGesture
+ent un bruit blanc qui masque les distractions ext
+es vocales pour aider 
+exchangeTouch
+findAncestorRenderObjectOfType
+findAncestorStateOfType
+findAncestorWidgetOfExactType
+findRootAncestorStateOfType
+gesture
+gesture library
+gestureSettings
+gestureSettings: 
+gestureSettingsOf
+gestures library
+get:_canComputeIntrinsics@281245603
+get:_canComputeIntrinsics@283478290
+get:_canComputeIntrinsics@283478290p
+get:_gestures@243211710
+get:_isCanceled@4048458
+get:a3952_hearId_anc_tightness_test_hint
+get:a3952_hearId_sound_name
+get:a3954_hearid_age
+get:a3954_hearid_age2
+get:a3954_hearid_agetext
+get:a3954_hearid_averagehear
+get:a3954_hearid_averagehear2
+get:a3954_hearid_averageleftear
+get:a3954_hearid_averagerightear
+get:a3954_hearid_bad
+get:a3954_hearid_bad2
+get:a3954_hearid_better
+get:a3954_hearid_bothear
+get:a3954_hearid_continue
+get:a3954_hearid_disturb
+get:a3954_hearid_disturbtip
+get:a3954_hearid_exit
+get:a3954_hearid_finish
+get:a3954_hearid_frequencybug
+get:a3954_hearid_leftear
+get:a3954_hearid_nohistory
+get:a3954_hearid_noisepause
+get:a3954_hearid_noisetip
+get:a3954_hearid_normal
+get:a3954_hearid_practice
+get:a3954_hearid_practicetext
+get:a3954_hearid_practicetitle
+get:a3954_hearid_practicettext
+get:a3954_hearid_practicettips1
+get:a3954_hearid_practicettips2
+get:a3954_hearid_practicettips3
+get:a3954_hearid_practicettips4
+get:a3954_hearid_practicettips5
+get:a3954_hearid_practicettips6
+get:a3954_hearid_precautions
+get:a3954_hearid_precautions2
+get:a3954_hearid_preparation
+get:a3954_hearid_preparation2
+get:a3954_hearid_preparetext
+get:a3954_hearid_preparetext2
+get:a3954_hearid_preparetitle
+get:a3954_hearid_result
+get:a3954_hearid_result1
+get:a3954_hearid_result2
+get:a3954_hearid_result3
+get:a3954_hearid_retest
+get:a3954_hearid_retestear
+get:a3954_hearid_retesttext
+get:a3954_hearid_rightear
+get:a3954_hearid_setup
+get:a3954_hearid_skip
+get:a3954_hearid_skiptext
+get:a3954_hearid_start
+get:a3954_hearid_start{
+get:a3954_hearid_test
+get:a3954_hearid_testhistory
+get:a3954_hearid_testhistory2
+get:a3954_hearid_testprepare
+get:a3954_hearid_testprepare2
+get:a3954_hearid_testtext1
+get:a3954_hearid_testtext10
+get:a3954_hearid_testtext11
+get:a3954_hearid_testtext12
+get:a3954_hearid_testtext13
+get:a3954_hearid_testtext14
+get:a3954_hearid_testtext2
+get:a3954_hearid_testtext3
+get:a3954_hearid_testtext4
+get:a3954_hearid_testtext5
+get:a3954_hearid_testtext6
+get:a3954_hearid_testtext8
+get:a3954_hearid_testtext9
+get:a3954_hearid_tips
+get:a3954_hearid_tips1
+get:a3954_hearid_tips2
+get:a3954_hearid_tips3
+get:a3954_hearid_tips3&
+get:a3954_hearid_tips4
+get:a3954_hearid_tips4w
+get:a3954_hearid_worse
+get:ancestors
+get:anka_battery_notset
+get:anka_battery_set
+get:anka_battery_set2
+get:audio_brainwave_spatialaudio
+get:audio_brainwave_spatialaudio_off
+get:audio_brainwave_spatialaudio_off2
+get:audio_brainwave_spatialaudio_on
+get:cancelPointer
+get:common_cancel
+get:common_cancel_flutter
+get:contextMenuAnchors
+get:directionalAncestors
+get:distance
+get:distance2
+get:distanceMax
+get:distanceSquared
+get:dragStartDistanceMotionThreshold
+get:dragStartDistanceMotionThreshold2
+get:duihuanchenggong_name_1
+get:duihuanchenggong_name_1<
+get:duihuanchenggong_name_2
+get:duihuanchenggong_name_3
+get:duihuanchenggong_name_4
+get:duihuanchenggong_name_5
+get:duihuanchenggong_name_6
+get:duihuanchenggong_name_7
+get:duihuanchenggong_name_78
+get:duihuanchenggong_name_8
+get:enableGestures
+get:gestureSettings
+get:instance
+get:instance2
+get:isCanceling
+get:isCanceling9
+get:isIgnoringBatteryOptimizations
+get:minFlingDistance
+get:minFlingDistance2
+get:orCancel
+get:orCancel2
+get:showCancelButton
+get:showCancelButton2
+get:singleInstance
+get:systemGestureInsets
+get:tolerance
+get:userGestureInProgress
+getBatteryOptimizations
+getDirectionalityAncestors
+getDistanceToActualBaseline
+getDistanceToBaseline
+getGestureWrapper
+getHandleAnchor
+getInstance
+getLinearCurrentKeyframeProgress
+gina de funciones de Anker, usted otorga a Anker Innovations Technology Co., Ltd. su consentimiento libre para procesar cualquier dato auditivo ("Datos") que proporcione durante la "Prueba de sonido HearID" ("Prueba") para ofrecer a los usuarios efectos de sonido adecuados. Siempre puede salir de la Prueba durante la misma. Sus Datos solo ser
+handleTapCancel
+hearIdProgressIconWidget
+hearid
+hearidTestPage microphone.isGranted
+hearidTestPreparePage _isActive: 
+hearidTestPreparePage resumed microphone.isGranted
+ignoreBatteryOptimizations
+images/healing/healing_spatialaudio_off.png
+images/healing/healing_spatialaudio_on.png
+images/hearid_
+images/hearid_img_ear_
+images/hearid_test_bg.png
+images/hearid_test_step_bg.png
+images/img_hearidtest3_bg.png
+images/setting_ic_anc.png
+init:__initLinear$Method$FfiNative$Ptr@15065589
+init:__initLinearToSrgbGamma$Method$FfiNative$Ptr@15065589
+init:__initSrgbToLinearGamma$Method$FfiNative$Ptr@15065589
+init:__initSrgbToLinearGamma$Method$FfiNative$Ptr@15065589%
+init:__requestDartPerformanceMode$Method$FfiNative$Ptr@15065589
+init:_entranceTurnTween@409420462
+init:_instance@1005177756
+init:_instance@1009391681
+init:_instance@1010058105
+init:_instance@1053466267
+init:_instance@1130375761
+init:_instance@1150184899
+init:_instance@1192436587
+init:_instance@1197000480
+init:_instance@1254348855
+init:_instance@1256045225
+init:_instance@1290008900
+init:_instance@1294094188
+init:_instance@15065589
+init:_instance@489037955
+init:_instance@547483225
+init:_instance@553502559
+init:_instance@565397154
+init:_instance@58206165
+init:_instance@599437242
+init:_instance@60137573
+init:_instance@604311063
+init:_instance@702084504
+init:_instance@811139055
+init:_instanceTokens@156304592
+init:appInstances
+init:instance
+init:wakelockPlatformInstance
+initInstances
+initInstancesa
+instance
+insurance/bind
+insurance/list
+insurance/sync
+insurance/update
+insurance_code
+isAnchorPointIdentity
+isFlingGesture
+isIgnoringBatteryOptimizations
+isLinear
+isPopGestureInProgress
+isWithinGlobalTolerance
+keyboardAppearance
+latency
+lection d'une tranche d'
+linear
+linear (
+linear-gradient(to right, #00b09b, #96c93d)
+linearGradient
+listHearIdHistory
+listHearIdHistory: 
+mDASQz1u6hGgJ2Thjbk0vd1Xp34QhGGiJ195VyAnCKY=
+mDASQz1u6hGgJ2Thjbk0vd1Xp34QhGGiJ195VyAnCKY=2
+maybeGestureSettingsOf
+n de HearID de 
+nicos ajudam a relaxar seu corpo e mente, criando um ambiente sereno que promove um sono profundo.
+o de som HearID de 
+onAnimationCancel
+onCancel
+onSingleTapCancel
+onTapCancel
+package:flutter/src/gestures/arena.dart
+package:flutter/src/gestures/binding.dart
+package:flutter/src/gestures/converter.dart
+package:flutter/src/gestures/drag.dart
+package:flutter/src/gestures/drag_details.dart
+package:flutter/src/gestures/events.dart
+package:flutter/src/gestures/force_press.dart
+package:flutter/src/gestures/gesture_settings.dart
+package:flutter/src/gestures/hit_test.dart
+package:flutter/src/gestures/long_press.dart
+package:flutter/src/gestures/long_press.dart2
+package:flutter/src/gestures/lsq_solver.dart
+package:flutter/src/gestures/lsq_solver.dart2
+package:flutter/src/gestures/monodrag.dart
+package:flutter/src/gestures/multitap.dart
+package:flutter/src/gestures/pointer_router.dart
+package:flutter/src/gestures/pointer_signal_resolver.dart
+package:flutter/src/gestures/recognizer.dart
+package:flutter/src/gestures/recognizer.dart2
+package:flutter/src/gestures/resampler.dart
+package:flutter/src/gestures/tap.dart
+package:flutter/src/gestures/tap_and_drag.dart
+package:flutter/src/gestures/team.dart
+package:flutter/src/gestures/velocity_tracker.dart
+package:flutter/src/gestures/velocity_tracker.dartD
+package:flutter/src/physics/tolerance.dart
+package:flutter/src/widgets/gesture_detector.dart
+package:flutter/src/widgets/text_selection_toolbar_anchors.dart
+package:get/get_instance/src/bindings_interface.dart
+package:get/get_instance/src/bindings_interface.dart2
+package:get/get_instance/src/extension_instance.dart
+package:get/get_instance/src/extension_instance.dart2
+package:get/get_instance/src/get_instance.dart
+package:get/get_instance/src/lifecycle.dart
+package:hearid/channel/hearid_method_channel.dart
+package:hearid/channel/hearid_platform_interface.dart
+package:hearid/model/sound_level.dart
+package:hearid/page/hearid/base_hearid.dart
+package:hearid/page/hearid/mixin_hearid.dart
+package:hearid/page/hearid/mixin_hearid.dart2
+package:hearid/view/gradient_squares.dart
+package:lottie/src/performance_tracker.dart
+package:module_flutter/constant/appearance.dart
+package:module_flutter/hearid/SatisfactionSurveryCard.dart
+package:module_flutter/hearid/age_page.dart
+package:module_flutter/hearid/bean/QuestionAnswer.dart
+package:module_flutter/hearid/bean/SatisfactionResponse.dart
+package:module_flutter/hearid/bean/SatisfactionResponse.dart2
+package:module_flutter/hearid/dot_line_chart_painter.dart
+package:module_flutter/hearid/ear_sound_mode_page.dart
+package:module_flutter/hearid/environmental_sound_check.dart
+package:module_flutter/hearid/environmental_sound_check.dart2
+package:module_flutter/hearid/fittest/fit_test_device.dart
+package:module_flutter/hearid/fittest/fit_test_fail.dart
+package:module_flutter/hearid/fittest/fit_test_page.dart
+package:module_flutter/hearid/fittest/fit_test_prepare_page.dart
+package:module_flutter/hearid/fittest/fit_test_result_notifier.dart
+package:module_flutter/hearid/fittest/fit_test_result_page.dart
+package:module_flutter/hearid/fittest/fit_test_success.dart
+package:module_flutter/hearid/fittest/page_can_pop_notifier.dart
+package:module_flutter/hearid/fittest/progress_button.dart
+package:module_flutter/hearid/hearid_history.dart
+package:module_flutter/hearid/hearid_test_prepare_page.dart
+package:module_flutter/hearid/hearid_test_prepare_progress.dart
+package:module_flutter/hearid/hearid_test_step.dart
+package:module_flutter/hearid/hearing_landscape.dart
+package:module_flutter/hearid/hearing_landscape.dart2
+package:module_flutter/hearid/hearing_report.dart
+package:module_flutter/hearid/hearing_result.dart
+package:module_flutter/hearid/hearing_test_page.dart
+package:module_flutter/hearid/hearing_test_page.dart2
+package:module_flutter/hearid/history_poly_line.dart
+package:module_flutter/hearid/history_poly_line.dart2
+package:module_flutter/hearid/model/HearingLevelModel.dart
+package:module_flutter/hearid/model/current_page_route.dart
+package:module_flutter/hearid/model/hearid_test_prepare_progress_notifier.dart
+package:module_flutter/hearid/seting_device_page.dart
+package:module_flutter/hearid/training_one.dart
+package:module_flutter/hearid/training_three.dart
+package:module_flutter/hearid/training_two.dart
+package:module_flutter/hearid/vm/ear_sound_mode_vm.dart
+package:module_flutter/hearid/vm/hearid_history_vm.dart
+package:module_flutter/hearid/vm/hearing_test_vm.dart
+package:module_flutter/hearid/vm/share_data_vm.dart
+package:module_flutter/hearid/vm/training_two_vm.dart
+package:module_flutter/widgets/hearid/blurred_container.dart
+package:module_flutter/widgets/hearid/blurred_container.dart2
+package:module_flutter/widgets/hearid/common_bottom_sheet_widget.dart
+package:module_flutter/widgets/hearid/dashed_line.dart
+package:module_flutter/widgets/hearid/db_confirm_button.dart
+package:module_flutter/widgets/hearid/db_confirm_button.dart2
+package:module_flutter/widgets/hearid/direction_circle_widget.dart
+package:module_flutter/widgets/hearid/direction_circle_widget.dart2
+package:module_flutter/widgets/hearid/fade_in_out_switcher.dart
+package:module_flutter/widgets/hearid/flip_container.dart
+package:module_flutter/widgets/hearid/hear_id_circle_spread.dart
+package:module_flutter/widgets/hearid/hear_id_progress_icon_widget.dart
+package:module_flutter/widgets/hearid/product_color_img_wdiget.dart
+package:module_flutter/widgets/hearid/rotated_triangle.dart
+parseTextAnchor
+postAcceptSlopTolerance
+question/hearID
+rejectGesture
+replaceGestureRecognizers
+requestDartPerformanceMode
+requestHearID
+requestPerformanceMode
+scanCode
+scrollInertiaCancel
+set:_distance@853064377
+set:_userGesturesInProgress@208124995
+set:anchor
+set:anchorAbove
+set:anchorBelow
+set:followerAnchor
+set:gestureSettings
+set:instance
+set:instance2
+set:isCanceling
+set:isIgnoringBatteryOptimizations
+set:leaderAnchor
+set:onCancel2
+set:onCancel<
+set:showCancelButton
+set:showCancelButton2
+setHearIDStartOrCancel
+setHearIdAudio
+setHearIdTestResult
+shouldAcceptUserOffset
+singleInstance
+spatialAudio
+spatialAudio2
+spatial_aduio
+systemGestureInsets: 
+tanch
+text-anchor
+tido y el ritmo relajante del palo de lluvia crean ruido blanco que enmascara las distracciones exteriores y evoca paz interior y relajaci
+toBatteryOptimizationPage
+tolerance
+toleranceFor
+toleranceFor2
+touch
+touched
+touched < ?
+touched DESC
+touched DESC2
+transparency
+transparency2
+transparent
+usche. Bitte machen Sie den HearID Sound-Test an einem ruhigen Ort.
+ussi le test HearID Sound !
+visitAncestorElements
+wakelockPlatformInstance
+whenCompleteOrCancel
+whenCompleteOrCancel2
+while handling a gesture
