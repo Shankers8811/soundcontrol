@@ -21,6 +21,11 @@ on:
         description: 'Existing tag to (re)build and publish, e.g. v1.0.2'
         required: true
         type: string
+      source_ref:
+        description: 'Git ref to build (leave blank to use the selected ref)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -38,6 +43,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.source_ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
