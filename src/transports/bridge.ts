@@ -8,19 +8,36 @@ export interface NearbyDevice {
   source: 'bridge' | 'demo';
 }
 
+// The packaged Electron app loads via file://, where location.hostname is
+// empty — without this the bridge URL becomes ws://:8765 and never resolves,
+// so the desktop app could never reach its own helper.
+function isLocalHost(): boolean {
+  const h = location.hostname;
+  return !h || h === 'localhost' || h === '127.0.0.1';
+}
+
 export function defaultBridgeUrl(): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host =
-    location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? '127.0.0.1' : location.hostname;
-  return `${proto}//${host}:8765/ws`;
+  return `${proto}//${isLocalHost() ? '127.0.0.1' : location.hostname}:8765/ws`;
 }
 
 function scanHttpBase(): string | null {
-  if (location.protocol === 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-    return null;
+  // Public https pages (GitHub Pages) are blocked by Private Network Access
+  // rules from talking to the loopback bridge, so skip polling there.
+  if (location.protocol === 'https:' && !isLocalHost()) return null;
+  return `http://${isLocalHost() ? '127.0.0.1' : location.hostname}:8765`;
+}
+
+/** Quick reachability probe for the local bridge helper. */
+export async function bridgeAlive(): Promise<boolean> {
+  const base = scanHttpBase();
+  if (!base) return false;
+  try {
+    const res = await fetch(`${base}/scan`, { signal: AbortSignal.timeout(1500) });
+    return res.ok;
+  } catch {
+    return false;
   }
-  const host = location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? '127.0.0.1' : location.hostname;
-  return `http://${host}:8765`;
 }
 
 export async function scanBridgeDevices(): Promise<NearbyDevice[]> {
