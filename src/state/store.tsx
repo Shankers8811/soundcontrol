@@ -85,7 +85,12 @@ interface AppState {
   prompts: boolean;
   safeVolume: number;
   autoOff: number;
-  firmware: string;
+  /**
+   * Firmware version as reported by the device, or null when the connected
+   * model has not told us. Never invent a value here: the settings screen
+   * used to show a hardcoded "04.88" and call it up to date.
+   */
+  firmware: string | null;
   touch: TouchMap;
   eqId: string;
   bands: number[];
@@ -149,7 +154,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [prompts, setPromptsState] = useState(() => load('sc.prompts', true));
   const [safeVolume, setSafeVolumeState] = useState(() => load('sc.safe', 85));
   const [autoOff, setAutoOffState] = useState(() => load('sc.autoOff', 60));
-  const [firmware] = useState('04.88');
+  // Populated from the cat=01 type=01 device-info reply once the version field
+  // is confirmed against a decompiled official-app dump. Until then the UI
+  // reports "not reported by device" rather than a made-up version.
+  const [firmware] = useState<string | null>(null);
   const [touch, setTouchState] = useState<TouchMap>(() => load('sc.touch', DEFAULT_TOUCH));
   const [eqId, setEqId] = useState('signature');
   const [bands, setBands] = useState<number[]>([...ZERO_BANDS]);
