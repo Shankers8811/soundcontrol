@@ -1,5 +1,15 @@
 import { useMemo, useState } from 'react';
-import { checksum, fromHex, toHex, verifyFrame, withChecksum } from '../protocol/codec';
+import { BLE_COMMAND_MAP } from '../protocol/ble';
+import {
+  base64ToBytes,
+  checksum,
+  fromHex,
+  toHex,
+  verifyFrame,
+  verifyXorFrame,
+  withChecksum,
+  xorChecksum,
+} from '../protocol/codec';
 import { useApp } from '../state/store';
 
 export function HexConsole() {
@@ -8,6 +18,8 @@ export function HexConsole() {
   const [autoCs, setAutoCs] = useState(true);
   const [filter, setFilter] = useState<'all' | 'tx' | 'rx' | 'sys'>('all');
 
+  const [b64, setB64] = useState('');
+
   const parsed = useMemo(() => {
     try {
       const raw = fromHex(draft);
@@ -15,11 +27,13 @@ export function HexConsole() {
       const framed = autoCs ? withChecksum(Array.from(raw)) : raw;
       const valid = verifyFrame(framed);
       const cs = checksum(framed, framed.length - (autoCs ? 1 : 0));
+      const xor = xorChecksum(framed, framed.length - (autoCs ? 1 : 0));
+      const xorValid = verifyXorFrame(framed);
       return {
         ok: true,
         msg: autoCs
-          ? `checksum 0x${framed[framed.length - 1].toString(16).padStart(2, '0').toUpperCase()}`
-          : `Σ ${cs.toString(16).padStart(2, '0')} · frame ${valid ? 'valid' : 'mismatch'}`,
+          ? `Σ 0x${framed[framed.length - 1].toString(16).padStart(2, '0').toUpperCase()} · XOR would be 0x${xor.toString(16).padStart(2, '0').toUpperCase()}`
+          : `Σ ${cs.toString(16).padStart(2, '0')} · RFCOMM ${valid ? 'valid' : 'mismatch'} · BLE-XOR ${xorValid ? 'valid' : 'mismatch'}`,
         bytes: raw,
         framed,
         valid,
@@ -34,12 +48,33 @@ export function HexConsole() {
     }
   }, [draft, autoCs]);
 
+  const decodedB64 = useMemo(() => {
+    if (!b64.trim()) return { ok: true as const, hex: '', msg: 'Paste a Base64 capture to decode it to hex.' };
+    try {
+      const bytes = base64ToBytes(b64);
+      const sum = bytes.length ? verifyFrame(bytes) : null;
+      const xor = bytes.length ? verifyXorFrame(bytes) : null;
+      const tag =
+        bytes.length < 2
+          ? ''
+          : sum
+            ? ' · looks like an RFCOMM frame (Σ ok)'
+            : xor
+              ? ' · looks like a BLE frame (XOR ok)'
+              : ' · checksum does not match Σ or XOR';
+      return { ok: true as const, hex: toHex(bytes), msg: `${bytes.length} bytes${tag}` };
+    } catch (err) {
+      return { ok: false as const, hex: '', msg: err instanceof Error ? err.message : String(err) };
+    }
+  }, [b64]);
+
   const rows = app.log.filter((l) => filter === 'all' || l.dir === filter);
 
   return (
     <div className="space-y-3 px-4 py-3 pb-6">
       <p className="text-sm text-mute">
-        Developer log — not part of the consumer soundcore app. TX/RX frames with checksum check.
+        Developer log — not part of the consumer soundcore app. TX/RX frames with checksum check. RFCOMM frames
+        use Σ mod 256; short Android BLE captures use an XOR checksum instead.
       </p>
       <div className="flex flex-wrap gap-1">
         {(['all', 'tx', 'rx', 'sys'] as const).map((f) => (
@@ -81,6 +116,53 @@ export function HexConsole() {
           </button>
         </div>
         <p className="mt-1 break-all font-mono text-[10px] text-[#6b7280]">{toHex(parsed.framed)}</p>
+      </div>
+
+      <div className="rounded-2xl border border-line bg-wash p-3">
+        <label className="text-[10px] uppercase tracking-wider text-mute" htmlFor="b64-capture">
+          Base64 capture → hex
+        </label>
+        <textarea
+          id="b64-capture"
+          value={b64}
+          onChange={(e) => setB64(e.target.value)}
+          spellCheck={false}
+          placeholder="Paste a Base64 blob from an Android capture…"
+          className="mt-2 h-16 w-full resize-y rounded-md border border-line bg-white p-2 font-mono text-xs outline-none"
+        />
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className={`font-mono text-[11px] ${decodedB64.ok ? 'text-mute' : 'text-danger'}`}>
+            {decodedB64.msg}
+          </span>
+          {decodedB64.ok && decodedB64.hex && (
+            <button
+              onClick={() => setDraft(decodedB64.hex)}
+              className="ml-auto rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue ring-1 ring-line"
+            >
+              Load into payload
+            </button>
+          )}
+        </div>
+        {decodedB64.ok && decodedB64.hex && (
+          <p className="mt-1 break-all font-mono text-[10px] text-mute">{decodedB64.hex}</p>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-line bg-wash p-3">
+        <p className="text-[10px] uppercase tracking-wider text-mute">Android BLE → RFCOMM map</p>
+        <ul className="mt-2 space-y-1.5">
+          {BLE_COMMAND_MAP.map((c) => (
+            <li key={c.ble} className="text-xs text-mute">
+              <span className="font-mono font-bold text-ink">
+                BLE 0x{c.ble.toString(16).padStart(2, '0').toUpperCase()}
+              </span>{' '}
+              {c.name} → <span className="font-mono">{c.rfcomm}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-[11px] text-mute">
+          GATT ab00 (TX ab01 / RX ab02). Windows sends the RFCOMM column; this table only decodes captures.
+        </p>
       </div>
 
       <div className="h-[280px] overflow-auto rounded-2xl bg-[#111318] font-mono text-[11px] text-white">

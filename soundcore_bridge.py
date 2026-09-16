@@ -367,10 +367,32 @@ Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Device
 
 
 
-def scan_devices() -> list[dict[str, object]]:
+_SCAN_CACHE: list[dict[str, object]] = []
+_SCAN_CACHE_AT = 0.0
+_SCAN_CACHE_TTL = 3.0
+_SCAN_CACHE_LOCK = threading.Lock()
+
+
+def scan_devices(fresh: bool = False) -> list[dict[str, object]]:
     # The packaged bridge is intentionally Windows-only. Windows registry and
     # PnP enumeration are what let us find already-paired devices reliably.
-    return _windows_paired_devices() if sys.platform == "win32" else []
+    # Enumeration shells out to PowerShell (~1-4s), so cache briefly: the
+    # renderer polls for liveness separately via /health and only needs a
+    # fresh device list on user refresh. Pass fresh=True (?fresh=1) to bypass.
+    global _SCAN_CACHE, _SCAN_CACHE_AT
+    if sys.platform != "win32":
+        return []
+    import time as _time
+
+    now = _time.monotonic()
+    with _SCAN_CACHE_LOCK:
+        if not fresh and _SCAN_CACHE and (now - _SCAN_CACHE_AT) < _SCAN_CACHE_TTL:
+            return [dict(d) for d in _SCAN_CACHE]
+    devices = _windows_paired_devices()
+    with _SCAN_CACHE_LOCK:
+        _SCAN_CACHE = [dict(d) for d in devices]
+        _SCAN_CACHE_AT = now
+    return devices
 
 
 BRIDGE = Bridge()
@@ -521,7 +543,9 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         if self.path.startswith("/scan"):
-            body = json.dumps({"devices": scan_devices()}).encode()
+            query = parse_qs(urlsplit(self.path).query)
+            fresh = (query.get("fresh", [""])[0] or "").strip().lower() in ("1", "true", "yes")
+            body = json.dumps({"devices": scan_devices(fresh=fresh)}).encode()
             self.send_response(200)
             self._cors()
             self.send_header("Content-Type", "application/json")

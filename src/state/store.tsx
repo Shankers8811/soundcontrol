@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -290,6 +291,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Some over-ear models only expose battery in the device-info frame.
         pushLog('sys', '', err instanceof Error ? err.message : String(err));
       }
+      if (nextProfile.ldac && t.kind === 'bridge') {
+        try {
+          await t.write(LDAC.query);
+          pushLog('tx', LDAC.query, 'LDAC query');
+        } catch {
+          /* codec query is best-effort; the toggle still works */
+        }
+      }
       await beep('ok');
     },
     [pushLog],
@@ -494,6 +503,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await new Promise((r) => setTimeout(r, 280));
     }
   }, []);
+
+  // Keep TWS battery levels fresh while connected to real hardware: the
+  // device-info frame arrives once after the handshake, but the explicit
+  // 01 03 battery query can be re-sent cheaply. Simulator sessions skip
+  // this to keep the diagnostics log clean.
+  useEffect(() => {
+    if (!connected) return;
+    if (transportRef.current?.kind !== 'bridge') return;
+    let stopped = false;
+    const timer = window.setInterval(() => {
+      const t = transportRef.current;
+      if (stopped || !t) return;
+      const pkt = buildBatteryQuery();
+      t.write(pkt)
+        .then(() => pushLog('tx', pkt, 'Battery query (auto)'))
+        .catch(() => {
+          /* transient RFCOMM busy; next interval retries */
+        });
+    }, 30000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [connected, pushLog]);
 
   const value = useMemo<AppState>(
     () => ({

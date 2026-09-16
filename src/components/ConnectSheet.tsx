@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { asset } from '../lib/asset';
 import { useApp } from '../state/store';
-import { bridgeAlive, scanBridgeDevices, type NearbyDevice } from '../transports/bridge';
+import { bridgeHealth, scanBridgeDevices, type NearbyDevice } from '../transports/bridge';
+
+function soundcoreFirst(a: NearbyDevice, b: NearbyDevice): number {
+  const score = (d: NearbyDevice) =>
+    /soundcore|anker|liberty|r50i|p30i|p20i|space|q30|q35|q45|a39|a30/i.test(d.name) ? 0 : 1;
+  return score(a) - score(b) || a.name.localeCompare(b.name);
+}
 
 function normalizeMac(input: string): string {
   const hexed = input.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
@@ -22,14 +28,20 @@ export function ConnectSheet() {
     setSearching(true);
     setHint(null);
     try {
-      const [found, alive] = await Promise.all([scanBridgeDevices(), bridgeAlive()]);
-      setHelper(alive ? 'online' : 'offline');
-      setNearby(found);
-      if (!alive) {
+      // Check the fast /health endpoint first; only enumerate PnP devices
+      // when the helper is actually up. Manual refresh bypasses the cache.
+      const health = await bridgeHealth();
+      if (!health) {
+        setHelper('offline');
         setHint(
-          'The Windows Bluetooth helper is not responding. Restart SoundControl — it starts automatically, no separate install is needed.',
+          'The Windows Bluetooth helper is not responding. Restart SoundControl — it starts automatically, no separate install is needed. If it persists, check %AppData%\\soundcontrol\\main.log.',
         );
-      } else if (showEmptyHint && !found.length) {
+        return;
+      }
+      setHelper('online');
+      const found = await scanBridgeDevices(true);
+      setNearby([...found].sort(soundcoreFirst));
+      if (showEmptyHint && !found.length) {
         setHint(
           'No paired devices found. Pair the earbuds once in Windows Settings → Bluetooth & devices, then refresh this list.',
         );
@@ -41,14 +53,31 @@ export function ConnectSheet() {
 
   useEffect(() => {
     let stopped = false;
+    let inFlight = false;
     const pull = async () => {
-      const [found, alive] = await Promise.all([scanBridgeDevices(), bridgeAlive()]);
-      if (stopped) return;
-      setHelper(alive ? 'online' : 'offline');
-      setNearby(found);
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const health = await bridgeHealth();
+        if (stopped) return;
+        setHelper(health ? 'online' : 'offline');
+        if (!health) return;
+        // Background polls use the helper cache; the manual button forces fresh.
+        const found = await scanBridgeDevices(false);
+        if (stopped) return;
+        setNearby((prev) => {
+          const next = [...found].sort(soundcoreFirst);
+          if (next.length === prev.length && next.every((d, i) => d.id === prev[i]?.id)) return prev;
+          return next;
+        });
+      } catch {
+        if (!stopped) setHelper('offline');
+      } finally {
+        inFlight = false;
+      }
     };
     void pull();
-    const timer = window.setInterval(() => void pull(), 2500);
+    const timer = window.setInterval(() => void pull(), 5000);
     return () => {
       stopped = true;
       window.clearInterval(timer);
@@ -123,7 +152,10 @@ export function ConnectSheet() {
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-ink">{device.name}</span>
-                    <span className="font-medium text-xs text-blue">Tap to connect</span>
+                    <span className="font-medium text-xs text-blue">
+                      Tap to connect
+                      {typeof device.battery === 'number' ? ` · ${device.battery}% (Windows)` : ''}
+                    </span>
                   </span>
                 </button>
               </li>
