@@ -1,5 +1,10 @@
 # Publish SoundControl on GitHub (first time, no coding)
 
+> **Status:** already done for this project — the website lives at
+> <https://shankers8811.github.io/soundcontrol/> and installers at
+> <https://github.com/Shankers8811/soundcontrol/releases/latest>. Keep this page as the
+> from-scratch recipe (or for a fork); publishing a new version is just a tag push.
+
 You need a **free GitHub account** and the zip of this project. GitHub is a public folder on the internet — not an APK store, not a virus site. **ear (web)** lives there the same way: [github.com/radiance-project/ear-web](https://github.com/radiance-project/ear-web).
 
 You will end up with:

@@ -1,5 +1,9 @@
 # Put SoundControl on GitHub (no Node on your PC)
 
+> **Status:** `github.com/Shankers8811/soundcontrol` and its Pages site already exist, so
+> you only need this page if you are starting a fresh copy or a fork. Day-to-day changes go
+> through a normal PR — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 GitHub Pages gives you a real `https://you.github.io/...` tab. Brave can use Web Bluetooth there. The Arena sandbox URL cannot.
 
 You still need **Chrome, Edge, or Brave on a computer** — not the phone soundcore app, and not this Arena preview.

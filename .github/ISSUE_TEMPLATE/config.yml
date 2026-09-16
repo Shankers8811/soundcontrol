@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Web app (installable PWA)
+    url: https://shankers8811.github.io/soundcontrol/
+    about: Try the app before filing anything — Demo Mode runs with no hardware attached.
+  - name: Downloads & installers
+    url: https://github.com/Shankers8811/soundcontrol/releases/latest
+    about: Get the current Windows installer. Links here always resolve to the newest release.

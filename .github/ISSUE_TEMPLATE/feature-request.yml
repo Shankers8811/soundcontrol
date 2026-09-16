@@ -1,0 +1,59 @@
+name: "✨ Feature request or missing Android-app parity"
+description: "Ask for something the official soundcore Android app does that SoundControl does not."
+title: "[feat] "
+labels: ["enhancement", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The goal of this project is **feature parity with the official Soundcore Android app** —
+        no bloat, no accounts, no telemetry. Requests that fit that goal move fastest.
+        Check the parity table in the README first.
+  - type: textarea
+    id: feature
+    attributes:
+      label: What does the official app do that this one does not?
+      description: Describe the feature and where it lives in the Android app (tab, menu path, screen name).
+      placeholder: "In Soundcore → Device → Sound Effects → 'Hi-Res Audio' toggle…"
+    validations:
+      required: true
+  - type: input
+    id: models
+    attributes:
+      label: Which Soundcore models have this feature?
+      description: Several commands are model-specific; parity work is scoped per model.
+      placeholder: "Liberty 4 NC, Space Q45"
+    validations:
+      required: true
+  - type: textarea
+    id: frames
+    attributes:
+      label: Captured frames (strongly preferred)
+      description: >-
+        If you can capture the real TX frame with the **Console** tab while the official app
+        performs the action, paste the hex here. A request with a captured frame can be
+        implemented directly; a request without one is only a guess.
+      render: shell
+      placeholder: "TX 08 EE 02 81 00 08 .."
+    validations:
+      required: false
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where should it work?
+      multiple: false
+      options:
+        - Web app only (Web Bluetooth)
+        - Windows desktop app only (RFCOMM bridge)
+        - Both
+    validations:
+      required: true
+  - type: checkboxes
+    id: limits
+    attributes:
+      label: I understand the platform limits
+      options:
+        - label: A feature the browser cannot reach (classic Bluetooth, background wake, firmware OTA) may only ever land in the desktop app
+          required: true
+        - label: I am not asking for analytics, accounts, cloud sync, or AI features
+          required: true
