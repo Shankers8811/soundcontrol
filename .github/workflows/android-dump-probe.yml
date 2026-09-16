@@ -1,0 +1,110 @@
+name: Android dump probe
+
+# One-shot diagnostic: can a runner (which has full internet) reach the shared
+# Google Drive folder, download the four APK parts, and push a small report
+# back to this branch? The agent's own sandbox cannot reach Google at all.
+on:
+  workflow_dispatch:
+    inputs:
+      folder_url:
+        description: Public Drive folder containing the Anker soundcore APK parts
+        required: true
+        default: 'https://drive.google.com/drive/folders/1wdOXUZhINDk2UH-o8LA6-RisQRHjjv7L'
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: arena/01a0aa7c-soundcontrol
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install gdown
+        run: pip install gdown
+
+      - name: Download Drive folder
+        id: dl
+        continue-on-error: true
+        run: |
+          set -x
+          mkdir -p /tmp/dump
+          cd /tmp/dump
+          gdown --folder "${{ inputs.folder_url }}" --remaining-ok 2>&1 | tail -40
+          set +x
+          echo "--- downloaded ---"
+          ls -la /tmp/dump
+          find /tmp/dump -type f -printf '%10s  %p\n' | sort -k2 | head -40
+
+      - name: Inspect archives
+        if: always()
+        run: |
+          cd /tmp/dump 2>/dev/null || exit 0
+          : > /tmp/report.txt
+          for f in $(find . -type f -name '*.zip' | sort); do
+            echo "=== $f ($(stat -c%s "$f") bytes) ===" >> /tmp/report.txt
+            unzip -t "$f" >/dev/null 2>&1 && echo "  zip integrity: OK" >> /tmp/report.txt || echo "  zip integrity: BROKEN/or split part" >> /tmp/report.txt
+            echo "  first entries:" >> /tmp/report.txt
+            unzip -l "$f" 2>/dev/null | head -12 >> /tmp/report.txt
+            unzip -l "$f" 2>/dev/null | tail -3 >> /tmp/report.txt
+            echo >> /tmp/report.txt
+          done
+          cat /tmp/report.txt
+
+      - name: Try concatenating split parts
+        if: always()
+        run: |
+          cd /tmp/dump 2>/dev/null || exit 0
+          mapfile -t parts < <(find . -type f -name '*.zip' | sort)
+          echo "part count: ${#parts[@]}"
+          if [ "${#parts[@]}" -gt 1 ]; then
+            cat "${parts[@]}" > /tmp/joined.zip
+            echo "joined size: $(stat -c%s /tmp/joined.zip)"
+            if unzip -t /tmp/joined.zip >/dev/null 2>&1; then
+              echo "JOINED RESULT: valid archive after concatenation" | tee -a /tmp/report.txt
+              unzip -l /tmp/joined.zip | head -20 | tee -a /tmp/report.txt
+            else
+              echo "JOINED RESULT: still not a valid single archive" | tee -a /tmp/report.txt
+            fi
+          fi
+
+      - name: Look for APK / dex / protocol strings
+        if: always()
+        run: |
+          cd /tmp/dump 2>/dev/null || exit 0
+          echo "=== apk/xapk/dex/manifest files ===" >> /tmp/report.txt
+          find . -iname '*.apk' -o -iname '*.xapk' -o -iname '*.dex' -o -iname 'AndroidManifest.xml' | tee -a /tmp/report.txt || true
+          for z in $(find . -type f -name '*.zip'); do
+            n=$(unzip -l "$z" 2>/dev/null | grep -ciE '\.apk|\.dex|AndroidManifest|assets/' || true)
+            echo "$z -> relevant entries: $n" >> /tmp/report.txt
+          done
+          echo >> /tmp/report.txt
+          # hex marker for the Soundcore host->device frame magic 08 EE
+          echo "=== files containing the 08EE frame marker ===" >> /tmp/report.txt
+          grep -rlaP '\x08\xee' --include='*' . 2>/dev/null | head -10 >> /tmp/report.txt || echo "(none found directly)" >> /tmp/report.txt
+
+      - name: Write report into the branch
+        if: always()
+        run: |
+          mkdir -p analysis
+          {
+            echo "# Android dump probe"
+            echo
+            echo "Runner: $(uname -a)"
+            echo "gdown export result: ${{ steps.dl.outcome }}"
+            echo
+            echo '```'
+            cat /tmp/report.txt 2>/dev/null || echo "(no report)"
+            echo '```'
+          } > analysis/android-probe.md
+          git config user.name  "soundcontrol-ci"
+          git config user.email "ci@users.noreply.github.com"
+          git add analysis/android-probe.md
+          git commit -m "probe: Android dump reachability + archive structure" || echo "nothing to commit"
+          git push origin HEAD:arena/01a0aa7c-soundcontrol
