@@ -2,7 +2,9 @@ name: Release Windows
 
 # Tagging a commit on main (e.g. `git tag v1.0.2 main && git push origin v1.0.2`)
 # builds the standard NSIS Windows installer and publishes one asset on
-# a new GitHub Release:
+# a new GitHub Release. A commit on the session release branch whose message
+# contains [publish-windows] can also rebuild the existing stable release
+# without requiring an artifact download.
 # SoundControl-Setup.exe. The in-app download button deep-links to this name
 # via "/releases/latest/download/..." so every client gets the newest build.
 #
@@ -15,6 +17,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - 'arena/01a0aa09-soundcontrol'
   workflow_dispatch:
     inputs:
       tag:
@@ -32,6 +36,7 @@ permissions:
 
 jobs:
   release-win:
+    if: ${{ github.event_name != 'push' || contains(github.event.head_commit.message, '[publish-windows]') }}
     runs-on: windows-latest
     # The `secrets` context is not available inside a step's `if:` expression,
     # so mirror the certificate secrets into job env for the gating check.
@@ -101,7 +106,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || (github.event_name == 'push' && github.ref_name == 'arena/01a0aa09-soundcontrol' && 'v1.0.4') || github.ref_name }}
         run: |
           set -euo pipefail
           echo "Publishing release for tag: $RELEASE_TAG"
