@@ -45,3 +45,53 @@ jobs:
     steps:
       - id: deploy
         uses: actions/deploy-pages@v4
+        # A Pages site can be published by two sources at the same time: this
+        # workflow's artifact deploy, and a legacy "Deploy from a branch" build.
+        # When branch mode is also enabled it finishes seconds later and wins, so
+        # the URL ends up serving the repository *source* instead of dist/ — where
+        # index.html loads /src/main.tsx, which no browser can execute. The job is
+        # green and the site is a blank page. Assert what is actually live.
+      - name: Assert the live site is this build
+        shell: bash
+        run: |
+          set -uo pipefail
+          url="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/index.html?run=${{ github.run_id }}"
+          built=""
+          for attempt in 1 2 3 4 5 6; do
+            body="$(curl -fsSL --max-time 20 "$url" 2>/dev/null || true)"
+            if printf '%s' "$body" | grep -q 'src="/src/main.tsx"'; then
+              echo "::error title=Pages is serving the raw branch, not the build::https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/ returns index.html referencing /src/main.tsx, so it renders blank."
+              echo "Fix: repo Settings -> Pages -> Source: choose 'GitHub Actions'. 'Deploy from a branch' must be off, otherwise its build overwrites this deployment seconds later."
+              exit 1
+            fi
+            if printf '%s' "$body" | grep -qE 'src="\./?assets/'; then
+              built="yes"
+              break
+            fi
+            echo "attempt $attempt: built asset reference not visible yet (Pages may still be propagating)"
+            sleep 15
+          done
+          if [ -z "$built" ]; then
+            # Never fail on propagation lag alone - only on proven wrong content.
+            echo "::warning title=Could not verify deployed content::The live index.html did not show a built asset reference within ~90s. Check $url once before re-running."
+          else
+            echo "Verified: Pages is serving this build (hashed ./assets/ reference present)."
+          fi
+      - name: Assert the app shell is reachable
+        shell: bash
+        run: |
+          set -uo pipefail
+          base="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          # manifest.json at the site root is the tell: the repository keeps it in
+          # public/, so a root 404 plus a 200 under /public/ means branch-source mode.
+          root="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base/manifest.json")"
+          nested="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base/public/manifest.json")"
+          sw="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base/sw.js")"
+          echo "manifest.json: $root | public/manifest.json: $nested | sw.js: $sw"
+          if [ "$root" != "200" ] && [ "$nested" = "200" ]; then
+            echo "::error title=Pages root is the repository tree::/manifest.json 404s while /public/manifest.json resolves, so the site is publishing the branch instead of dist/. Switch Pages to 'GitHub Actions' (Settings -> Pages)."
+            exit 1
+          fi
+          if [ "$sw" != "200" ]; then
+            echo "::warning::$base/sw.js returned $sw - the PWA cannot register its service worker until the shell is deployed."
+          fi
