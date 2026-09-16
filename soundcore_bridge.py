@@ -6,23 +6,15 @@ Default channel is 4; over-ears sometimes answer on 12 or 15.
 
     python3 soundcore_bridge.py                      # loopback, port 8765
     python3 soundcore_bridge.py --mac AA:BB:CC:DD:EE:FF --channel 4
-    python3 soundcore_bridge.py --allow-origin https://you.github.io
 
-Access control: the bridge listens on the loopback interface, so it is not
-reachable from the network — but *your browser* can reach it from any page you
-visit, and /scan plus the WebSocket can read your paired-device list and write
-raw frames to your hearing. Requests from web content are therefore answered
-only for origins this project ships or develops against (see origin_allowed).
+Access control: the bridge listens on the loopback interface and is intended
+only for the packaged Windows desktop renderer. The renderer receives a fresh
+per-session secret from Electron and sends it on every request (see token_ok):
+HTTP callers send `Authorization: Bearer <token>` (or `X-Bridge-Token:`), and
+the renderer connects to `/ws?token=<token>`. Configure manual runs with the
+SOUNDCONTROL_BRIDGE_TOKEN environment variable or --token.
 
-On top of that, the desktop app mints a fresh per-session secret on every
-launch and requires it on every request (see token_ok): HTTP callers send
-`Authorization: Bearer <token>` (or `X-Bridge-Token:`), WebSocket clients
-connect to `/ws?token=<token>`. Configure it with the SOUNDCONTROL_BRIDGE_TOKEN
-environment variable (preferred: argv is visible to other processes) or --token.
-Without a token the bridge keeps the origin-allowlist behaviour, so running it
-by hand for development works exactly as before.
-
-Talk to it from the web UI over WebSocket JSON:
+Talk to it from the Windows renderer over WebSocket JSON:
 
     { "type": "connect", "mac": "AA:BB:CC:DD:EE:FF", "channel": 4 }
     { "type": "tx", "hex": "08EE00000001010A0002" }
@@ -376,47 +368,21 @@ Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Device
 
 
 def scan_devices() -> list[dict[str, object]]:
-    if sys.platform == "win32":
-        return _windows_paired_devices()
-    out: list[dict[str, object]] = []
-    try:
-        raw = subprocess.check_output(
-            ["bluetoothctl", "devices"], stderr=subprocess.DEVNULL, text=True, timeout=3
-        )
-        for line in raw.splitlines():
-            parts = line.split(None, 2)
-            if len(parts) >= 3 and parts[0] == "Device":
-                out.append({"mac": parts[1], "name": parts[2]})
-    except Exception:
-        pass
-    return out
+    # The packaged bridge is intentionally Windows-only. Windows registry and
+    # PnP enumeration are what let us find already-paired devices reliably.
+    return _windows_paired_devices() if sys.platform == "win32" else []
 
 
 BRIDGE = Bridge()
 
 
 # --- Access control -----------------------------------------------------------
-# Who may talk to the bridge from a browser. A web page can send a fetch() or a
-# WebSocket to http://127.0.0.1:8765, so "it only listens on loopback" is not a
-# defence: the attack path is the victim's own browser. Answers are restricted
-# to clients this project ships, plus any non-browser client (local code that
-# could already open RFCOMM by itself gains nothing from a browser check).
+# The packaged renderer loads from file:// and sends Origin: null. A local
+# development renderer may use http://localhost, so the bridge accepts only
+# those Electron/local origins and never a public website origin.
 LOCAL_ORIGIN_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
-# The published web app. It cannot reach an http/ws loopback service from an
-# https origin under Private Network Access rules, but allow it so a locally
-# hosted or proxied build keeps working.
-BUNDLED_WEB_ORIGINS = frozenset({"https://shankers8811.github.io"})
-# The packaged desktop app loads from file://, an opaque origin, so its requests
-# carry "Origin: null". A web page can arrange a null origin too (a sandboxed
-# iframe), so null alone is not proof — the desktop app is identified by its
-# Electron user agent, which a page cannot forge (User-Agent is a forbidden
-# header name for fetch() and WebSocket).
 DESKTOP_UA_MARKERS = ("Electron/", "soundcontrol/")
-EXTRA_ALLOWED_ORIGINS: set[str] = set()
-ALLOW_ANY_ORIGIN = False
-# Per-session secret minted by the desktop app (see electron-main.cjs). None
-# when the bridge is run by hand, in which case the origin allowlist above is
-# the whole boundary, exactly as before.
+# Per-session secret minted by the desktop app (see electron-main.cjs).
 BRIDGE_TOKEN: Optional[str] = None
 TOKEN_SOURCE = ""  # "environment" | "flag" | "" (logged at startup, never the value)
 
@@ -447,14 +413,10 @@ def bearer_from(headers) -> Optional[str]:
 
 
 def origin_allowed(origin: Optional[str], user_agent: str = "") -> bool:
-    """True when a browser request carrying `origin` may reach the bridge."""
-    if ALLOW_ANY_ORIGIN:
-        return True
+    """True when a request comes from the Windows renderer or local tooling."""
     if not origin:
-        # No Origin header at all: not web content (app main process probe,
-        # curl, tests, native helpers).
-        return True
-    if origin in EXTRA_ALLOWED_ORIGINS:
+        # Main-process probes, curl, tests, and native local tooling have no
+        # Origin header and are already protected by loopback/token policy.
         return True
     if origin == "null":
         return any(marker in user_agent for marker in DESKTOP_UA_MARKERS)
@@ -465,12 +427,7 @@ def origin_allowed(origin: Optional[str], user_agent: str = "") -> bool:
         return False
     if scheme in ("", "file"):
         return any(marker in user_agent for marker in DESKTOP_UA_MARKERS)
-    if scheme == "http":
-        # The dev server (http://localhost:5173) and the bridge's own origin.
-        return host in LOCAL_ORIGIN_HOSTS
-    if scheme == "https":
-        return origin in BUNDLED_WEB_ORIGINS
-    return False
+    return scheme == "http" and host in LOCAL_ORIGIN_HOSTS
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -522,11 +479,8 @@ class Handler(BaseHTTPRequestHandler):
     def _cors(self) -> None:
         origin = self._origin()
         self.send_header("Vary", "Origin")
-        if ALLOW_ANY_ORIGIN:
-            self.send_header("Access-Control-Allow-Origin", "*")
-        elif origin:
-            # Echo the exact origin so that *our* client can read the response.
-            # A wildcard here is what let any web page read /scan.
+        if origin:
+            # Echo only the renderer/local origin already accepted by _allowed.
             self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Allow-Headers", "content-type, authorization, x-bridge-token")
         self.send_header("Access-Control-Allow-Methods", "GET,OPTIONS")
@@ -544,8 +498,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self._allowed():
             return
         if self.headers.get("Upgrade", "").lower() == "websocket":
-            # _ws() enforces the token itself: handshakes cannot carry
-            # headers from a browser, so the secret travels as ?token=.
+            # _ws() enforces the token itself: renderer handshakes cannot carry
+            # custom headers, so the secret travels as ?token=.
             self._ws()
             return
         if not self._token_ok():
@@ -578,7 +532,7 @@ class Handler(BaseHTTPRequestHandler):
         page = (
             "<!doctype html><meta charset=utf-8><title>SoundControl bridge</title>"
             "<body style='font-family:sans-serif;background:#07080c;color:#f3efe6;padding:2rem'>"
-            "<h1>SoundControl RFCOMM bridge</h1><p>WebSocket endpoint: <code>/ws</code></p>"
+            "<h1>SoundControl Windows helper</h1><p>Local IPC endpoint: <code>/ws</code></p>"
         ).encode()
         self.send_response(200)
         self._cors()
@@ -588,9 +542,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(page)
 
     def _ws(self) -> None:
-        # Browsers cannot set headers on a WebSocket handshake, so the desktop
-        # app authenticates with ?token= instead (non-browser clients may use
-        # the Authorization / X-Bridge-Token header like on HTTP).
+        # The renderer cannot set custom headers on a WebSocket handshake, so
+        # the desktop app authenticates with ?token= instead. Local tooling may
+        # use the Authorization / X-Bridge-Token header like on HTTP.
         query = parse_qs(urlsplit(self.path).query)
         presented = (query.get("token", [None])[0]) or bearer_from(self.headers)
         if not token_ok(presented):
@@ -663,20 +617,13 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="SoundControl RFCOMM bridge")
+    if sys.platform != "win32":
+        raise SystemExit("SoundControl is a Windows-only desktop application")
+    p = argparse.ArgumentParser(description="SoundControl Windows Bluetooth helper")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--mac", default="")
     p.add_argument("--channel", type=int, default=4)
-    p.add_argument(
-        "--allow-origin",
-        action="append",
-        default=[],
-        metavar="ORIGIN",
-        help="Extra browser origin allowed to use the bridge, e.g. https://you.github.io. "
-        "Pass '*' to answer any origin (not recommended: any web page you visit could "
-        "then read your paired devices and write to your earbuds).",
-    )
     p.add_argument(
         "--token",
         default="",
@@ -692,7 +639,7 @@ def main() -> None:
         "SOUNDCONTROL_BRIDGE_TOKEN).",
     )
     args = p.parse_args()
-    global ALLOW_ANY_ORIGIN, BRIDGE_TOKEN, TOKEN_SOURCE
+    global BRIDGE_TOKEN, TOKEN_SOURCE
     if args.token.strip():
         BRIDGE_TOKEN = args.token.strip()
         TOKEN_SOURCE = "flag"
@@ -718,13 +665,6 @@ def main() -> None:
             "(fine for manual/dev use; the desktop app always sets a per-session token)",
             file=sys.stderr,
         )
-    for item in args.allow_origin:
-        value = item.strip().rstrip("/")
-        if value == "*":
-            ALLOW_ANY_ORIGIN = True
-            print("bridge: WARNING allowing any origin (--allow-origin *)", file=sys.stderr)
-        elif value:
-            EXTRA_ALLOWED_ORIGINS.add(value)
     if args.mac:
         try:
             BRIDGE.connect(args.mac, args.channel)

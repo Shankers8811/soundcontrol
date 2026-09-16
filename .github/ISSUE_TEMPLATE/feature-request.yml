@@ -1,18 +1,18 @@
 name: "✨ Feature request or missing Android-app parity"
-description: "Ask for something the official soundcore Android app does that SoundControl does not."
+description: "Ask for something the official soundcore Android app does that the Windows desktop app does not."
 title: "[feat] "
 labels: ["enhancement", "needs triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        The goal of this project is **feature parity with the official Soundcore Android app** —
-        no bloat, no accounts, no telemetry. Requests that fit that goal move fastest.
+        The goal of this project is useful feature parity with the official Soundcore Android app
+        in a focused Windows desktop application — no bloat, accounts, or telemetry.
         Check the parity table in the README first.
   - type: textarea
     id: feature
     attributes:
-      label: What does the official app do that this one does not?
+      label: What does the official app do that this Windows app does not?
       description: Describe the feature and where it lives in the Android app (tab, menu path, screen name).
       placeholder: "In Soundcore → Device → Sound Effects → 'Hi-Res Audio' toggle…"
     validations:
@@ -37,23 +37,12 @@ body:
       placeholder: "TX 08 EE 02 81 00 08 .."
     validations:
       required: false
-  - type: dropdown
-    id: where
-    attributes:
-      label: Where should it work?
-      multiple: false
-      options:
-        - Web app only (Web Bluetooth)
-        - Windows desktop app only (RFCOMM bridge)
-        - Both
-    validations:
-      required: true
   - type: checkboxes
     id: limits
     attributes:
       label: I understand the platform limits
       options:
-        - label: A feature the browser cannot reach (classic Bluetooth, background wake, firmware OTA) may only ever land in the desktop app
+        - label: This project targets the Windows desktop app and its paired-device RFCOMM bridge
           required: true
         - label: I am not asking for analytics, accounts, cloud sync, or AI features
           required: true

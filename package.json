@@ -3,15 +3,13 @@
   "private": true,
   "version": "1.0.4",
   "type": "module",
-  "description": "Desktop companion for Anker Soundcore earbuds and headphones — Web Bluetooth, Web Serial, and RFCOMM bridge.",
+  "description": "Windows desktop controls for Anker Soundcore earbuds and headphones over Bluetooth RFCOMM.",
   "main": "electron-main.cjs",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host 0.0.0.0 --port 5173",
     "electron": "electron electron-main.cjs",
     "build:win": "npm run build && electron-builder --win",
-    "dist": "npm run build && electron-builder",
     "bridge": "python3 soundcore_bridge.py",
     "fetch:python-embed": "node scripts/fetch-python-embed.mjs",
     "prebuild:win": "npm run fetch:python-embed"
@@ -56,7 +54,6 @@
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/outfit": "^5.3.0",
-    "jszip": "^3.10.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

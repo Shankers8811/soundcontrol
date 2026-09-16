@@ -6,10 +6,6 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 
-// Enable Web Bluetooth & hardware access in Electron
-app.commandLine.appendSwitch('enable-web-bluetooth');
-app.commandLine.appendSwitch('enable-experimental-web-platform-features');
-
 let bridgeProcess = null;
 let mainWindow = null;
 let windowEverShown = false;
@@ -17,8 +13,7 @@ let windowEverShown = false;
 // Per-session secret for the RFCOMM bridge. Minted fresh on every launch,
 // handed to the helper through its (private) environment — never argv, which
 // other processes can read — and to our own renderer over IPC, so only this
-// app's window can use the helper's Bluetooth writes. A random web page knows
-// neither the token nor, realistically, that a bridge is even running.
+// app's window can use the helper's Bluetooth writes.
 const bridgeToken = crypto.randomBytes(32).toString('hex');
 ipcMain.handle('soundcontrol:bridge-token', () => bridgeToken);
 
@@ -316,38 +311,6 @@ function createWindow() {
       mainWindow = null;
     });
 
-    // Handle Web Bluetooth device discovery in Electron
-    win.webContents.on('select-bluetooth-device', (event, deviceList, callback) => {
-      event.preventDefault();
-      if (deviceList && deviceList.length > 0) {
-        // Find matching Soundcore device or pick first discovered
-        const hit = deviceList.find((d) => {
-          const name = (d.deviceName || '').toLowerCase();
-          return (
-            name.includes('soundcore') ||
-            name.includes('anker') ||
-            name.includes('life') ||
-            name.includes('liberty') ||
-            name.includes('space') ||
-            name.includes('r50i') ||
-            name.includes('p30i') ||
-            name.includes('p20i') ||
-            name.includes('q30') ||
-            name.includes('q35') ||
-            name.includes('q45')
-          );
-        });
-        callback(hit ? hit.deviceId : deviceList[0].deviceId);
-      }
-    });
-
-    // Bluetooth pairing handler
-    if (win.webContents.session.setBluetoothPairingHandler) {
-      win.webContents.session.setBluetoothPairingHandler((details, callback) => {
-        callback({ response: 'confirm' });
-      });
-    }
-
     win.webContents.on('did-fail-load', (_e, code, desc, url) => {
       log(`did-fail-load ${code} ${desc} ${url}`);
       showFatal('SoundControl could not load its interface', `${desc} (code ${code})\n${url}`);
@@ -384,10 +347,13 @@ if (!gotTheLock) {
 
   app.whenReady().then(() => {
     log(`starting ${app.getVersion()} on ${process.platform} ${os.release()}`);
-    if (process.platform === 'win32') {
-      // Proper taskbar grouping / notification attribution on Windows.
-      app.setAppUserModelId('com.soundcontrol.desktop');
+    if (process.platform !== 'win32') {
+      showFatal('Windows only', 'SoundControl is distributed as a Windows desktop application.');
+      app.quit();
+      return;
     }
+    // Proper taskbar grouping / notification attribution on Windows.
+    app.setAppUserModelId('com.soundcontrol.desktop');
     startBridgeIfAvailable();
     createWindow();
 
