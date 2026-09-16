@@ -47,51 +47,62 @@ jobs:
         uses: actions/deploy-pages@v4
         # A Pages site can be published by two sources at the same time: this
         # workflow's artifact deploy, and a legacy "Deploy from a branch" build.
-        # When branch mode is also enabled it finishes seconds later and wins, so
-        # the URL ends up serving the repository *source* instead of dist/ — where
-        # index.html loads /src/main.tsx, which no browser can execute. The job is
-        # green and the site is a blank page. Assert what is actually live.
-      - name: Assert the live site is this build
+        # When branch mode is enabled it runs off the same push and finishes a few
+        # seconds *after* this job, so it overwrites the good deployment - the job
+        # goes green and the URL ends up serving the repository source, where
+        # index.html loads /src/main.tsx, which no browser can execute (blank page,
+        # no manifest, no service worker, no install). Verify twice, with a wait in
+        # between, so that overwrite is caught and not just raced past.
+      - name: Verify the live site is this build
         shell: bash
         run: |
           set -uo pipefail
-          url="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/index.html?run=${{ github.run_id }}"
-          built=""
+          owner="${{ github.repository_owner }}"
+          repo="${{ github.event.repository.name }}"
+          base="https://${owner}.github.io/${repo}"
+          # Proves the site is the raw tree: this exact string only ever exists in
+          # the source index.html, never in a Vite build.
+          branch_served() {
+            body="$(curl -fsSL --max-time 20 "$1" 2>/dev/null || true)"
+            printf '%s' "$body" | grep -q 'src="/src/main.tsx"'
+          }
+          shell_missing() {
+            root="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base/manifest.json")"
+            nested="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base/public/manifest.json")"
+            [ "$root" != "200" ] && [ "$nested" = "200" ]
+          }
+          built_visible() {
+            body="$(curl -fsSL --max-time 20 "$1" 2>/dev/null || true)"
+            printf '%s' "$body" | grep -qE 'src="\.?/?assets/'
+          }
+          fail_branch_mode() {
+            echo "::error title=Pages is serving the repository tree, not this build::$base serves index.html referencing /src/main.tsx (or 404s on /manifest.json while /public/manifest.json answers), so the web app renders blank and cannot be installed."
+            echo "Fix: repo Settings -> Pages -> Source: choose 'GitHub Actions'. While 'Deploy from a branch' is also enabled, its build lands seconds after this job and replaces dist/ with the raw tree."
+            exit 1
+          }
+          # 1) wait for this deployment to become visible (Pages propagation is slow)
+          seen=""
           for attempt in 1 2 3 4 5 6; do
-            body="$(curl -fsSL --max-time 20 "$url" 2>/dev/null || true)"
-            if printf '%s' "$body" | grep -q 'src="/src/main.tsx"'; then
-              echo "::error title=Pages is serving the raw branch, not the build::https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/ returns index.html referencing /src/main.tsx, so it renders blank."
-              echo "Fix: repo Settings -> Pages -> Source: choose 'GitHub Actions'. 'Deploy from a branch' must be off, otherwise its build overwrites this deployment seconds later."
-              exit 1
-            fi
-            if printf '%s' "$body" | grep -qE 'src="\./?assets/'; then
-              built="yes"
-              break
-            fi
-            echo "attempt $attempt: built asset reference not visible yet (Pages may still be propagating)"
+            if branch_served "$base/index.html?run=${{ github.run_id }}-a"; then fail_branch_mode; fi
+            if built_visible "$base/index.html?run=${{ github.run_id }}-a"; then seen="yes"; break; fi
+            echo "attempt $attempt: this build is not visible yet, retrying in 15s"
             sleep 15
           done
-          if [ -z "$built" ]; then
+          if [ -z "$seen" ]; then
             # Never fail on propagation lag alone - only on proven wrong content.
-            echo "::warning title=Could not verify deployed content::The live index.html did not show a built asset reference within ~90s. Check $url once before re-running."
+            echo "::warning title=Could not verify deployed content::The live index.html did not show a built asset reference within ~90s. Check $base once before re-running."
+            exit 0
+          fi
+          echo "Deployment verified on first look: Pages is serving this build (hashed ./assets/ reference present)."
+          # 2) the branch-source build, if enabled, lands seconds later - check again
+          echo "waiting 75s to confirm nothing overwrites this deployment"
+          sleep 75
+          if branch_served "$base/index.html?run=${{ github.run_id }}-b" || shell_missing; then
+            echo "This job's deployment was correct, then a different publisher replaced it."
+            fail_branch_mode
+          fi
+          if built_visible "$base/index.html?run=${{ github.run_id }}-b"; then
+            echo "Still correct after 75s - Pages is publishing this workflow's artifact."
           else
-            echo "Verified: Pages is serving this build (hashed ./assets/ reference present)."
-          fi
-      - name: Assert the app shell is reachable
-        shell: bash
-        run: |
-          set -uo pipefail
-          base="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
-          # manifest.json at the site root is the tell: the repository keeps it in
-          # public/, so a root 404 plus a 200 under /public/ means branch-source mode.
-          root="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base/manifest.json")"
-          nested="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base/public/manifest.json")"
-          sw="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base/sw.js")"
-          echo "manifest.json: $root | public/manifest.json: $nested | sw.js: $sw"
-          if [ "$root" != "200" ] && [ "$nested" = "200" ]; then
-            echo "::error title=Pages root is the repository tree::/manifest.json 404s while /public/manifest.json resolves, so the site is publishing the branch instead of dist/. Switch Pages to 'GitHub Actions' (Settings -> Pages)."
-            exit 1
-          fi
-          if [ "$sw" != "200" ]; then
-            echo "::warning::$base/sw.js returned $sw - the PWA cannot register its service worker until the shell is deployed."
+            echo "::warning::The built asset reference was not found on the second look; re-check $base if the site looks stale."
           fi
