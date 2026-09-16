@@ -1,0 +1,52 @@
+name: Windows Desktop Smoke Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['arena/**']
+
+permissions:
+  contents: read
+
+jobs:
+  launch-win:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the Windows application
+        env:
+          SOUNDCONTROL_PYTHON_REQUIRED: '1'
+        run: npm run build:win -- --publish never
+      - name: Launch the packaged desktop application
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $PWD 'release\win-unpacked\SoundControl.exe'
+          if (-not (Test-Path $exe)) {
+            throw "Packaged executable was not found at $exe"
+          }
+          $app = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
+          try {
+            Start-Sleep -Seconds 12
+            if ($app.HasExited) {
+              $log = Join-Path $env:APPDATA 'soundcontrol\main.log'
+              if (Test-Path $log) { Get-Content $log }
+              throw "SoundControl exited during the smoke-test launch (exit code $($app.ExitCode))"
+            }
+            $log = Join-Path $env:APPDATA 'soundcontrol\main.log'
+            if (-not (Test-Path $log)) {
+              throw "SoundControl stayed alive but did not create its startup log"
+            }
+            Get-Content $log
+            if (-not (Select-String -Path $log -Pattern 'window ready-to-show')) {
+              throw "SoundControl did not report that its Electron window became ready"
+            }
+          } finally {
+            if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force }
+          }
