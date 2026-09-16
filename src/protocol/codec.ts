@@ -46,6 +46,48 @@ export function verifyFrame(data: ArrayLike<number>): boolean | null {
   return checksum(data, data.length - 1) === (data[data.length - 1] & 0xff);
 }
 
+/**
+ * XOR checksum used by some legacy BLE captures of the Soundcore protocol.
+ * The Windows RFCOMM transport always uses the additive checksum above; this
+ * helper exists so Android BLE dumps (see src/protocol/ble.ts) can be
+ * validated in the diagnostics console without guessing.
+ */
+export function xorChecksum(bytes: ArrayLike<number>, end = bytes.length): number {
+  let x = 0;
+  for (let i = 0; i < end; i++) x ^= bytes[i] & 0xff;
+  return x & 0xff;
+}
+
+export function verifyXorFrame(data: ArrayLike<number>): boolean | null {
+  if (data.length < 2) return null;
+  return xorChecksum(data, data.length - 1) === (data[data.length - 1] & 0xff);
+}
+
+/**
+ * Decode a Base64 blob (obfuscated APK data or raw BLE stream captures)
+ * into raw bytes. Accepts whitespace and data-URI prefixes; throws a
+ * friendly error instead of returning truncated data.
+ */
+export function base64ToBytes(input: string): Uint8Array {
+  const clean = input
+    .trim()
+    .replace(/^data:[^,]*,/, '')
+    .replace(/\s+/g, '');
+  if (!clean) return new Uint8Array();
+  if (/[^0-9a-zA-Z+/=]/.test(clean) || clean.length % 4 !== 0) {
+    throw new Error('Base64 input is not valid padded Base64');
+  }
+  const binary = atob(clean);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i) & 0xff;
+  return out;
+}
+
+/** Convenience wrapper: Base64 blob -> upper-case spaced hex (see PROTOCOL.md). */
+export function base64ToHex(input: string, sep = ' '): string {
+  return toHex(base64ToBytes(input), sep);
+}
+
 export function dbToByte(db: number): number {
   const safe = Number.isFinite(db) ? db : 0;
   const clamped = Math.max(-6, Math.min(6, safe));

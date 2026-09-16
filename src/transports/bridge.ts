@@ -52,29 +52,44 @@ function scanHttpBase(): string | null {
   return `http://${isLocalHost() ? '127.0.0.1' : location.hostname}:8765`;
 }
 
-/** Quick reachability probe for the local bridge helper. */
-export async function bridgeAlive(): Promise<boolean> {
+export interface BridgeHealth {
+  ok: boolean;
+  connected: boolean;
+  mac: string;
+  channel: number;
+}
+
+/** Fast liveness probe for the local bridge helper (never runs PnP enumeration). */
+export async function bridgeHealth(): Promise<BridgeHealth | null> {
   const base = scanHttpBase();
-  if (!base) return false;
+  if (!base) return null;
   try {
     const token = await bridgeToken();
-    const res = await fetch(`${base}/scan`, {
-      signal: AbortSignal.timeout(1500),
+    const res = await fetch(`${base}/health`, {
+      signal: AbortSignal.timeout(2000),
       headers: authHeaders(token),
     });
-    return res.ok;
+    if (!res.ok) return null;
+    return (await res.json()) as BridgeHealth;
   } catch {
-    return false;
+    return null;
   }
 }
 
-export async function scanBridgeDevices(): Promise<NearbyDevice[]> {
+/** Quick reachability probe for the local bridge helper. */
+export async function bridgeAlive(): Promise<boolean> {
+  return (await bridgeHealth()) !== null;
+}
+
+export async function scanBridgeDevices(fresh = false): Promise<NearbyDevice[]> {
   const base = scanHttpBase();
   if (!base) return [];
   try {
     const token = await bridgeToken();
-    const res = await fetch(`${base}/scan`, {
-      signal: AbortSignal.timeout(1500),
+    // Windows PnP/Bluetooth enumeration can take several seconds on a cold
+    // machine; the helper caches for 3s and /health stays the fast probe.
+    const res = await fetch(`${base}/scan${fresh ? '?fresh=1' : ''}`, {
+      signal: AbortSignal.timeout(10000),
       headers: authHeaders(token),
     });
     if (!res.ok) return [];
