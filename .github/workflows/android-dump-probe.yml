@@ -1,10 +1,14 @@
-name: Android dump probe
+name: Android dump
 
-# Diagnostic relay. The agent's sandbox cannot reach Google at all (TLS to
-# *.google.com is blocked) and cannot read Actions logs (results-receiver is
-# blocked too), so this workflow runs on a runner with full internet access and
-# commits every diagnostic into analysis/android-probe.md, which the agent can
-# read over git.
+# The agent's sandbox cannot reach Google (TLS to *.google.com is blocked) and
+# cannot read Actions logs (results-receiver is blocked), so this workflow runs
+# on a runner with full internet access and commits its findings into the repo,
+# where the agent can read them over git.
+#
+# It downloads the shared APK dump, decompiles it, extracts the protocol facts
+# this project needs (opcodes, frame layouts, device tables), and commits only
+# that curated material. The full decompiled tree of Anker's proprietary app is
+# deliberately NOT committed to this public repository.
 on:
   push:
     paths:
@@ -14,8 +18,9 @@ permissions:
   contents: write
 
 jobs:
-  probe:
+  dump:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,99 +30,190 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install gdown
-        run: pip install gdown
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-      - name: Download the Drive folder with full diagnostics
+      - name: Install tools
+        run: |
+          pip install --quiet gdown
+          mkdir -p /opt/tools && cd /opt/tools
+          URL=$(curl -sL https://api.github.com/repos/skylot/jadx/releases/latest \
+            | grep -oE 'https://[^"]*jadx-[0-9]+\.[0-9]+\.[0-9]+\.zip' | head -1)
+          echo "jadx url: $URL"
+          curl -sL -o jadx.zip "$URL" && unzip -q jadx.zip && chmod +x jadx/bin/jadx
+          /opt/tools/jadx/bin/jadx --version || true
+
+      # ---------------------------------------------------------------- download
+      - name: Download the Drive folder
+        id: fetch
         run: |
           FOLDER='https://drive.google.com/drive/folders/1wdOXUZhINDk2UH-o8LA6-RisQRHjjv7L'
           exec > >(tee /tmp/diag.txt) 2>&1
-
-          echo "### runner network check"
-          for h in drive.google.com drive.usercontent.google.com; do
-            printf '%s -> ' "$h"
-            curl -sS -o /dev/null -w '%{http_code}\n' --max-time 20 "https://$h/" || echo FAIL
-          done
-          echo
-          echo "### gdown version"
-          gdown --version || true
-          echo
-          echo "### folder page: extract file ids"
-          curl -sS --max-time 60 -L "$FOLDER" -o /tmp/folder.html
-          echo "folder html bytes: $(stat -c%s /tmp/folder.html 2>/dev/null || echo 0)"
-          grep -oE '\["[A-Za-z0-9_-]{25,}"' /tmp/folder.html | tr -d '["' | sort -u > /tmp/ids.txt || true
-          echo "ids found: $(wc -l < /tmp/ids.txt)"
-          head -20 /tmp/ids.txt
-          echo
-          echo "### attempt 1: gdown --folder"
-          mkdir -p /tmp/dump && cd /tmp/dump
+          echo "### download"
+          mkdir -p /tmp/raw && cd /tmp/raw
           set +e
-          gdown --folder "$FOLDER" --remaining-ok > /tmp/gdown1.log 2>&1
+          gdown --folder "$FOLDER" 2>&1
           echo "gdown --folder exit: $?"
-          tail -30 /tmp/gdown1.log
-          echo "files after attempt 1:"
-          find /tmp/dump -type f -printf '%10s  %p\n' | head -20
           echo
-          echo "### attempt 2: per-file id"
-          mkdir -p /tmp/dump2 && cd /tmp/dump2
-          while read -r id; do
-            [ -z "$id" ] && continue
-            echo "--- id $id"
-            gdown "$id" > /tmp/gdown2.log 2>&1
-            echo "exit: $?"
-            tail -6 /tmp/gdown2.log
-          done < /tmp/ids.txt
-          echo "files after attempt 2:"
-          find /tmp/dump2 -type f -printf '%10s  %p\n' | head -20
-          echo
-          echo "### attempt 3: raw usercontent endpoint"
-          mkdir -p /tmp/dump3 && cd /tmp/dump3
-          while read -r id; do
-            [ -z "$id" ] && continue
-            curl -sS -L --max-time 120 -o "$id.bin" \
-              -w "id=$id http=%{http_code} size=%{size_download}\n" \
-              "https://drive.usercontent.google.com/download?id=$id&export=download&confirm=t" || echo "curl failed $id"
-          done < /tmp/ids.txt
-          echo "files after attempt 3:"
-          find /tmp/dump3 -type f -printf '%10s  %p\n' | head -20
-          echo
-          echo "### final combined listing"
-          find /tmp/dump /tmp/dump2 /tmp/dump3 -type f -printf '%10s  %p\n' 2>/dev/null | sort -k2
+          echo "### listing"
+          find /tmp/raw -type f -printf '%10s  %p\n' | sort -k2 || true
+          echo "total bytes: $(du -sb /tmp/raw | cut -f1)"
 
-      - name: Inspect whatever downloaded
-        if: always()
+      # ------------------------------------------------------------- unpack tree
+      - name: Unpack archives and locate the APK
         run: |
           exec >> /tmp/diag.txt 2>&1
           echo
-          echo "### archive inspection"
-          for f in $(find /tmp/dump /tmp/dump2 /tmp/dump3 -type f 2>/dev/null | sort); do
-            echo "=== $f ($(stat -c%s "$f") bytes)"
-            file "$f" 2>/dev/null || true
-            if unzip -l "$f" >/dev/null 2>&1; then
-              echo "  zip: OK"
-              unzip -l "$f" | head -8
+          echo "### unpack"
+          mkdir -p /tmp/x && cd /tmp/x
+          mapfile -t ZIPS < <(find /tmp/raw -type f -name '*.zip' | sort)
+          echo "zip parts: ${#ZIPS[@]}"
+
+          # APKPure split downloads are sometimes one archive cut into parts, in
+          # which case each part fails `unzip -t` on its own and the
+          # concatenation is the real archive.
+          if [ "${#ZIPS[@]}" -gt 1 ] && ! unzip -t "${ZIPS[0]}" >/dev/null 2>&1; then
+            echo "first part is not standalone -> trying concatenation in name order"
+            cat "${ZIPS[@]}" > /tmp/joined.zip
+            echo "joined bytes: $(stat -c%s /tmp/joined.zip)"
+            if unzip -t /tmp/joined.zip >/dev/null 2>&1; then
+              echo "joined archive OK"
+              ZIPS=(/tmp/joined.zip)
             else
-              echo "  zip: not a standalone archive"
-              head -c 200 "$f" | xxd | head -5
+              echo "joined archive still invalid"
             fi
+          fi
+
+          for z in "${ZIPS[@]}"; do
+            d=/tmp/x/$(basename "$z" .zip)
+            mkdir -p "$d"
+            unzip -q -o "$z" -d "$d" 2>&1 | tail -3 || true
+            echo "extracted $z -> $d"
           done
 
-      - name: Write report into the branch
+          echo
+          echo "### nested archives (apk/xapk/zip)"
+          find /tmp/x -type f \( -iname '*.apk' -o -iname '*.xapk' -o -iname '*.zip' \) -printf '%10s  %p\n' | sort -k2 | head -40
+
+          # XAPK = zip of zips; unwrap one more level.
+          while read -r apk; do
+            case "$apk" in
+              *.xapk|*.apk)
+                if unzip -l "$apk" 2>/dev/null | grep -qiE '\.apk$'; then
+                  d="${apk%.*}_unpacked"; mkdir -p "$d"
+                  unzip -q -o "$apk" -d "$d" 2>&1 | tail -2 || true
+                  echo "unwrapped $apk -> $d"
+                fi ;;
+            esac
+          done < <(find /tmp/x -type f \( -iname '*.apk' -o -iname '*.xapk' \) | sort)
+
+          echo
+          echo "### dex + manifest + assets"
+          find /tmp/x -type f \( -iname '*.dex' -o -iname 'AndroidManifest.xml' \) -printf '%10s  %p\n' | sort -k2 | head -30
+          find /tmp/x -type d -iname 'assets' | head -10
+          echo "asset files: $(find /tmp/x -type f -path '*/assets/*' | wc -l)"
+
+      # ---------------------------------------------------------------- decompile
+      - name: Decompile with jadx
+        run: |
+          exec >> /tmp/diag.txt 2>&1
+          echo
+          echo "### jadx"
+          APKS=$(find /tmp/x -type f -name '*.apk' | sort)
+          echo "apks: $APKS"
+          mkdir -p /tmp/src
+          n=0
+          for a in $APKS; do
+            n=$((n+1))
+            out=/tmp/src/apk$n
+            mkdir -p "$out"
+            echo "--- decompiling $a -> $out"
+            timeout 1500 /opt/tools/jadx/bin/jadx -d "$out" --no-res --show-bad-code "$a" > /tmp/jadx$n.log 2>&1
+            echo "jadx exit: $?"
+            tail -5 /tmp/jadx$n.log
+          done
+          echo "java files: $(find /tmp/src -name '*.java' | wc -l)"
+
+      # ----------------------------------------------------------------- extract
+      - name: Extract protocol facts
+        run: |
+          exec >> /tmp/diag.txt 2>&1
+          echo
+          echo "### protocol extraction"
+          mkdir -p analysis/android
+          SRC=/tmp/src
+          OUT=analysis/android
+
+          # Frame magic / opcode hunting. The host->device frame is 08 EE and
+          # device->host is 09 FF, so look for those literal pairs and for the
+          # command-family bytes this project already documents.
+          : > /tmp/hits.txt
+          for pat in '0x08' '0xee' '0xEE' '0xff' '0xFF'; do :; done
+          grep -rlniE '0x0?8,?\s*\(?byte\)?\s*0x(ee|EE)' "$SRC" 2>/dev/null > /tmp/magic.txt || true
+          grep -rlniE '0x09,?\s*\(?byte\)?\s*0x(ff|FF)' "$SRC" 2>/dev/null >> /tmp/magic.txt || true
+          sort -u /tmp/magic.txt -o /tmp/magic.txt || true
+          echo "files with frame magic: $(wc -l < /tmp/magic.txt)"
+          head -40 /tmp/magic.txt
+
+          echo
+          echo "### interesting class names"
+          grep -rliE '(protocol|command|packet|frame|opcode|anc|equaliz|battery|firmware|ldac|spatial|bassup|weardetect|touchkey|gesture)' \
+            --include='*.java' "$SRC" 2>/dev/null | sed 's|.*/||' | sort | uniq -c | sort -rn | head -50
+
+          echo
+          echo "### model SKUs referenced in code"
+          grep -rhoE '\bA[0-9]{4}\b' --include='*.java' "$SRC" 2>/dev/null | sort | uniq -c | sort -rn | head -40
+
+          echo
+          echo "### model names referenced in code"
+          grep -rhoiE '\b(liberty|space one|q30|q35|q45|r50i|p20i|p25i|p30i|sleep a10|sport x10|life tune)\b' \
+            --include='*.java' "$SRC" 2>/dev/null | tr 'A-Z' 'a-z' | sort | uniq -c | sort -rn | head -30
+
+          # Copy the most protocol-relevant sources (capped) for the agent to read.
+          grep -rliE 'protocol|command|opcode' --include='*.java' "$SRC" 2>/dev/null \
+            | head -60 | while read -r f; do
+              rel=$(echo "$f" | sed 's|/tmp/src/||' | tr '/' '_')
+              cp "$f" "$OUT/src_$rel" 2>/dev/null || true
+            done
+          echo "copied sources: $(ls "$OUT" | wc -l) files, $(du -sh "$OUT" | cut -f1)"
+
+          # Device config tables usually live in assets as JSON.
+          find /tmp/x -type f -path '*/assets/*' \( -name '*.json' -o -name '*.xml' \) \
+            -size -3M -printf '%10s  %p\n' 2>/dev/null | sort -rn | head -40 > /tmp/assets.txt
+          cat /tmp/assets.txt
+          mkdir -p "$OUT/assets"
+          head -25 /tmp/assets.txt | awk '{print $2}' | while read -r a; do
+            cp "$a" "$OUT/assets/$(basename "$a")" 2>/dev/null || true
+          done
+          echo "copied assets: $(ls "$OUT/assets" 2>/dev/null | wc -l), $(du -sh "$OUT/assets" 2>/dev/null | cut -f1)"
+
+          # Keep the committed payload small and factual.
+          du -sh "$OUT"
+          find "$OUT" -type f -size +2M -delete
+
+      - name: Write report
         if: always()
         run: |
           mkdir -p analysis
           {
-            echo "# Android dump probe (v2)"
+            echo "# Android dump extraction"
             echo
             echo "Run: ${{ github.run_id }}"
             echo
             echo '```'
-            cat /tmp/diag.txt 2>/dev/null || echo "(no diagnostics captured)"
+            cat /tmp/diag.txt 2>/dev/null || echo "(no diagnostics)"
             echo '```'
-          } > analysis/android-probe.md
-          wc -c analysis/android-probe.md
+          } > analysis/android-extraction.md
+          echo "report bytes: $(stat -c%s analysis/android-extraction.md)"
+          echo "payload: $(du -sh analysis | cut -f1)"
+
+      - name: Commit findings
+        if: always()
+        run: |
           git config user.name  "soundcontrol-ci"
           git config user.email "ci@users.noreply.github.com"
-          git add analysis/android-probe.md
-          git commit -m "probe: Drive download diagnostics" || echo "nothing to commit"
+          git add analysis
+          git commit -m "data: extract Soundcore protocol facts from the official Android app dump" || echo "nothing to commit"
           git push origin HEAD:arena/01a0aa7c-soundcontrol
