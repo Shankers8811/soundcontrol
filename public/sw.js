@@ -1,5 +1,15 @@
-const CACHE = 'soundcontrol-v2';
-const SHELL = ['./', './index.html', './icon-192.png', './icon-512.png', './manifest.json'];
+// CACHE name is the app-shell version: bump it whenever the precached shell or
+// the icon set changes so every installed PWA drops the previous generation
+// (activate deletes any cache whose name is not CACHE below).
+const CACHE = 'soundcontrol-v3';
+const SHELL = [
+  './',
+  './index.html',
+  './manifest.json',
+  './favicon-64.png',
+  './icon-192.png',
+  './icon-512.png',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

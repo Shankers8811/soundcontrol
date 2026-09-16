@@ -19,7 +19,7 @@ export function DeviceSelectModal({ onClose }: { onClose: () => void }) {
       <div className="grid gap-2.5">
         {DEVICES.map((d) => {
           const isCurrent = app.profile.id === d.id;
-          const img = d.kind === 'overear' ? asset('device-overear.png') : asset('device-earbuds.png');
+          const img = d.kind === 'overear' ? asset('device-overear.webp') : asset('device-earbuds.webp');
           return (
             <button
               key={d.id}
@@ -30,7 +30,15 @@ export function DeviceSelectModal({ onClose }: { onClose: () => void }) {
                   : 'border-line bg-wash hover:border-slate-300'
               }`}
             >
-              <img src={img} alt="" className="h-12 w-12 object-contain" />
+              <img
+                src={img}
+                alt=""
+                width={704}
+                height={384}
+                loading="lazy"
+                decoding="async"
+                className="h-12 w-12 object-contain"
+              />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-ink">{d.name}</span>
