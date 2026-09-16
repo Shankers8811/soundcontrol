@@ -25,10 +25,8 @@ import {
   describePacket,
 } from '../protocol/packets';
 import type { EqPreset } from '../protocol/presets';
-import { isUserCancel } from '../lib/bluetoothEnv';
-import { connectBluetooth, isGattBusyError } from '../transports/ble';
+import { isTransportBusyError } from '../lib/transportErrors';
 import { connectBridge } from '../transports/bridge';
-import { connectSerial } from '../transports/serial';
 import { connectSimulator } from '../transports/simulator';
 import type {
   AncMode,
@@ -97,8 +95,6 @@ interface AppState {
   log: LogEntry[];
   error: string | null;
   clearError: () => void;
-  connectBle: (showAllDevices?: boolean) => Promise<void>;
-  connectSerial: () => Promise<void>;
   connectBridge: (mac: string, name?: string, windowsBattery?: number | null) => Promise<void>;
   connectSim: (customProfileId?: string) => Promise<void>;
   disconnect: () => Promise<void>;
@@ -241,10 +237,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         await t.write(data);
       } catch (err) {
-        // The earbuds' GATT server is busy (e.g. streaming audio): every
-        // caller already updated the UI optimistically, so acknowledge with
-        // a log entry + sound and never surface an error popup.
-        if (isGattBusyError(err)) {
+        // A Windows Bluetooth operation can be busy while audio is streaming.
+        // The UI is already optimistic, so acknowledge the transient failure
+        // and let the user resend without showing an error popup.
+        if (isTransportBusyError(err)) {
           pushLog('sys', '', 'Earbuds busy — kept your setting, tap again to resend');
           if (prompts) await beep('ok');
           return;
@@ -306,7 +302,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         await fn();
       } catch (err) {
-        if (isUserCancel(err)) return;
         const msg = err instanceof Error ? err.message : String(err);
         setError(msg);
         pushLog('sys', '', msg);
@@ -317,26 +312,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     },
     [pushLog],
-  );
-
-  const connectBle = useCallback(
-    (showAllDevices?: boolean) =>
-      wrapConnect(async () => {
-        const { transport, name, battery: b } = await connectBluetooth(onRx, {
-          acceptAllDevices: showAllDevices === true,
-        });
-        await attach(transport, name, b);
-      }),
-    [attach, onRx, wrapConnect],
-  );
-
-  const connectSerialPort = useCallback(
-    () =>
-      wrapConnect(async () => {
-        const { transport, name } = await connectSerial(onRx);
-        await attach(transport, name);
-      }),
-    [attach, onRx, wrapConnect],
   );
 
   const connectBridgePort = useCallback(
@@ -559,8 +534,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       log,
       error,
       clearError: () => setError(null),
-      connectBle,
-      connectSerial: connectSerialPort,
       connectBridge: connectBridgePort,
       connectSim,
       disconnect,
@@ -638,8 +611,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       hearId,
       log,
       error,
-      connectBle,
-      connectSerialPort,
       connectBridgePort,
       connectSim,
       disconnect,

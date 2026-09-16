@@ -18,9 +18,8 @@ function isLocalHost(): boolean {
   return !h || h === 'localhost' || h === '127.0.0.1';
 }
 
-// Per-session bridge secret. The desktop app's main process mints a fresh
-// token on every launch and hands it to this renderer over IPC; the plain web
-// build has no token and can only talk to tokenless (manually run) bridges.
+// Per-session bridge secret. The Windows desktop app's main process mints a
+// fresh token on every launch and hands it to this renderer over IPC.
 // Fetched once and cached — the token never changes within a session.
 let cachedToken: string | null | undefined;
 async function bridgeToken(): Promise<string | null> {
@@ -41,8 +40,8 @@ function authHeaders(token: string | null): Record<string, string> {
 export function defaultBridgeUrl(token: string | null = null): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const base = `${proto}//${isLocalHost() ? '127.0.0.1' : location.hostname}:8765/ws`;
-  // A WebSocket handshake cannot carry headers, so the secret travels as a
-  // query parameter; loopback only, never logged by the bridge.
+  // The renderer's WebSocket handshake cannot carry custom headers, so the
+  // secret travels as a query parameter; loopback only, never logged by the bridge.
   return token ? `${base}?token=${encodeURIComponent(token)}` : base;
 }
 
@@ -210,7 +209,7 @@ function openSocket(url: string): Promise<WebSocket> {
     }
     const t = window.setTimeout(() => {
       ws.close();
-      reject(new Error('No desktop helper running. Use Search to pick a device in Chrome.'));
+      reject(new Error('No Windows Bluetooth helper running. Restart SoundControl and try again.'));
     }, 2500);
     ws.addEventListener('open', () => {
       window.clearTimeout(t);
@@ -218,7 +217,7 @@ function openSocket(url: string): Promise<WebSocket> {
     });
     ws.addEventListener('error', () => {
       window.clearTimeout(t);
-      reject(new Error('No desktop helper running. Use Search to pick a device in Chrome.'));
+      reject(new Error('No Windows Bluetooth helper running. Restart SoundControl and try again.'));
     });
   });
 }
