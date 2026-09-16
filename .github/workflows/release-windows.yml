@@ -1,10 +1,11 @@
 name: Release Windows
 
 # Tagging a commit on main (e.g. `git tag v1.0.2 main && git push origin v1.0.2`)
-# builds the standard NSIS Windows installer and publishes it as the single
-# asset of a new GitHub Release: SoundControl-Setup-<version>.exe.
-# The in-app download button and the README deep-link to the
-# "/releases/latest/download/..." URL produced here.
+# builds the standard NSIS Windows installer and publishes it as TWO assets of
+# a new GitHub Release: SoundControl-Setup-<version>.exe (archival) and
+# SoundControl-Setup.exe (stable alias). The in-app download button deep-links
+# to the STABLE name via "/releases/latest/download/...": a versioned name
+# would 404 for every older client the moment a newer Release ships.
 #
 # Authenticode code signing (which removes the SmartScreen "unknown
 # publisher" warning) is automatic when these repository secrets exist:
@@ -75,7 +76,7 @@ jobs:
         if: always()
         shell: bash
         run: rm -f cert.p12
-      - name: Stage installer .exe with a stable, URL-safe name
+      - name: Stage installer .exe with stable, URL-safe names
         shell: bash
         env:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -90,13 +91,17 @@ jobs:
           test -n "$INSTALLER"
           # Asset version is the tag without its leading "v" (v1.0.2 -> 1.0.2).
           VERSION="${RELEASE_TAG#v}"
-          # Rename on disk so the published asset name is deterministic and the
-          # deep links never depend on GitHub normalising spaces in filenames.
+          # Rename on disk so the published asset names are deterministic and
+          # the deep links never depend on GitHub normalising spaces in
+          # filenames. Two assets: the versioned file for the record, and a
+          # stable alias the in-app button links to (a versioned name would
+          # 404 for older clients once a newer Release is latest).
           mkdir -p release-assets
           cp "$INSTALLER" "release-assets/SoundControl-Setup-$VERSION.exe"
+          cp "$INSTALLER" "release-assets/SoundControl-Setup.exe"
           echo "Staged release assets:"
           ls -la release-assets/
-          test "$(find release-assets -maxdepth 1 -name '*.exe' | wc -l)" -eq 1
+          test "$(find release-assets -maxdepth 1 -name '*.exe' | wc -l)" -eq 2
       - name: Publish GitHub Release with the installer
         shell: bash
         env:

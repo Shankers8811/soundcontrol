@@ -82,5 +82,7 @@ interface Window {
     isElectron: boolean;
     platform: string;
     version: string;
+    /** Per-session bridge secret, minted by the main process (desktop only). */
+    getBridgeToken?: () => Promise<string>;
   };
 }
