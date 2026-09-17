@@ -93,6 +93,14 @@ class FakeSocket:
             return b"\x00\x01\x02" + INFO_REPLY
         if self.behaviour == "garbage":
             return b"\xAA\xBB\xCC\xDD" * 8
+        if self.behaviour == "late-answer":
+            # Silent through the probe and the first watchdog wait; answers
+            # exactly once after the second handshake send — the control slot
+            # freeing up mid-session.
+            if len(self.sent) >= 2 and not getattr(self, "_answered", False):
+                self._answered = True
+                return INFO_REPLY
+            raise socket.timeout()
         raise socket.timeout()
 
     def close(self) -> None:
@@ -273,6 +281,34 @@ try:
     b, log, err, _, adopted = run({4: "answer"}, hold=0.8)
     stderr_text = next((x for x in log if x.startswith("stderr:")), "")
     check("answering link -> no watchdog", "silent-link watchdog" not in stderr_text, stderr_text[:400])
+
+    # 14. Self-healing: the slot frees up mid-session, the device answers a
+    #     background retry, and the bridge must announce it — no manual
+    #     reconnect needed.
+    b, log, err, _, adopted = run({4: "late-answer"}, hold=1.2)
+    check("late answer -> adopted", err is None and adopted, str(err))
+    stderr_text = next((x for x in log if x.startswith("stderr:")), "")
+    check("late answer -> watchdog reported the silence first", "silent-link watchdog" in stderr_text, stderr_text[:400])
+    check(
+        "late answer -> promotion message says battery/ANC are live",
+        "after retry" in stderr_text and "live now" in stderr_text,
+        stderr_text[:400],
+    )
+    check(
+        "late answer -> device frame reached the renderer",
+        any(x.startswith("broadcast:rx") for x in log),
+        str([x for x in log if "broadcast" in x][:6]),
+    )
+
+    # 15. The silent-fallback message must not swallow the refused channels.
+    b, log, err, _, adopted = run({4: "silent", 12: "silent"}, hold=0.4)
+    stderr_text = next((x for x in log if x.startswith("stderr:")), "")
+    check("fallback -> still warns about the missing handshake", "did not answer" in stderr_text, stderr_text[:400])
+    check(
+        "fallback -> names the refused channels too",
+        "ch15" in stderr_text and "Host is down" in stderr_text,
+        stderr_text[:400],
+    )
 finally:
     bridge.SILENT_LINK_WATCHDOG_S = old_watchdog
 
