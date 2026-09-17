@@ -28,6 +28,19 @@ expects it on the loopback port. If ConnectSheet shows
   packages). If a token is configured, the renderer receives it from Electron
   automatically; manual `curl` needs `X-Bridge-Token`.
 
+On a cold start the helper can take a few seconds to begin listening (Electron
+gives the Python process a 12 s readiness budget, and first-run antivirus
+scans are slow), so the renderer keeps retrying its WebSocket for **15 s**
+before failing. Connect errors now name the situation instead of one generic
+message:
+
+- *did not become ready within 15 seconds* — the helper is still starting or
+  failed to start; retry in a moment, then check `main.log`;
+- *rejected SoundControl's session token* — a helper from a previous session
+  still owns port 8765; restart SoundControl (or end the stale process);
+- *helper is running but its WebSocket connection keeps failing* — restart
+  SoundControl.
+
 ## Connection takes long / fails
 
 The bridge probes the DSP with the `01:01` handshake on channels

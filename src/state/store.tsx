@@ -502,6 +502,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const connectBridgePort = useCallback(
     (mac: string, label?: string, windowsBattery?: number | null) =>
       wrapConnect(async () => {
+        // Filled in once connectBridge resolves; the link-down callback uses
+        // it to verify the dropped transport is still the active one (a fast
+        // disconnect→reconnect must not let the old socket's close tear down
+        // the new session).
+        const linked: { transport: Transport | null } = { transport: null };
         const { transport, name, battery: b, dspChannel } = await connectBridge(
           mac,
           onRx,
@@ -510,7 +515,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // Bridge diagnostics (probe results, silent-link watchdog) belong
           // in the same console the user watches while connecting.
           (text) => pushLog('sys', '', text),
+          // The helper socket dropped unexpectedly after a successful connect
+          // (helper exit/crash/restart): leave the "Connected" state out loud
+          // instead of sitting there until the next write fails.
+          (reason) => {
+            if (!linked.transport || transportRef.current !== linked.transport) return;
+            transportRef.current = null;
+            setConnected(false);
+            setTransportLabel('Not connected');
+            setError(reason);
+            pushLog('sys', '', reason);
+            if (prompts) void beep('warn');
+          },
         );
+        linked.transport = transport;
         await attach(transport, name, b, dspChannel);
         // Settings persistence: remember the last few devices for one-tap
         // reconnect on the next launch.
@@ -525,7 +543,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           });
         }
       }),
-    [attach, onRx, pushLog, wrapConnect],
+    [attach, onRx, prompts, pushLog, wrapConnect],
   );
 
   const connectSim = useCallback(
