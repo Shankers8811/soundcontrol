@@ -2,7 +2,12 @@
 """SoundControl RFCOMM bridge — zero third-party dependencies.
 
 Pipes exact Soundcore DSP frames (08 EE …) into Classic Bluetooth RFCOMM.
-Default channel is 4; over-ears sometimes answer on 12 or 15.
+
+The DSP channel is not fixed: 4 on most earbuds, 10 on the P20i family, 12/15
+on several over-ears, 30 on the Space 2. Rather than trusting the first
+channel that accepts a socket, `Bridge.connect` sends the `01:01` handshake to
+each candidate and keeps the first one that answers with a valid `09 FF`
+frame. Pass --channel to start the probe somewhere else.
 
     python3 soundcore_bridge.py                      # loopback, port 8765
     python3 soundcore_bridge.py --mac AA:BB:CC:DD:EE:FF --channel 4
@@ -40,12 +45,67 @@ import struct
 import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
 from urllib.parse import parse_qs, urlsplit
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 RFCOMM = getattr(socket, "BTPROTO_RFCOMM", 3)
+
+# `08 EE 00 00 00 01 01 0A 00 02` — the state request the official app sends
+# first. Every supported model answers it with a `09 FF` frame, which makes it
+# the cheapest possible "is this really the DSP channel?" test.
+HANDSHAKE = bytes.fromhex("08EE00000001010A0002")
+
+# RFCOMM channels the Soundcore DSP has been observed on, most common first.
+# The official app resolves this from SDP; Windows gives us no reliable SDP
+# record for the vendor service, so the bridge probes in this order instead.
+# Deliberately excluded: 12/13 are TOTA/BESOTA firmware-flash channels on some
+# families (mervin008/soundcorebridge hard-blocks them for writes) and 16 is
+# Apple iAP2. We only ever send a read-only state request, and probing never
+# writes firmware, but the exclusion keeps a future write path from guessing.
+DSP_CHANNEL_CANDIDATES = (4, 12, 15, 10, 30, 1)
+
+# A cold Windows Bluetooth stack can take a couple of seconds to accept, and a
+# busy headset a moment to answer. Kept short on purpose: the whole probe runs
+# inside the renderer's connect timeout, so 6 candidates must fit in it.
+PROBE_CONNECT_TIMEOUT = 2.5
+PROBE_REPLY_TIMEOUT = 1.5
+
+# When nothing answered the handshake we still adopt the first accepting
+# channel (manual console use), but the UI would then sit at "Connected" with
+# empty battery/ANC forever. This watchdog names that condition out loud: if
+# the silent link has not produced a single device frame after this many
+# seconds, the bridge reports it instead of pretending all is well — and then
+# keeps re-sending the read-only handshake every SILENT_LINK_WATCHDOG_S, so a
+# control slot that frees up later (phone app closed) heals by itself and the
+# renderer is told "battery and ANC are live now" without a manual reconnect.
+SILENT_LINK_WATCHDOG_S = 8.0
+
+
+def _answers_handshake(buf: bytes) -> bool:
+    """True when `buf` holds at least one checksum-valid `09 FF` frame."""
+    i = 0
+    while i + 1 < len(buf):
+        if buf[i] == 0x09 and buf[i + 1] == 0xFF:
+            if i + 9 >= len(buf):
+                return False  # header found, frame still arriving
+            indicated = buf[i + 7] | (buf[i + 8] << 8)
+            end = None
+            if 10 <= indicated <= 512 and len(buf) >= i + indicated:
+                end = i + indicated
+            else:
+                for candidate in range(i + 10, min(len(buf), i + 512) + 1):
+                    if _frame_checksum(buf[i : candidate - 1]) == buf[candidate - 1]:
+                        end = candidate
+                        break
+            if end is not None and _frame_checksum(buf[i : end - 1]) == buf[end - 1]:
+                return True
+            i += 2
+        else:
+            i += 1
+    return False
 
 
 class Bridge:
@@ -55,6 +115,9 @@ class Bridge:
         self.mac = ""
         self.channel = 4
         self.clients: list[socket.socket] = []
+        # Set by the reader on the first inbound device frame after _adopt;
+        # the silent-link watchdog waits on it.
+        self.first_rx = threading.Event()
 
     def broadcast(self, payload: dict) -> None:
         raw = json.dumps(payload).encode("utf-8")
@@ -71,30 +134,189 @@ class Bridge:
                 self.clients = [c for c in self.clients if c not in dead]
 
     def connect(self, mac: str, channel: int) -> None:
+        """Open the DSP socket, proving the channel actually speaks Soundcore.
+
+        Accepting an RFCOMM connection does **not** mean the channel is the
+        DSP. Hands-free, A2DP control and other profiles accept a socket and
+        then stay silent forever, which is exactly the "Connected, but no
+        battery and no ANC" failure this used to produce: the old code kept
+        the first channel that accepted and reported success.
+
+        So each candidate is probed with the `01:01` handshake and only a
+        channel that answers with a valid `09 FF` frame is kept. If nothing
+        answers — a device that only replies to a later command, or a manual
+        console session — fall back to the first channel that at least
+        accepted, and say so in the log.
+        """
         mac = mac.replace("-", ":").strip().upper()
         if not mac:
             raise RuntimeError("MAC address required")
         self.close()
-        last_err: Optional[Exception] = None
-        tried = [channel] + [c for c in (4, 12, 15, 1) if c != channel]
-        for ch in tried:
-            s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, RFCOMM)
+
+        candidates = [channel] + [c for c in DSP_CHANNEL_CANDIDATES if c != channel]
+        failures: list[str] = []
+        silent: list[int] = []
+
+        for ch in candidates:
             try:
-                s.settimeout(8)
-                s.connect((mac, ch))
-                s.settimeout(0.4)
-                self.sock = s
-                self.mac = mac
-                self.channel = ch
-                threading.Thread(target=self._reader, daemon=True).start()
-                return
+                sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, RFCOMM)
+            except OSError as exc:
+                failures.append(f"ch{ch}: no Bluetooth socket ({exc})")
+                break
+            try:
+                sock.settimeout(PROBE_CONNECT_TIMEOUT)
+                sock.connect((mac, ch))
             except Exception as exc:  # noqa: BLE001
-                last_err = exc
+                failures.append(f"ch{ch}: {exc}")
                 try:
-                    s.close()
+                    sock.close()
                 except OSError:
                     pass
-        raise RuntimeError(f"RFCOMM connect failed: {last_err}")
+                continue
+
+            answered = self._probe(sock)
+            if answered:
+                self._adopt(sock, mac, ch)
+                msg = f"DSP answered on channel {ch}"
+                sys.stderr.write(f"bridge: {msg}\n")
+                self.broadcast({"type": "sys", "message": msg, "channel": ch})
+                return
+
+            # The socket is up but the service never replied to the handshake.
+            sys.stderr.write(
+                f"bridge: channel {ch} accepted the socket but never answered "
+                f"the 01:01 handshake (not the DSP service)\n"
+            )
+            silent.append(ch)
+            try:
+                sock.settimeout(0.4)
+            except OSError:
+                pass
+            sock.close()
+
+        if silent:
+            # Nothing spoke Soundcore, but something accepted. Prefer the
+            # requested channel so a manual `--channel` run still works.
+            ch = silent[0]
+            sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, RFCOMM)
+            try:
+                sock.settimeout(PROBE_CONNECT_TIMEOUT)
+                sock.connect((mac, ch))
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError(self._failure_message(failures, silent, exc)) from exc
+            self._adopt(sock, mac, ch)
+            msg = (
+                f"connected to channel {ch}, but the earbuds did not answer the "
+                f"handshake — battery and ANC will stay empty until they do"
+            )
+            if failures:
+                # The user needs to see why the other candidates were rejected,
+                # not just that two channels stayed silent.
+                msg += ". Other channels refused: " + "; ".join(failures[:4])
+            sys.stderr.write(f"bridge: {msg}\n")
+            self.broadcast({"type": "sys", "message": msg, "channel": ch})
+            threading.Thread(target=self._silent_watchdog, args=(sock, ch), daemon=True).start()
+            return
+
+        raise RuntimeError(self._failure_message(failures, silent, None))
+
+    @staticmethod
+    def _failure_message(
+        failures: list[str], silent: list[int], last: Optional[Exception]
+    ) -> str:
+        parts = ["Could not open a Soundcore DSP channel."]
+        if silent:
+            parts.append(
+                "These channels accepted a socket but never answered the "
+                f"handshake: {', '.join(f'ch{c}' for c in silent)}."
+            )
+        if failures:
+            shown = failures[:4]
+            parts.append("Tried: " + "; ".join(shown) + ("…" if len(failures) > 4 else ""))
+        if not silent and not failures and last is not None:
+            parts.append(str(last))
+        parts.append(
+            "Leave the earbuds connected in Windows Bluetooth settings (not in "
+            "pairing mode) and close the Soundcore phone app — it holds the "
+            "single control slot."
+        )
+        return " ".join(parts)
+
+    def _adopt(self, sock: socket.socket, mac: str, ch: int) -> None:
+        sock.settimeout(0.4)
+        self.sock = sock
+        self.mac = mac
+        self.channel = ch
+        self.first_rx.clear()
+        threading.Thread(target=self._reader, daemon=True).start()
+
+    def _silent_watchdog(self, sock: socket.socket, ch: int) -> None:
+        """Name the fake-"Connected" condition, then keep trying to heal it.
+
+        Only started when the adopted channel never answered the handshake.
+        After SILENT_LINK_WATCHDOG_S of silence the socket is almost certainly
+        a non-DSP profile, or the Soundcore phone app still holds the single
+        control slot. The bridge says so out loud (stderr + the renderer
+        console) instead of sitting at a forever-empty "Connected" — and then
+        keeps re-sending the read-only handshake in the background. When the
+        slot frees up and the device finally answers, the reader thread sets
+        `first_rx` and this thread announces that battery/ANC are live, so the
+        user does not have to reconnect by hand. The socket is never closed
+        here: a manual console session must keep working either way.
+        """
+        reported = False
+        while self.sock is sock and not self.first_rx.is_set():
+            if self.first_rx.wait(SILENT_LINK_WATCHDOG_S):
+                break  # the device spoke (spontaneously or after a retry)
+            if self.sock is not sock:
+                return  # a reconnect replaced this link while we waited
+            if not reported:
+                msg = (
+                    f"silent-link watchdog: channel {ch} has sent nothing for "
+                    f"{int(SILENT_LINK_WATCHDOG_S)}s — that socket is probably not "
+                    "the DSP, or the Soundcore phone app still holds the control "
+                    "slot. Keeping the link open and retrying the handshake in "
+                    "the background; close the phone app if it is open."
+                )
+                sys.stderr.write(f"bridge: {msg}\n")
+                self.broadcast({"type": "sys", "error": msg, "channel": ch})
+                reported = True
+            try:
+                sock.sendall(HANDSHAKE)
+            except OSError:
+                return  # the link died; the reader thread reports the close
+        if self.sock is not sock:
+            return
+        msg = (
+            f"DSP answered on channel {ch} after retry — battery and ANC are "
+            "live now"
+        )
+        sys.stderr.write(f"bridge: {msg}\n")
+        self.broadcast({"type": "sys", "message": msg, "channel": ch})
+
+    @staticmethod
+    def _probe(sock: socket.socket) -> bool:
+        """Send the handshake; true when a valid `09 FF` frame comes back."""
+        try:
+            sock.sendall(HANDSHAKE)
+        except OSError:
+            return False
+        deadline = time.monotonic() + PROBE_REPLY_TIMEOUT
+        buf = b""
+        while time.monotonic() < deadline:
+            try:
+                sock.settimeout(max(0.05, deadline - time.monotonic()))
+                chunk = sock.recv(512)
+            except socket.timeout:
+                continue
+            except OSError:
+                return False
+            if not chunk:
+                return False
+            buf += chunk
+            if _answers_handshake(buf):
+                return True
+        return False
 
     def send(self, data: bytes) -> None:
         if not self.sock:
@@ -139,6 +361,10 @@ class Bridge:
                     break
                 buf = remainder
                 if frame:
+                    if frame[:1] == b"\x09":
+                        # First device-originated frame of this link; stops
+                        # the silent-link watchdog if one is waiting.
+                        self.first_rx.set()
                     self.broadcast({"type": "rx", "hex": frame.hex().upper()})
         if self.sock is sock:
             self.sock = None

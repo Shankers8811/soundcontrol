@@ -24,6 +24,7 @@
 - All builds and release notes live on the **[Releases page](https://github.com/Shankers8811/soundcontrol/releases/latest)**.
 - The same **Download for Windows** button is built into the app under **Settings → About → Windows release**.
 - Windows SmartScreen may show an unsigned-publisher prompt on first run (the app is free and not code-signed); choose **More info → Run anyway** — see [Code signing & SmartScreen](#-code-signing--smartscreen) for how to make that warning disappear.
+- More docs: [TROUBLESHOOTING.md](TROUBLESHOOTING.md) (every connect failure mode, explained from the real log messages), [ROADMAP.md](ROADMAP.md) (shipped vs open), [PROTOCOL.md](PROTOCOL.md) (verified wire spec), [PUBLISH.md](PUBLISH.md) (release checklist).
 
 **🔎 Connecting earbuds on Windows (important).** SoundControl talks to devices **already paired
 with Windows** through a small local bridge that runs on a Python runtime **bundled inside the
@@ -67,7 +68,7 @@ freshly downloaded app — it is not hung. If SmartScreen appears, choose **More
 | **Transparency Mode** | ✅ Fully Transparent & Talk Mode | ✅ Fully Transparent & Talk Mode |
 | **Equalizer Presets** | ✅ 22 Soundcore Curated Presets | ✅ All 22 Exact Soundcore Presets |
 | **Custom Graphic EQ** | ✅ 8-Band Slider Curve (-6 to +6 dB) | ✅ Interactive 8-Band SVG Bezier EQ |
-| **BassUp™ Technology** | ✅ Dynamic Low-End Boost | ✅ Dynamic BassUp Command & Curve |
+| **BassUp™ Technology** | ✅ Dynamic Low-End Boost | ⚠️ No `02:82` command exists in any public capture — bass curves live in the preset table (Bass Booster / Reducer) |
 | **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ✅ Interactive Left/Right Audio Test |
 | **Superior Sleep** | ✅ Ambient White Noise Mixer | ✅ Procedural Nature Sound Synthesizer |
 | **Touch Remapping** | ✅ 1-Tap, 2-Tap, 3-Tap, Hold per ear | ✅ Left & Right Earbud Gestures |
@@ -75,9 +76,9 @@ freshly downloaded app — it is not hung. If SmartScreen appears, choose **More
 | **LDAC High-Res** | ✅ Sony 990 kbps Codec Flip | ✅ LDAC Query & Command Dispatch |
 | **Dual Connection** | ✅ Multipoint PC + Phone | ✅ Dual Connection Command 0x84 |
 | **Safe Volume** | ✅ Decibel Limiter & Warnings | ✅ Interactive Volume Limiter |
-| **Find My Device** | ✅ Acoustic Locator Chirps | ✅ Left/Right/Both Audio Beacon |
+| **Find My Device** | ✅ Acoustic Locator Chirps | ⚠️ No RFCOMM command in any public capture — never faked; see PROTOCOL.md |
 | **Diagnostics / Console**| ❌ Hidden / Unavailable | ✅ Live Hex Frame Inspector & TX/RX Logger |
-| **Battery telemetry** | ✅ Live L/R/Case Levels | ✅ Auto-Refresh Every 30s + Windows % Fallback |
+| **Battery telemetry** | ✅ Live L/R/Case Levels | ✅ Live L/R Levels (case never shown — many models don't report it; over-ears have none) + 30 s refresh + Windows % fallback |
 | **Capture decoding** | ❌ Hidden / Unavailable | ✅ Base64→Hex + BLE→RFCOMM Map in Diagnostics |
 
 ---
@@ -86,7 +87,7 @@ freshly downloaded app — it is not hung. If SmartScreen appears, choose **More
 
 The Windows desktop app communicates with Soundcore Bluetooth hardware over:
 
-1. **Bluetooth Classic RFCOMM (SPP)**: Bound to Channel 4 (or Channels 12/15 on Q-series over-ear models).
+1. **Bluetooth Classic RFCOMM (SPP)**: the DSP channel is model-dependent (4 on most earbuds, 10 on the P20i family, 12/15 on several over-ears, 30 on Space 2). The helper probes each candidate with the `01:01` handshake and keeps the first channel that answers with a valid `09 FF` frame — accepting a socket alone is not proof (see PROTOCOL.md).
 2. **Local Electron-to-helper IPC**: The packaged renderer talks to the bundled Python helper over an authenticated loopback HTTP/WebSocket connection; the helper performs the RFCOMM work. Liveness uses the fast `/health` endpoint; `/scan` enumerates Windows PnP devices (slow on cold machines, cached 3 s) and is only called when the helper is up.
 
 ### Packet Framing & Checksum Calculation
@@ -105,17 +106,20 @@ Every packet transmitted between the host application and the hardware device fo
 ### Decompiled Command Categories
 
 - **Category `0x01` (System / Device Management)**:
-  - `0x01`: Handshake initialization & query firmware telemetry.
+  - `0x01`: Handshake / full state query (also the channel-probe frame).
+  - `0x03` / `0x04`: live battery levels / charging flags.
+  - `0x05`: serial + firmware (ASCII).
   - `0x7F` / `0xFF`: LDAC High-Resolution audio query and enable/disable.
-  - `0x87`: Low-latency Game Mode toggle.
-  - `0x88`: Find My Device acoustic beacon.
-  - `0x85`: Factory reset device configuration.
+  - `0x87`: Low-latency Game Mode toggle (`10:85` on Liberty 4 NC / Liberty 5).
+  - `0x85`: Factory reset (Motion+ A3116 only — offered with a warning).
 - **Category `0x02` (Audio DSP & Equalizer)**:
-  - `0x81`: 8-Band Graphic EQ. Target bands: 100 Hz, 200 Hz, 400 Hz, 800 Hz, 1.6 kHz, 3.2 kHz, 6.4 kHz, 12.8 kHz.
-  - `0x82`: BassUp dynamic bass boost flag.
-  - `0x86`: 3D Spatial Audio / Surround Sound toggle.
+  - `0x81`: 8-Band Graphic EQ (classic over-ears). Target bands: 100 Hz, 200 Hz, 400 Hz, 800 Hz, 1.6 kHz, 3.2 kHz, 6.4 kHz, 12.8 kHz.
+  - `0x83`: 10-band EQ + DRC compensation channel (P20i/P30i family) — byte-identical to 22 live captures.
+  - `0x86`: 3D Surround Sound toggle.
+  - ~~`0x82` BassUp~~ and any "find my device" opcode: **no public capture in any surveyed project contains them; SoundControl does not invent frames.**
+- **Category `0x03`**: `0x87` is the model-specific HearID EQ (Liberty 4 NC / Space One / Space Q45). Layout differs per model and risks overwriting measured hearing profiles, so SoundControl disables EQ there instead of guessing.
 - **Category `0x06` (Ambient Sound & ANC)**:
-  - `0x81`: Ambient mode selector. Mode `0x00` = ANC, `0x01` = Normal, `0x02` = Transparency. For TWS models, level byte ranges from `0x01` (Min) to `0x05` (Max).
+  - `0x81`: sound-mode selector, four per-model layouts. Classic over-ears: mode `0x00` = ANC, `0x01` = Transparency, `0x02` = Normal, plus NC scene (Transport/Outdoor/Indoor) and transparency sub-mode bytes. TWS models use 6–7 byte layouts (manual level, adaptive, wind, scenes). Inbound mirror is `06:01`.
 - **Category `0x08` (Touch & Button Controls)**:
   - Mapping gesture indices (Single tap, Double tap, Triple tap, Long press) to action IDs (Volume, Play/Pause, Skip, ANC cycle, Voice Assistant).
 - **Category `0x0B` (Connectivity)**:
@@ -216,9 +220,44 @@ To sign releases, add two repository secrets (Settings → Secrets and variables
 
 The Release workflow picks them up automatically and electron-builder signs the app
 and the installer; the cleanup step deletes the certificate after the build.
-Certificate options: an **EV** cert clears SmartScreen instantly, an **OV** cert
-builds reputation over time, and the [SignPath Foundation](https://signpath.org/)
-provides **free** code signing for qualifying open-source projects.
+The workflow also runs a **"Report Authenticode signature status"** step: with no
+secrets it only reports the installer as unsigned, but once
+`WINDOWS_CERTIFICATE_BASE64` exists a build whose signature is not *Valid* fails
+the release instead of shipping another unsigned binary.
+
+**Getting a certificate — three routes, cheapest first:**
+
+1. **Free — [SignPath Foundation](https://signpath.org/).** Qualifying
+   open-source projects get signing at no cost: apply on the Foundation site,
+   and once approved point the workflow at SignPath instead of a local `.p12`
+   (the certificate never leaves their HSM, which is also what the CAs now
+   require for OV/EV keys).
+2. **OV certificate (~$75–200/yr)** from any CA (Sectigo, DigiCert, ssl.com,
+   GlobalSign…). Clears the publisher name into the SmartScreen dialog; the
+   "Unknown publisher" block fades as the certificate builds download
+   reputation over days to weeks.
+3. **EV certificate (~$200–400/yr)** — hardware-token or cloud-HSM key.
+   SmartScreen reputation is effectively instant; this is the route that makes
+   the prompt disappear on the very first download.
+
+**Wiring an existing `.p12`/`.pfx` into this repo:**
+
+```bash
+# 1. export/keep your certificate as PKCS#12
+openssl pkcs12 -export -out soundcontrol.p12 -inkey key.pem -in cert.pem
+
+# 2. base64 it (single line is fine)
+openssl base64 -in soundcontrol.p12 -out soundcontrol.b64 -A
+
+# 3. store the two secrets, then re-run the Release workflow
+#    Settings → Secrets and variables → Actions → New repository secret
+#      WINDOWS_CERTIFICATE_BASE64   = <contents of soundcontrol.b64>
+#      WINDOWS_CERTIFICATE_PASSWORD = <p12 password>
+```
+
+Verify afterwards on any Windows box: right-click the installer → Properties
+(the digital signature tab appears), or in PowerShell
+`Get-AuthenticodeSignature .\SoundControl-Setup.exe` → `Status : Valid`.
 
 ---
 
