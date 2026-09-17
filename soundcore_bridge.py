@@ -52,6 +52,13 @@ from urllib.parse import parse_qs, urlsplit
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 RFCOMM = getattr(socket, "BTPROTO_RFCOMM", 3)
+# AF_BLUETOOTH exists on Windows (the only production runtime) and on most
+# Linux builds, but some CI Python distributions omit it, which used to kill
+# the channel-probe unit tests with an AttributeError before their fake
+# socket layer was even reached. Same getattr-guard pattern as RFCOMM above:
+# on Windows the real constant is always used; elsewhere the Linux value (31)
+# is a safe stand-in because tests replace socket.socket wholesale.
+AF_BLUETOOTH = getattr(socket, "AF_BLUETOOTH", 31)
 
 # `08 EE 00 00 00 01 01 0A 00 02` — the state request the official app sends
 # first. Every supported model answers it with a `09 FF` frame, which makes it
@@ -159,7 +166,7 @@ class Bridge:
 
         for ch in candidates:
             try:
-                sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, RFCOMM)
+                sock = socket.socket(AF_BLUETOOTH, socket.SOCK_STREAM, RFCOMM)
             except OSError as exc:
                 failures.append(f"ch{ch}: no Bluetooth socket ({exc})")
                 break
@@ -198,7 +205,7 @@ class Bridge:
             # Nothing spoke Soundcore, but something accepted. Prefer the
             # requested channel so a manual `--channel` run still works.
             ch = silent[0]
-            sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, RFCOMM)
+            sock = socket.socket(AF_BLUETOOTH, socket.SOCK_STREAM, RFCOMM)
             try:
                 sock.settimeout(PROBE_CONNECT_TIMEOUT)
                 sock.connect((mac, ch))
