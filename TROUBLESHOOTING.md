@@ -31,8 +31,11 @@ expects it on the loopback port. If ConnectSheet shows
 On a cold start the helper can take a few seconds to begin listening (Electron
 gives the Python process a 12 s readiness budget, and first-run antivirus
 scans are slow), so the renderer keeps retrying its WebSocket for **15 s**
-before failing. Connect errors now name the situation instead of one generic
-message:
+before failing. If the helper dies mid-session (crash, antivirus kill), the
+app restarts it automatically — up to 3 times, with a 1–3 s delay — so a
+reconnect usually works without restarting SoundControl; `main.log` shows
+`auto-restart n/3` lines when that happens. Connect errors now name the
+situation instead of one generic message:
 
 - *did not become ready within 15 seconds* — the helper is still starting or
   failed to start; retry in a moment, then check `main.log`;

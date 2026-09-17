@@ -238,6 +238,11 @@ export async function connectBridge(
             if (m.type === 'sys' && (m.message || m.error)) {
               onSys(m.error ?? m.message ?? '', Boolean(m.error));
             }
+            // A command that failed on the helper side (e.g. "Not connected"
+            // when the RFCOMM link died but this WebSocket is still up) must
+            // reach the user — silently dropping it leaves the UI showing
+            // "Connected" while every command does nothing.
+            if (m.type === 'error' && m.error) onSys(m.error, true);
           } catch {
             /* */
           }

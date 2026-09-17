@@ -16,6 +16,17 @@ let pendingBridge = null;
 // Set once the app begins quitting, so the interpreter-candidate loop stops
 // spawning new helpers that would outlive the app.
 let shuttingDown = false;
+// Bounded auto-restart of an *adopted* helper that dies mid-session (crash,
+// antivirus kill, user ending python.exe). Without this the renderer's 15s
+// retry budget finds nothing and the user must restart the whole app even
+// though the failure is recoverable. Deliberately capped — no infinite
+// restart loops: at most BRIDGE_MAX_AUTO_RESTARTS consecutive deaths, and a
+// helper that stayed up for BRIDGE_STABLE_RUN_MS resets the budget.
+const BRIDGE_MAX_AUTO_RESTARTS = 3;
+const BRIDGE_STABLE_RUN_MS = 60000;
+let bridgeAutoRestarts = 0;
+let bridgeAdoptedAt = 0;
+let bridgeRestartTimer = null;
 let mainWindow = null;
 let windowEverShown = false;
 
@@ -193,6 +204,10 @@ async function waitForBridgeReady(child, budgetMs = 12000) {
 // still starting. Called from every quit path so no Python process outlives
 // SoundControl and squats on port 8765.
 function killBridgeProcesses() {
+  if (bridgeRestartTimer) {
+    clearTimeout(bridgeRestartTimer);
+    bridgeRestartTimer = null;
+  }
   for (const child of [bridgeProcess, pendingBridge]) {
     if (child) {
       try {
@@ -204,6 +219,30 @@ function killBridgeProcesses() {
   }
   bridgeProcess = null;
   pendingBridge = null;
+}
+
+// Re-run the normal startup path (port probe, interpreter fallbacks, readiness
+// wait) after an adopted helper died mid-session. Bounded: see
+// BRIDGE_MAX_AUTO_RESTARTS. The delay grows linearly so a helper that dies on
+// startup in a loop cannot spin the CPU.
+function scheduleBridgeRestart(label) {
+  if (shuttingDown || bridgeProcess || bridgeRestartTimer) return;
+  if (Date.now() - bridgeAdoptedAt >= BRIDGE_STABLE_RUN_MS) {
+    // It had a long healthy run before dying — treat this as a fresh budget.
+    bridgeAutoRestarts = 0;
+  }
+  if (bridgeAutoRestarts >= BRIDGE_MAX_AUTO_RESTARTS) {
+    log(`bridge (${label}) died again; auto-restart budget exhausted — leaving it down`);
+    return;
+  }
+  bridgeAutoRestarts += 1;
+  const delay = 1000 * bridgeAutoRestarts;
+  log(`bridge (${label}) died; auto-restart ${bridgeAutoRestarts}/${BRIDGE_MAX_AUTO_RESTARTS} in ${delay}ms`);
+  bridgeRestartTimer = setTimeout(() => {
+    bridgeRestartTimer = null;
+    if (shuttingDown || bridgeProcess) return;
+    startBridgeIfAvailable().catch((err) => log(`bridge auto-restart failed: ${err}`));
+  }, delay);
 }
 
 async function startBridgeIfAvailable() {
@@ -256,9 +295,15 @@ async function startBridgeIfAvailable() {
     child.stdout.on('data', onOutput);
     child.on('error', (err) => log(`bridge ${label} error: ${err.code || err.message}`));
     child.on('exit', (code) => {
-      if (bridgeProcess === child) bridgeProcess = null;
+      const wasAdopted = bridgeProcess === child;
+      if (wasAdopted) bridgeProcess = null;
       if (pendingBridge === child) pendingBridge = null;
       log(`bridge (${label}) exited with code ${code}`);
+      // An *adopted* helper dying mid-session is recoverable — restart it so
+      // a renderer that is still open can reconnect without an app restart.
+      // A candidate that never became ready is handled by the startup loop
+      // itself (it moves to the next interpreter), so it must not restart here.
+      if (wasAdopted && !shuttingDown) scheduleBridgeRestart(label);
     });
 
     if (await waitForBridgeReady(child)) {
@@ -274,6 +319,7 @@ async function startBridgeIfAvailable() {
       }
       pendingBridge = null;
       bridgeProcess = child;
+      bridgeAdoptedAt = Date.now();
       log(`bridge started via ${label}`);
       return;
     }
@@ -436,8 +482,10 @@ if (!gotTheLock) {
 
 // Covers every quit path — including a fatal error before any window existed,
 // where `window-all-closed` never fires and a starting helper would be
-// orphaned holding port 8765.
+// orphaned holding port 8765. The log line lets main.log distinguish a normal
+// shutdown from a crash or a force-kill (which never reaches this handler).
 app.on('before-quit', () => {
+  log('app quitting; stopping the Bluetooth helper');
   shuttingDown = true;
   killBridgeProcesses();
 });

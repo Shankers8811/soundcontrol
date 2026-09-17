@@ -45,6 +45,8 @@ EMULATED_MAC = "AA:BB:CC:DD:EE:FF"
 EMULATED_NAME = "Soundcore Liberty 4 NC"
 EMULATED_BATTERY = 80
 EMULATED_CHANNEL = 4
+# Seconds each emulated device reply is delayed by (--rfcomm-delay); 0 = instant.
+RFCOMM_DELAY = 0.0
 
 
 def _device_frame(cat: int, typ: int, payload: bytes) -> bytes:
@@ -100,9 +102,20 @@ class FakeRfcomm:
             raise OSError(9, "Bad file descriptor")
         if len(data) >= 9 and data[0] == 0x08 and data[1] == 0xEE:
             frame = _device_frame(data[5], data[6], _ack_payload(data[5], data[6]))
-            with self._cond:
-                self._inbox += frame
-                self._cond.notify_all()
+            if RFCOMM_DELAY > 0:
+                # Answer on a timer: widens the bridge's channel-probe window
+                # so tests can kill the helper deterministically *while a
+                # renderer connect is in flight*.
+                timer = threading.Timer(RFCOMM_DELAY, self._enqueue, args=(frame,))
+                timer.daemon = True
+                timer.start()
+            else:
+                self._enqueue(frame)
+
+    def _enqueue(self, frame: bytes) -> None:
+        with self._cond:
+            self._inbox += frame
+            self._cond.notify_all()
 
     def recv(self, n: int) -> bytes:
         deadline = None if self._timeout is None else time.monotonic() + self._timeout
@@ -165,7 +178,17 @@ def main() -> None:
         help="Seconds to wait before binding — emulates the Python cold start "
         "window in which the renderer is already up but the helper is not.",
     )
+    p.add_argument(
+        "--rfcomm-delay",
+        type=float,
+        default=0.0,
+        help="Seconds to delay every emulated device reply — widens the "
+        "channel-probe window so tests can kill the helper mid-connect.",
+    )
     args = p.parse_args()
+
+    global RFCOMM_DELAY
+    RFCOMM_DELAY = max(0.0, args.rfcomm_delay)
 
     token = args.token.strip() or os.environ.get("SOUNDCONTROL_BRIDGE_TOKEN", "").strip()
     if token:
