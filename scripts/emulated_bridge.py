@@ -129,11 +129,13 @@ class FakeRfcomm:
 
 def _install_fake_rfcomm() -> None:
     """Route AF_BLUETOOTH sockets to FakeRfcomm; everything else stays real."""
-    # AF_BLUETOOTH does not exist on Linux/macOS; the Linux value (31) is a
-    # safe stand-in because the real OS never sees these sockets.
+    # Some CI Python builds omit socket.AF_BLUETOOTH entirely (the bridge
+    # module guards it with a getattr fallback). Inject the same Linux value
+    # here so every socket layer in this process agrees on the family, and
+    # compare against the constant the bridge actually passes.
     if not hasattr(socket, "AF_BLUETOOTH"):
         socket.AF_BLUETOOTH = 31  # type: ignore[attr-defined]
-    af_bluetooth = socket.AF_BLUETOOTH  # type: ignore[attr-defined]
+    af_bluetooth = bridge.AF_BLUETOOTH
     real_socket = socket.socket
 
     def factory(family: int = -1, type: int = -1, proto: int = -1, *args, **kwargs):
