@@ -98,10 +98,25 @@ export function DeviceHome() {
         />
         <h1 className="text-center text-xl font-bold tracking-wide text-ink">{app.profile.name.toUpperCase()}</h1>
         <p className="mt-0.5 text-center text-xs text-mute font-medium">{app.deviceName} · {app.profile.sku}</p>
+        {app.profileNote && (
+          <p className="mx-auto mt-2 max-w-[22rem] rounded-xl bg-amber-50 px-3 py-2 text-center text-[11px] leading-snug text-amber-800">
+            {app.profileNote}
+          </p>
+        )}
+        {app.linkInfo && (
+          <p className="mt-1 text-center font-mono text-[10px] text-mute">{app.linkInfo}</p>
+        )}
         <div className="mt-3 flex justify-center gap-6">
-          <IconBattery label="L" level={toPercent(app.battery.left, app.battery.batteryScale)} />
-          <IconBattery label="R" level={toPercent(app.battery.right, app.battery.batteryScale)} />
-          {app.profile.kind === 'earbuds' && (
+          {/* Over-ears report a single level via single_battery(5), not a pair. */}
+          {app.profile.kind === 'earbuds' ? (
+            <>
+              <IconBattery label="L" level={toPercent(app.battery.left, app.battery.batteryScale)} />
+              <IconBattery label="R" level={toPercent(app.battery.right, app.battery.batteryScale)} />
+            </>
+          ) : (
+            <IconBattery label="Battery" level={toPercent(app.battery.left, app.battery.batteryScale)} />
+          )}
+          {app.profile.state.batteryCase !== null && (
             <IconBattery label="Case" level={toPercent(app.battery.case, app.battery.batteryScale)} />
           )}
         </div>
@@ -116,9 +131,9 @@ export function DeviceHome() {
               LDAC High-Res
             </span>
           )}
-          {app.bassUp && (
+          {app.surround && (
             <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
-              BassUp™
+              3D Surround
             </span>
           )}
         </div>

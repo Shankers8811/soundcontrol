@@ -13,7 +13,11 @@ export function SettingsPage() {
     setFwStatus(null);
     setTimeout(() => {
       setFwChecking(false);
-      setFwStatus(`Firmware v${app.firmware} is up to date!`);
+      setFwStatus(
+        app.firmware === 'Unknown'
+          ? 'The device has not reported a firmware version yet.'
+          : `Firmware ${app.firmware} reported by the device.`,
+      );
     }, 1200);
   };
 
@@ -48,8 +52,11 @@ export function SettingsPage() {
         </div>
 
         <p className="mt-2.5 font-mono text-[11px] text-mute">
-          Firmware v{app.firmware} · Protocol: {app.transportLabel}
+          Firmware {app.firmware}
+          {app.serial ? ` · Serial ${app.serial}` : ''} · Protocol: {app.transportLabel}
         </p>
+        {app.linkInfo && <p className="mt-1 font-mono text-[11px] text-mute">{app.linkInfo}</p>}
+        <p className="mt-2 text-[11px] leading-relaxed text-mute">Profile source: {app.profile.source}</p>
 
         {app.connected ? (
           <button

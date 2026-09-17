@@ -85,6 +85,32 @@ jobs:
           test -f release/win-unpacked/resources/python/python.exe
           ls -la release/win-unpacked/resources/python | head -15
           echo "Bundled runtime present — desktop users install nothing extra."
+      # This is the guard against silently shipping an unsigned installer.
+      # Without the certificate secrets the build is allowed to be unsigned
+      # (that is the documented default) and the step only reports it. Once
+      # WINDOWS_CERTIFICATE_BASE64/WINDOWS_CERTIFICATE_PASSWORD exist, a build
+      # whose installer is NOT Authenticode-valid fails here, so a
+      # misconfigured certificate can never publish another "Unknown
+      # publisher" release without someone explicitly seeing the failure.
+      - name: Report Authenticode signature status
+        shell: pwsh
+        env:
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+        run: |
+          $installer = Get-ChildItem -Path release -Filter '*.exe' | Select-Object -First 1
+          if (-not $installer) { throw "no installer found under release/" }
+          $sig = Get-AuthenticodeSignature -FilePath $installer.FullName
+          Write-Host "Installer:  $($installer.Name)"
+          Write-Host "Signature:  $($sig.Status)"
+          if ($env:WINDOWS_CERT_BASE64) {
+            if ($sig.Status -ne 'Valid') {
+              throw "Certificate secrets are configured but the installer is $($sig.Status) — refusing to publish an unsigned release. Status message: $($sig.StatusMessage)"
+            }
+            Write-Host "Signer:     $($sig.SignerCertificate.Subject)"
+            Write-Host "Signed build verified — SmartScreen will not show 'Unknown publisher' for this installer."
+          } else {
+            Write-Host "No certificate secrets configured — installer ships unsigned (expected; see README 'Code signing & SmartScreen')."
+          }
       - name: Remove certificate material
         if: always()
         shell: bash
