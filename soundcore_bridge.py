@@ -432,6 +432,16 @@ def b64sha(key: str) -> str:
     return base64.b64encode(digest).decode("ascii")
 
 
+# One WebSocket connection is written from several threads at once: the
+# handler thread sends command responses (connected/sent/error) while the
+# RFCOMM reader thread broadcasts device frames, and the watchdog thread can
+# interject a sys message. Two concurrent sendall() calls on the same socket
+# can interleave mid-frame and corrupt the stream (the browser then drops the
+# connection), so every frame write is serialised. Coarse but cheap: traffic
+# on this socket is a handful of small JSON messages per second.
+_WS_SEND_LOCK = threading.Lock()
+
+
 def send_ws(sock: socket.socket, payload: bytes, opcode: int = 0x1) -> None:
     header = bytearray()
     header.append(0x80 | opcode)
@@ -444,7 +454,8 @@ def send_ws(sock: socket.socket, payload: bytes, opcode: int = 0x1) -> None:
     else:
         header.append(127)
         header.extend(struct.pack("!Q", n))
-    sock.sendall(bytes(header) + payload)
+    with _WS_SEND_LOCK:
+        sock.sendall(bytes(header) + payload)
 
 
 def recv_ws(sock: socket.socket) -> Optional[bytes]:
@@ -931,12 +942,24 @@ def main() -> None:
             "use the default 127.0.0.1",
             file=sys.stderr,
         )
-    httpd = ThreadingHTTPServer((args.host, args.port), Handler)
+    try:
+        httpd = ThreadingHTTPServer((args.host, args.port), Handler)
+    except OSError as exc:
+        # EADDRINUSE in practice means a previous SoundControl helper (or a
+        # manual run) still owns the port. A raw traceback in main.log is not
+        # actionable; say what happened instead. Electron captures this line.
+        raise SystemExit(
+            f"bridge: could not bind {args.host}:{args.port} ({exc}) — "
+            "is another SoundControl bridge already running?"
+        ) from exc
     print(f"SoundControl bridge http://{args.host}:{args.port}/ws", file=sys.stderr)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
+        pass
+    finally:
         BRIDGE.close()
+        httpd.server_close()
 
 
 if __name__ == "__main__":
