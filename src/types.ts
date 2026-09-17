@@ -49,10 +49,11 @@ export type EarbudPresence = 'both' | 'left' | 'right' | 'none' | 'unknown';
 export interface BatteryState {
   left: number | null;
   right: number | null;
-  case: number | null;
   leftCharging?: boolean;
   rightCharging?: boolean;
-  caseCharging?: boolean;
+  // No case level on purpose: many Soundcore models never report one (the
+  // official app hides it too) and over-ears have no case, so displaying a
+  // number here would mostly show guesses.
   /** Null means the values are already percentages (for example Windows PnP). */
   batteryScale?: number | null;
   /** Reported only when the Soundcore telemetry identifies each TWS side. */
