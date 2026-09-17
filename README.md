@@ -216,9 +216,44 @@ To sign releases, add two repository secrets (Settings → Secrets and variables
 
 The Release workflow picks them up automatically and electron-builder signs the app
 and the installer; the cleanup step deletes the certificate after the build.
-Certificate options: an **EV** cert clears SmartScreen instantly, an **OV** cert
-builds reputation over time, and the [SignPath Foundation](https://signpath.org/)
-provides **free** code signing for qualifying open-source projects.
+The workflow also runs a **"Report Authenticode signature status"** step: with no
+secrets it only reports the installer as unsigned, but once
+`WINDOWS_CERTIFICATE_BASE64` exists a build whose signature is not *Valid* fails
+the release instead of shipping another unsigned binary.
+
+**Getting a certificate — three routes, cheapest first:**
+
+1. **Free — [SignPath Foundation](https://signpath.org/).** Qualifying
+   open-source projects get signing at no cost: apply on the Foundation site,
+   and once approved point the workflow at SignPath instead of a local `.p12`
+   (the certificate never leaves their HSM, which is also what the CAs now
+   require for OV/EV keys).
+2. **OV certificate (~$75–200/yr)** from any CA (Sectigo, DigiCert, ssl.com,
+   GlobalSign…). Clears the publisher name into the SmartScreen dialog; the
+   "Unknown publisher" block fades as the certificate builds download
+   reputation over days to weeks.
+3. **EV certificate (~$200–400/yr)** — hardware-token or cloud-HSM key.
+   SmartScreen reputation is effectively instant; this is the route that makes
+   the prompt disappear on the very first download.
+
+**Wiring an existing `.p12`/`.pfx` into this repo:**
+
+```bash
+# 1. export/keep your certificate as PKCS#12
+openssl pkcs12 -export -out soundcontrol.p12 -inkey key.pem -in cert.pem
+
+# 2. base64 it (single line is fine)
+openssl base64 -in soundcontrol.p12 -out soundcontrol.b64 -A
+
+# 3. store the two secrets, then re-run the Release workflow
+#    Settings → Secrets and variables → Actions → New repository secret
+#      WINDOWS_CERTIFICATE_BASE64   = <contents of soundcontrol.b64>
+#      WINDOWS_CERTIFICATE_PASSWORD = <p12 password>
+```
+
+Verify afterwards on any Windows box: right-click the installer → Properties
+(the digital signature tab appears), or in PowerShell
+`Get-AuthenticodeSignature .\SoundControl-Setup.exe` → `Status : Valid`.
 
 ---
 
