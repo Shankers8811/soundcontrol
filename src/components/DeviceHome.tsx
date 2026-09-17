@@ -116,9 +116,9 @@ export function DeviceHome() {
           ) : (
             <IconBattery label="Battery" level={toPercent(app.battery.left, app.battery.batteryScale)} />
           )}
-          {app.profile.state.batteryCase !== null && (
-            <IconBattery label="Case" level={toPercent(app.battery.case, app.battery.batteryScale)} />
-          )}
+          {/* Case battery is intentionally never shown: many models do not
+              report it (the official app hides it too) and over-ears have no
+              case. The wire offsets stay documented in PROTOCOL.md. */}
         </div>
         {app.profile.kind === 'earbuds' && app.battery.presence && app.battery.presence !== 'unknown' && (
           <p className="mt-2 text-center text-[11px] font-medium text-blue">

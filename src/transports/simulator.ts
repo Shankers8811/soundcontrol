@@ -84,7 +84,7 @@ export function connectSimulator(
 ): {
   transport: Transport;
   name: string;
-  battery: { left: number; right: number; case: number };
+  battery: { left: number; right: number };
 } {
   const transport: Transport = {
     kind: 'sim',
@@ -110,6 +110,6 @@ export function connectSimulator(
   return {
     transport,
     name: `${profile.name} (sim)`,
-    battery: { left: 82, right: 79, case: 64 },
+    battery: { left: 82, right: 79 },
   };
 }
