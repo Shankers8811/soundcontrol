@@ -1,5 +1,5 @@
 import { checksum } from '../protocol/codec';
-import type { Transport } from '../types';
+import type { DeviceProfile, Transport } from '../types';
 
 function ack(tx: Uint8Array): Uint8Array {
   const body = Array.from(tx);
@@ -14,27 +14,77 @@ function ack(tx: Uint8Array): Uint8Array {
   return out;
 }
 
-function infoFrame(): Uint8Array {
-  const payload = new Uint8Array(48);
-  payload[40] = 4;
-  payload[41] = 4;
-  payload[42] = 3;
-  const body = [0x09, 0xff, 0x00, 0x00, 0x01, 0x01, 0x01, 0x00, 0x00, ...payload];
+function header(cat: number, typ: number, payload: Uint8Array): Uint8Array {
+  const body = [0x09, 0xff, 0x00, 0x00, 0x01, cat, typ];
   const total = 10 + payload.length;
-  body[7] = total & 0xff;
-  body[8] = (total >> 8) & 0xff;
-  return new Uint8Array([...body, checksum(body)]);
+  body.push(total & 0xff, (total >> 8) & 0xff);
+  const out = [...body, ...payload];
+  return new Uint8Array([...out, checksum(out)]);
 }
 
-function batteryFrame(): Uint8Array {
-  const body = [0x09, 0xff, 0x00, 0x00, 0x01, 0x01, 0x03, 0x0c, 0x00, 0x04, 0x04];
-  return new Uint8Array([...body, checksum(body)]);
+/**
+ * `01:05` reply: 10 bytes of ASCII firmware ("04.88" + "04.88") then 16 bytes
+ * of ASCII serial, matching OpenSCQ30's `SerialNumberAndFirmwareVersion`.
+ */
+function deviceInfoFrame(): Uint8Array {
+  const text = `${'04.88'}${'04.88'}SIM0000000000001`;
+  const payload = new Uint8Array(26);
+  for (let i = 0; i < 26 && i < text.length; i++) payload[i] = text.charCodeAt(i);
+  return header(0x01, 0x05, payload);
 }
 
-export function connectSimulator(onRx: (data: Uint8Array) => void): {
+/**
+ * `01:01` state update with the battery written at the offsets the selected
+ * profile actually uses, so the simulator exercises the same parsing path as
+ * real hardware instead of a hardcoded layout.
+ */
+function stateFrame(profile: DeviceProfile): Uint8Array {
+  const o = profile.state;
+  const highest = Math.max(
+    o.batteryLeft,
+    o.batteryRight ?? 0,
+    o.batteryCase ?? 0,
+    o.batteryChargingLeft ?? 0,
+    o.batteryChargingRight ?? 0,
+    o.soundModes ?? 0,
+    (o.soundModes ?? 0) + 7,
+  );
+  const payload = new Uint8Array(Math.max(48, highest + 8));
+  payload[o.batteryLeft] = 4;
+  if (o.batteryRight !== null) payload[o.batteryRight] = 4;
+  if (o.batteryCase !== null) payload[o.batteryCase] = 3;
+  if (o.batteryChargingLeft !== null) payload[o.batteryChargingLeft] = 0;
+  if (o.batteryChargingRight !== null) payload[o.batteryChargingRight] = 0;
+  if (o.soundModes !== null) {
+    // ANC on, manual level 5 — the shape a `06:01` report has.
+    payload[o.soundModes] = 0x00;
+    payload[o.soundModes + 1] = 0x50;
+  }
+  return header(0x01, 0x01, payload);
+}
+
+/** `06:01` sound-mode report, so the UI's mirror-back path is exercised too. */
+function soundModesFrame(profile: DeviceProfile): Uint8Array {
+  const payload = new Uint8Array(profile.ancLayout === 'tws-l3pro' ? 6 : 7);
+  payload[0] = 0x00;
+  payload[1] = 0x50;
+  return header(0x06, 0x01, payload);
+}
+
+function batteryFrame(profile: DeviceProfile): Uint8Array {
+  const payload = new Uint8Array(profile.state.batteryRight === null ? 1 : 2);
+  payload[0] = 4;
+  if (payload.length > 1) payload[1] = 4;
+  return header(0x01, 0x03, payload);
+}
+
+export function connectSimulator(
+  onRx: (data: Uint8Array) => void,
+  profile: DeviceProfile,
+): {
   transport: Transport;
   name: string;
-  battery: { left: number; right: number; case: number };
+  battery: { left: number; right: number };
 } {
   const transport: Transport = {
     kind: 'sim',
@@ -42,8 +92,12 @@ export function connectSimulator(onRx: (data: Uint8Array) => void): {
     async write(data) {
       window.setTimeout(() => {
         onRx(ack(data));
-        if (data[5] === 0x01 && data[6] === 0x01) onRx(infoFrame());
-        if (data[5] === 0x01 && data[6] === 0x03) onRx(batteryFrame());
+        if (data[5] === 0x01 && data[6] === 0x01) {
+          onRx(stateFrame(profile));
+          if (profile.ancLayout !== 'none') onRx(soundModesFrame(profile));
+        }
+        if (data[5] === 0x01 && data[6] === 0x05) onRx(deviceInfoFrame());
+        if (data[5] === 0x01 && data[6] === 0x03) onRx(batteryFrame(profile));
       }, 28 + Math.random() * 40);
     },
     async close() {
@@ -51,13 +105,11 @@ export function connectSimulator(onRx: (data: Uint8Array) => void): {
     },
   };
 
-  window.setTimeout(() => onRx(infoFrame()), 120);
+  window.setTimeout(() => onRx(stateFrame(profile)), 120);
 
   return {
     transport,
-    name: 'Soundcore R50i NC (sim)',
-    battery: { left: 82, right: 79, case: 64 },
+    name: `${profile.name} (sim)`,
+    battery: { left: 82, right: 79 },
   };
 }
-
-

@@ -92,13 +92,18 @@ export function ConnectSheet() {
     <div className="flex flex-1 flex-col px-5 py-4">
       <div className="flex flex-col items-center pt-4">
         <div className={`radar ${searching || app.connecting ? 'on' : ''}`}>
+          {/*
+            The loading art is its own render (matte-black buds + case on the
+            same #E7F0FF the circle uses), shown larger than the old 64px
+            thumbnail it replaces.
+          */}
           <img
-            src={asset('device-earbuds.webp')}
+            src={asset('loading-earbuds.webp')}
             alt=""
-            width={704}
-            height={384}
+            width={512}
+            height={512}
             decoding="async"
-            className="h-16 w-16 object-contain"
+            className="h-24 w-24 rounded-full object-contain"
           />
         </div>
         <h2 className="mt-5 text-center text-xl font-semibold">Add Windows device</h2>
@@ -163,6 +168,33 @@ export function ConnectSheet() {
           </ul>
         )}
       </div>
+
+      {helper === 'online' && app.recentDevices.length > 0 && (
+        <div className="mt-4 rounded-2xl border border-line bg-wash p-3.5">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wider text-mute">
+            Recent devices — one tap to reconnect
+          </p>
+          <ul className="space-y-1.5">
+            {app.recentDevices.map((d) => (
+              <li key={d.mac}>
+                <button
+                  disabled={app.connecting}
+                  onClick={() => void app.connectBridge(d.mac, d.name)}
+                  className="flex w-full items-center gap-3 rounded-xl border border-line bg-white p-2.5 text-left transition hover:border-blue disabled:opacity-50"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-ink">{d.name}</span>
+                    <span className="font-mono text-[11px] text-mute">{d.mac}</span>
+                  </span>
+                  <span className="text-xs font-semibold text-blue">
+                    {app.connecting ? 'Connecting…' : 'Reconnect'}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {helper === 'online' && (
         <form
