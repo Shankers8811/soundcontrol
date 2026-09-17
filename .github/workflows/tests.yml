@@ -1,0 +1,50 @@
+name: Tests
+
+# The Windows build workflow only proves the app packages. These jobs prove the
+# parts that can be verified without Bluetooth hardware: the RFCOMM framing
+# layer (where a partial-read bug used to corrupt ~11% of responses) and the
+# renderer build.
+
+on:
+  push:
+    branches: [main, 'arena/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  protocol:
+    name: Protocol framing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Frame splitter regression tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Byte-compile the Windows helper
+        run: python3 -m py_compile soundcore_bridge.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax-check the Electron entry point
+        run: node --check electron-main.cjs
+      # Node 22.6+ can strip TypeScript types, so the device-profile table is
+      # tested straight from source with no bundler or test framework.
+      - name: Device profile / SKU tests
+        run: npm run test:device-profiles
+
+  renderer:
+    name: Renderer typecheck + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build

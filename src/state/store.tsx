@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { beep } from '../lib/feedback';
 import { toHex, verifyFrame } from '../protocol/codec';
-import { DEVICES, matchDevice } from '../protocol/devices';
+import { DEFAULT_DEVICE, findDeviceById, matchDevice } from '../protocol/devices';
 import {
   DUAL,
   INIT,
@@ -86,7 +86,12 @@ interface AppState {
   prompts: boolean;
   safeVolume: number;
   autoOff: number;
-  firmware: string;
+  /**
+   * Firmware version as reported by the device, or null when the connected
+   * model has not told us. Never invent a value here: the settings screen
+   * used to show a hardcoded "04.88" and call it up to date.
+   */
+  firmware: string | null;
   touch: TouchMap;
   eqId: string;
   bands: number[];
@@ -135,7 +140,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [connecting, setConnecting] = useState(false);
   const [transportLabel, setTransportLabel] = useState('Not connected');
   const [deviceName, setDeviceName] = useState('No device');
-  const [profile, setProfile] = useState<DeviceProfile>(matchDevice('R50i'));
+  // An explicit default rather than matchDevice('R50i'): once the SKU table was
+  // corrected, that string resolves to the non-ANC R50i profile, and the
+  // startup placeholder should not depend on alias ordering.
+  const [profile, setProfile] = useState<DeviceProfile>(DEFAULT_DEVICE);
   const profileRef = useRef(profile);
   const [battery, setBattery] = useState<BatteryState>({ left: null, right: null, case: null });
   const [ancMode, setAncMode] = useState<AncMode>('anc');
@@ -150,7 +158,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [prompts, setPromptsState] = useState(() => load('sc.prompts', true));
   const [safeVolume, setSafeVolumeState] = useState(() => load('sc.safe', 85));
   const [autoOff, setAutoOffState] = useState(() => load('sc.autoOff', 60));
-  const [firmware] = useState('04.88');
+  // Populated from the cat=01 type=01 device-info reply once the version field
+  // is confirmed against a decompiled official-app dump. Until then the UI
+  // reports "not reported by device" rather than a made-up version.
+  const [firmware] = useState<string | null>(null);
   const [touch, setTouchState] = useState<TouchMap>(() => load('sc.touch', DEFAULT_TOUCH));
   const [eqId, setEqId] = useState('signature');
   const [bands, setBands] = useState<number[]>([...ZERO_BANDS]);
@@ -336,7 +347,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (customProfileId?: string) =>
       wrapConnect(async () => {
         const { transport, name, battery: b } = connectSimulator(onRx);
-        const targetProfile = customProfileId ? DEVICES.find((d) => d.id === customProfileId) : undefined;
+        const targetProfile = customProfileId ? findDeviceById(customProfileId) : undefined;
         await attach(transport, targetProfile ? `${targetProfile.name} (sim)` : name, b);
         if (targetProfile) {
           setProfile(targetProfile);
@@ -490,7 +501,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const setProfileId = useCallback((id: string) => {
-    const hit = DEVICES.find((d) => d.id === id);
+    const hit = findDeviceById(id);
     if (hit) {
       profileRef.current = hit;
       setProfile(hit);
