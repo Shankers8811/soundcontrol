@@ -21,16 +21,28 @@ function isLocalHost(): boolean {
 // Per-session bridge secret. The Windows desktop app's main process mints a
 // fresh token on every launch and hands it to this renderer over IPC.
 // Fetched once and cached — the token never changes within a session.
+// A *failed* IPC call is deliberately not cached: inside the desktop app the
+// token always exists, so caching a transient failure as null would lock the
+// session into permanent 401s. Outside Electron (browser demo) there is no
+// API at all, and that null is cached.
 let cachedToken: string | null | undefined;
 async function bridgeToken(): Promise<string | null> {
   if (cachedToken !== undefined) return cachedToken;
-  try {
-    const t = await window.electronAPI?.getBridgeToken?.();
-    cachedToken = typeof t === 'string' && t ? t : null;
-  } catch {
+  const get = window.electronAPI?.getBridgeToken;
+  if (!get) {
     cachedToken = null;
+    return cachedToken;
   }
-  return cachedToken;
+  try {
+    const t = await get();
+    if (typeof t === 'string' && t) {
+      cachedToken = t;
+      return cachedToken;
+    }
+  } catch {
+    /* transient IPC failure — retry on the next call instead of caching null */
+  }
+  return null;
 }
 
 function authHeaders(token: string | null): Record<string, string> {
@@ -123,6 +135,12 @@ export async function connectBridge(
   windowsBattery: number | null = null,
   /** Bridge diagnostics ("DSP answered on channel 4", silent-link watchdog…). */
   onSys: (message: string, isError: boolean) => void = () => {},
+  /**
+   * Fires when the helper's WebSocket drops *after* a successful connect —
+   * the helper exited, crashed or restarted. Without this the UI would sit at
+   * "Connected" forever, with only individual writes failing.
+   */
+  onDown?: (reason: string) => void,
 ): Promise<{
   transport: Transport;
   name: string;
@@ -133,6 +151,9 @@ export async function connectBridge(
   const url = defaultBridgeUrl(await bridgeToken());
   const ws = await openSocket(url);
   let dspChannel: number | null = null;
+  // Set by transport.close() so an intentional disconnect is never reported
+  // to the UI as a dropped link.
+  let closedByUs = false;
 
   const transport: Transport = {
     kind: 'bridge',
@@ -142,6 +163,7 @@ export async function connectBridge(
       ws.send(JSON.stringify({ type: 'tx', hex: toHex(data, '') }));
     },
     async close() {
+      closedByUs = true;
       try {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'disconnect' }));
@@ -220,6 +242,16 @@ export async function connectBridge(
             /* */
           }
         });
+        // Post-connect lifecycle: if the helper's socket drops unexpectedly
+        // (helper exit/crash/restart), tell the app so it can leave the
+        // "Connected" state instead of failing silently on the next write.
+        ws.addEventListener('close', () => {
+          if (!closedByUs) {
+            onDown?.(
+              'The Bluetooth helper connection closed unexpectedly — the helper may have exited or restarted. Reconnect your device.',
+            );
+          }
+        });
         resolve();
       }
       if (msg.type === 'error') {
@@ -247,26 +279,133 @@ export async function connectBridge(
   };
 }
 
-function openSocket(url: string): Promise<WebSocket> {
-  return new Promise((resolve, reject) => {
+/**
+ * Budget for the renderer to reach the local bridge over WebSocket.
+ *
+ * Electron → Python helper cold-start race: the main process spawns
+ * `soundcore_bridge.py` asynchronously at app launch (see
+ * startBridgeIfAvailable in electron-main.cjs) and grants it a 12-second
+ * readiness budget per interpreter candidate (waitForBridgeReady) — cold
+ * starts, first-run antivirus scans of the freshly unpacked runtime and slow
+ * disks routinely consume seconds of it. Meanwhile the window is shown
+ * immediately, so the renderer can request a connection while the helper is
+ * still starting. The old 2.5s timer lost that race and reported "no helper
+ * running" when one was, in fact, mid-startup.
+ *
+ * A connection-refused error fires in milliseconds, so simply enlarging a
+ * one-shot timer would not help: the budget is enforced as a retry loop that
+ * keeps re-attempting the handshake until the deadline. 15s deliberately
+ * outlasts the helper's own 12s readiness budget, so a helper Electron
+ * considers startable can never be declared dead by the renderer first.
+ */
+export const BRIDGE_STARTUP_TIMEOUT_MS = 15000;
+/** Pause between WebSocket attempts while the helper may still be starting. */
+const BRIDGE_RETRY_INTERVAL_MS = 250;
+
+/** What the helper's HTTP endpoint says about why the WebSocket failed. */
+type HelperStatus = 'online' | 'token' | 'origin' | 'unreachable';
+
+/**
+ * Classify a failed WebSocket handshake with a cheap authenticated /health
+ * probe, so the user sees the real cause instead of one generic message:
+ * 401 → session-token mismatch, 403 → origin refused, 200 → helper up but
+ * the upgrade itself failed, network error → helper not listening (still
+ * starting, or failed to start).
+ */
+async function diagnoseHelper(): Promise<HelperStatus> {
+  const base = scanHttpBase();
+  if (!base) return 'unreachable';
+  try {
+    const token = await bridgeToken();
+    const res = await fetch(`${base}/health`, {
+      signal: AbortSignal.timeout(2000),
+      headers: authHeaders(token),
+    });
+    if (res.status === 401) return 'token';
+    if (res.status === 403) return 'origin';
+    return res.ok ? 'online' : 'unreachable';
+  } catch {
+    return 'unreachable';
+  }
+}
+
+/** One WebSocket handshake attempt; never rejects, reports failure instead. */
+function attemptSocket(url: string): Promise<{ ws: WebSocket | null }> {
+  return new Promise((resolve) => {
     let ws: WebSocket;
     try {
       ws = new WebSocket(url);
-    } catch (err) {
-      reject(err instanceof Error ? err : new Error(String(err)));
+    } catch {
+      resolve({ ws: null });
       return;
     }
-    const t = window.setTimeout(() => {
-      ws.close();
-      reject(new Error('No Windows Bluetooth helper running. Restart SoundControl and try again.'));
-    }, 2500);
-    ws.addEventListener('open', () => {
-      window.clearTimeout(t);
-      resolve(ws);
-    });
-    ws.addEventListener('error', () => {
-      window.clearTimeout(t);
-      reject(new Error('No Windows Bluetooth helper running. Restart SoundControl and try again.'));
-    });
+    // Guard against re-entrancy: close() can dispatch 'error'/'close'
+    // synchronously (Node's WebSocket does), and a second fail() must neither
+    // recurse nor resolve twice.
+    let settled = false;
+    const fail = () => {
+      if (settled) return;
+      settled = true;
+      ws.removeEventListener('open', onOpen);
+      ws.removeEventListener('error', fail);
+      ws.removeEventListener('close', fail);
+      try {
+        ws.close();
+      } catch {
+        /* already closed */
+      }
+      resolve({ ws: null });
+    };
+    const onOpen = () => {
+      if (settled) return;
+      settled = true;
+      ws.removeEventListener('error', fail);
+      ws.removeEventListener('close', fail);
+      resolve({ ws });
+    };
+    ws.addEventListener('open', onOpen);
+    // Connection-refused fires 'error' (then 'close'); both mean "not yet".
+    ws.addEventListener('error', fail);
+    ws.addEventListener('close', fail);
   });
+}
+
+async function openSocket(url: string): Promise<WebSocket> {
+  const deadline = Date.now() + BRIDGE_STARTUP_TIMEOUT_MS;
+  // Consecutive identical diagnoses needed before failing fast: a single
+  // probe could catch a weird transient, but these states do not heal by
+  // retrying, so spinning for the full budget would just hide the real cause.
+  let tokenRejections = 0;
+  let onlineButRefusing = 0;
+  for (;;) {
+    const attempt = await attemptSocket(url);
+    if (attempt.ws) return attempt.ws;
+
+    // The handshake failed. Classify before retrying.
+    const status = await diagnoseHelper();
+    if (status === 'unreachable') {
+      tokenRejections = 0;
+      onlineButRefusing = 0;
+    } else if (status === 'origin') {
+      throw new Error(
+        'The Bluetooth helper refused this window (origin not allowed by its security policy). Restart SoundControl from its desktop shortcut.',
+      );
+    } else if (status === 'token' && ++tokenRejections >= 2) {
+      throw new Error(
+        "The Bluetooth helper rejected SoundControl's session token — a helper from a previous session may still own port 8765. Restart SoundControl; if that does not help, end the stale helper (python.exe) process or reboot.",
+      );
+    } else if (status === 'online' && ++onlineButRefusing >= 3) {
+      throw new Error(
+        'The Windows Bluetooth helper is running but its WebSocket connection keeps failing. Restart SoundControl and try again.',
+      );
+    }
+    if (Date.now() >= deadline) break;
+    await new Promise((r) => window.setTimeout(r, BRIDGE_RETRY_INTERVAL_MS));
+  }
+  // Nothing was listening for the whole budget: the helper either never got
+  // started or needs longer than its 12s Electron-side readiness window
+  // (Electron logs the attempt to %AppData%\soundcontrol\main.log).
+  throw new Error(
+    'The Windows Bluetooth helper did not become ready within 15 seconds. It starts automatically with the app and may still be booting up — try connecting again in a moment. If it never starts, check %AppData%\\soundcontrol\\main.log and restart SoundControl.',
+  );
 }
