@@ -40,6 +40,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import socket
 import struct
 import subprocess
@@ -90,6 +91,15 @@ PROBE_REPLY_TIMEOUT = 1.5
 # renderer is told "battery and ANC are live now" without a manual reconnect.
 SILENT_LINK_WATCHDOG_S = 8.0
 
+# Input-size guards. The bridge only ever talks to the local desktop app, but
+# a compromised or buggy local caller must not be able to make the helper
+# allocate unbounded memory: WebSocket frames carry a 64-bit length header we
+# used to trust blindly, and a `tx` hex string of any size was written
+# straight to RFCOMM. Real Soundcore frames are at most 512 bytes (see
+# split_frame), so both caps are far above any legitimate payload.
+WS_MAX_MESSAGE_BYTES = 1 << 20  # 1 MiB per WebSocket message
+TX_MAX_BYTES = 4096  # per RFCOMM write
+
 
 def _answers_handshake(buf: bytes) -> bool:
     """True when `buf` holds at least one checksum-valid `09 FF` frame."""
@@ -122,6 +132,15 @@ class Bridge:
         self.mac = ""
         self.channel = 4
         self.clients: list[socket.socket] = []
+        # Serialises writes to the RFCOMM socket: the WebSocket handler thread
+        # (tx commands) and the silent-link watchdog thread (background
+        # handshake retries) can both sendall() it, and interleaved writes
+        # would garble frames on the device link.
+        self.tx_lock = threading.Lock()
+        # Serialises whole connect attempts (see connect()). Separate from
+        # self.lock, which guards the WebSocket client list and is taken by
+        # broadcast() *inside* a connect — nesting the two would deadlock.
+        self.connect_lock = threading.Lock()
         # Set by the reader on the first inbound device frame after _adopt;
         # the silent-link watchdog waits on it.
         self.first_rx = threading.Event()
@@ -141,6 +160,23 @@ class Bridge:
                 self.clients = [c for c in self.clients if c not in dead]
 
     def connect(self, mac: str, channel: int) -> None:
+        """Serialise concurrent connect attempts, then run the channel probe.
+
+        The desktop renderer only ever has one connect in flight (the store
+        guards duplicates), but a second WebSocket client — manual console
+        use, a leftover window — could otherwise race two probes: both mutate
+        `self.sock`, one adopts a socket the other just closed, and the
+        surviving link leaks. Holding a lock makes a connect atomic with
+        respect to other connects; a second caller blocks for the duration of
+        the probe (up to ~24s), which is acceptable for a single-user local
+        helper. Distinct from `self.lock` (client list) and `tx_lock`
+        (RFCOMM writes): broadcast() and the reader take those *inside* a
+        connect, so nesting the same lock here would deadlock.
+        """
+        with self.connect_lock:
+            self._connect(mac, channel)
+
+    def _connect(self, mac: str, channel: int) -> None:
         """Open the DSP socket, proving the channel actually speaks Soundcore.
 
         Accepting an RFCOMM connection does **not** mean the channel is the
@@ -155,9 +191,15 @@ class Bridge:
         console session — fall back to the first channel that at least
         accepted, and say so in the log.
         """
-        mac = mac.replace("-", ":").strip().upper()
-        if not mac:
-            raise RuntimeError("MAC address required")
+        # Validate before touching any socket: a malformed address must be
+        # reported as such, not surface as a confusing OS-level "host down".
+        normalized = _normalize_mac(mac)
+        if not normalized:
+            raise RuntimeError(
+                f"Invalid Bluetooth address {mac!r} — expected 12 hex digits, "
+                "e.g. AA:BB:CC:DD:EE:FF"
+            )
+        mac = normalized
         self.close()
 
         candidates = [channel] + [c for c in DSP_CHANNEL_CANDIDATES if c != channel]
@@ -289,7 +331,8 @@ class Bridge:
                 self.broadcast({"type": "sys", "error": msg, "channel": ch})
                 reported = True
             try:
-                sock.sendall(HANDSHAKE)
+                with self.tx_lock:
+                    sock.sendall(HANDSHAKE)
             except OSError:
                 return  # the link died; the reader thread reports the close
         if self.sock is not sock:
@@ -326,9 +369,15 @@ class Bridge:
         return False
 
     def send(self, data: bytes) -> None:
-        if not self.sock:
+        # Capture the socket locally: close() on another thread can null and
+        # close self.sock between the check and the write, and sendall() on
+        # the stale object then fails with a clean OSError (reported to the
+        # caller as a protocol error) instead of an AttributeError.
+        sock = self.sock
+        if sock is None:
             raise RuntimeError("Not connected")
-        self.sock.sendall(data)
+        with self.tx_lock:
+            sock.sendall(data)
 
     def close(self) -> None:
         s = self.sock
@@ -476,6 +525,10 @@ def recv_ws(sock: socket.socket) -> Optional[bytes]:
         length = struct.unpack("!H", recvn(sock, 2))[0]
     elif length == 127:
         length = struct.unpack("!Q", recvn(sock, 8))[0]
+    if length > WS_MAX_MESSAGE_BYTES:
+        # Do not allocate whatever a 64-bit length header claims; drop this
+        # client only. Legitimate renderer messages are a few hundred bytes.
+        raise ValueError(f"oversized WebSocket frame ({length} bytes)")
     mask = recvn(sock, 4) if masked else b""
     data = recvn(sock, length)
     if masked:
@@ -696,9 +749,16 @@ def origin_allowed(origin: Optional[str], user_agent: str = "") -> bool:
     return scheme == "http" and host in LOCAL_ORIGIN_HOSTS
 
 
+# Redacts the per-session secret from access logs: the WebSocket handshake
+# carries it as `GET /ws?token=...`, and Electron mirrors helper stderr into
+# %AppData%\soundcontrol\main.log — the token must never land there.
+_TOKEN_QS_RE = re.compile(r"([?&]token=)[^&\s\"']+", re.IGNORECASE)
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args: object) -> None:  # noqa: A003
-        sys.stderr.write("bridge: " + (fmt % args) + "\n")
+        safe = tuple(_TOKEN_QS_RE.sub(r"\1<redacted>", str(a)) for a in args)
+        sys.stderr.write("bridge: " + (fmt % safe) + "\n")
 
     # -- origin gate ---------------------------------------------------------
     def _origin(self) -> Optional[str]:
@@ -837,11 +897,11 @@ class Handler(BaseHTTPRequestHandler):
         sock = self.connection
         with BRIDGE.lock:
             BRIDGE.clients.append(sock)
-        send_ws(
-            sock,
-            json.dumps({"type": "hello", "devices": scan_devices(), "pid": os.getpid()}).encode(),
-        )
         try:
+            send_ws(
+                sock,
+                json.dumps({"type": "hello", "devices": scan_devices(), "pid": os.getpid()}).encode(),
+            )
             while True:
                 msg = recv_ws(sock)
                 if msg is None:
@@ -849,6 +909,15 @@ class Handler(BaseHTTPRequestHandler):
                 if not msg:
                     continue
                 self._handle(sock, msg)
+        except ValueError as exc:
+            # An oversized/garbled frame: drop this client with a clear line
+            # in the log instead of allocating whatever it claimed.
+            sys.stderr.write(f"bridge: closing WebSocket client: {exc}\n")
+        except OSError:
+            # The renderer vanished mid-read (window closed, app force-quit,
+            # crash). One clean line — a socketserver traceback in main.log
+            # here used to look like a bridge failure.
+            sys.stderr.write("bridge: WebSocket client disconnected\n")
         finally:
             with BRIDGE.lock:
                 BRIDGE.clients = [c for c in BRIDGE.clients if c is not sock]
@@ -871,6 +940,17 @@ class Handler(BaseHTTPRequestHandler):
                 )
             elif kind == "tx":
                 data = bytes.fromhex(str(msg.get("hex", "")).replace(" ", ""))
+                if len(data) > TX_MAX_BYTES:
+                    send_ws(
+                        sock,
+                        json.dumps(
+                            {
+                                "type": "error",
+                                "error": f"tx payload too large ({len(data)} bytes; max {TX_MAX_BYTES})",
+                            }
+                        ).encode(),
+                    )
+                    return
                 BRIDGE.send(data)
                 send_ws(sock, json.dumps({"type": "sent", "n": len(data)}).encode())
             elif kind == "disconnect":

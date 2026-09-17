@@ -179,7 +179,7 @@ export function ConnectSheet() {
               <li key={d.mac}>
                 <button
                   disabled={app.connecting}
-                  onClick={() => void app.connectBridge(d.mac, d.name)}
+                  onClick={() => void app.connectBridge(d.mac, d.name).catch(() => {})}
                   className="flex w-full items-center gap-3 rounded-xl border border-line bg-white p-2.5 text-left transition hover:border-blue disabled:opacity-50"
                 >
                   <span className="min-w-0 flex-1">
@@ -207,7 +207,9 @@ export function ConnectSheet() {
               return;
             }
             setHint(null);
-            void app.connectBridge(mac);
+            // Errors are surfaced through the app-level error banner; swallow
+            // the rethrow so it cannot become an unhandled rejection.
+            void app.connectBridge(mac).catch(() => {});
           }}
         >
           <label className="block text-xs font-bold uppercase tracking-wider text-mute" htmlFor="manual-mac">

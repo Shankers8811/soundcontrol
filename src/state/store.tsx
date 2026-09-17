@@ -480,8 +480,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [pushLog],
   );
 
+  // True while a connect is running. Duplicate attempts (double-tap, or a
+  // second device picked while the first is still connecting) are ignored:
+  // two concurrent bridge sessions would leave a stale WebSocket registered
+  // in the helper's client list and deliver every device frame twice.
+  const connectInFlight = useRef(false);
+
   const wrapConnect = useCallback(
     async (fn: () => Promise<void>) => {
+      if (connectInFlight.current) return;
+      connectInFlight.current = true;
       setError(null);
       setConnecting(true);
       try {
@@ -493,15 +501,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await beep('warn');
         throw err;
       } finally {
+        connectInFlight.current = false;
         setConnecting(false);
       }
     },
     [pushLog],
   );
 
+  /**
+   * Close and forget the active transport *before* a new connect starts.
+   * Order matters: the bridge owns exactly one RFCOMM link, so sending the
+   * old session's `disconnect` *after* the new connect finished would tear
+   * down the new device link.
+   */
+  const releaseTransport = useCallback(async () => {
+    const t = transportRef.current;
+    transportRef.current = null;
+    if (t) {
+      try {
+        await t.close();
+      } catch {
+        /* the old link may already be dead */
+      }
+    }
+  }, []);
+
   const connectBridgePort = useCallback(
     (mac: string, label?: string, windowsBattery?: number | null) =>
       wrapConnect(async () => {
+        // Switching devices (ConnectSheet is reachable while connected, e.g.
+        // from the Settings tab): tear the old session down first so its
+        // WebSocket is not left registered in the helper's client list.
+        await releaseTransport();
         // Filled in once connectBridge resolves; the link-down callback uses
         // it to verify the dropped transport is still the active one (a fast
         // disconnect→reconnect must not let the old socket's close tear down
@@ -543,12 +574,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           });
         }
       }),
-    [attach, onRx, prompts, pushLog, wrapConnect],
+    [attach, onRx, prompts, pushLog, releaseTransport, wrapConnect],
   );
 
   const connectSim = useCallback(
     (customProfileId?: string) =>
       wrapConnect(async () => {
+        // Leave any real bridge session before starting the simulator (and
+        // release its RFCOMM link in the helper) — see releaseTransport.
+        await releaseTransport();
         const targetProfile = customProfileId
           ? DEVICES.find((d) => d.id === customProfileId)
           : undefined;
@@ -556,7 +590,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const { transport, name, battery: b } = connectSimulator(onRx, simProfile);
         await attach(transport, name, b);
       }),
-    [attach, onRx, wrapConnect],
+    [attach, onRx, releaseTransport, wrapConnect],
   );
 
   const setSurroundSound = useCallback(
@@ -585,6 +619,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     transportRef.current = null;
     setConnected(false);
     setTransportLabel('Not connected');
+    // Clear the old device's identity and telemetry: a stale name/battery in
+    // the disconnected UI is misleading, and attach() only overwrites the
+    // battery when the next device actually reports one.
+    setDeviceName('No device');
+    setBattery({ left: null, right: null });
+    setLinkInfo(null);
     try {
       await t?.close();
     } catch {
