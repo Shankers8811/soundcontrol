@@ -159,7 +159,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [deviceName, setDeviceName] = useState('No device');
   const [profile, setProfile] = useState<DeviceProfile>(matchDevice('R50i'));
   const profileRef = useRef(profile);
-  const [battery, setBattery] = useState<BatteryState>({ left: null, right: null, case: null });
+  const [battery, setBattery] = useState<BatteryState>({ left: null, right: null });
   const [recentDevices, setRecentDevices] = useState<Array<{ mac: string; name: string }>>(() =>
     load('soundcontrol_recent_devices', [] as Array<{ mac: string; name: string }>),
   );
@@ -297,7 +297,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      let levels: [number | null, number | null, number | null] | null = null;
+      let levels: [number | null, number | null] | null = null;
       let presence: EarbudPresence = 'unknown';
       let rawLeft: number | undefined;
       let rawRight: number | undefined;
@@ -310,11 +310,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // definition it came from.
         rawLeft = payload[offsets.batteryLeft];
         rawRight = offsets.batteryRight === null ? undefined : payload[offsets.batteryRight];
-        levels = [
-          level(rawLeft),
-          level(rawRight),
-          offsets.batteryCase === null ? null : level(payload[offsets.batteryCase]),
-        ];
+        // The case byte stays a wire fact (see PROTOCOL.md) but is never
+        // surfaced: many models do not report it and over-ears have no case.
+        levels = [level(rawLeft), level(rawRight)];
         if (offsets.batteryChargingLeft !== null) {
           chargingLeft = (payload[offsets.batteryChargingLeft] & 0x01) !== 0;
         }
@@ -331,10 +329,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       } else if (cat === 0x01 && typ === 0x03 && payload.length >= 1) {
         // The explicit battery query returns left/right in the first bytes.
-        // The case value carries over from the state update.
         rawLeft = payload[0];
         rawRight = offsets.batteryRight === null ? undefined : payload[1];
-        levels = [level(rawLeft), level(rawRight), null];
+        levels = [level(rawLeft), level(rawRight)];
       }
       if (!levels) return;
       if (
@@ -350,7 +347,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBattery((previous) => ({
         left: levels![0] ?? previous.left,
         right: levels![1] ?? previous.right,
-        case: levels![2] ?? previous.case,
         leftCharging: chargingLeft ?? previous.leftCharging,
         rightCharging: chargingRight ?? previous.rightCharging,
         batteryScale: profileRef.current.kind === 'earbuds' ? profileRef.current.batteryMax : null,
@@ -368,7 +364,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         pushLog(
           'sys',
           '',
-          `Low battery: ${low.map((p) => `${Math.round(p)}%`).join(', ')} — time to find the case`,
+          `Low battery: ${low.map((p) => `${Math.round(p)}%`).join(', ')} — charge soon`,
         );
       }
     },
@@ -424,12 +420,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
       const note = matchNote(name);
       if (typeof bat === 'number') {
-        setBattery({ left: bat, right: bat, case: null, batteryScale: null, presence: 'unknown' });
+        setBattery({ left: bat, right: bat, batteryScale: null, presence: 'unknown' });
       } else if (bat && typeof bat === 'object') {
         setBattery({
           left: bat.left ?? null,
           right: bat.right ?? null,
-          case: bat.case ?? null,
           batteryScale: bat.batteryScale ?? null,
           presence: bat.presence ?? 'unknown',
         });

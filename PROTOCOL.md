@@ -85,6 +85,11 @@ firmware 10 + serial 16, then per-model blocks: A3959 eq 12 + unknown 10 + 1
 buttons 16 + cycle 1 = 126, case battery 6 bytes later at 139). Liberty 3
 Pro (A3952): sound modes at 120, case battery at 129.
 
+The case offsets are kept as wire facts, but SoundControl deliberately never
+**displays** a case level: several Soundcore models do not report one (the
+official app hides it there as well) and over-ears have no case, so a visible
+number would mostly be a guess.
+
 Over-ears (Q30 / Q35 / Life Tune / Space One / Space Q45) use
 `single_battery(5)`: one 0..5 level at offset 2; their other offsets are not
 published byte-for-byte, so SoundControl reads battery only and takes

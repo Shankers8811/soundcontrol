@@ -64,8 +64,9 @@ after closing the phone app.
   presence information; per-ear *wear* sensors are not exposed by this
   protocol on most models.
 - Over-ears (Q30/Q35/Space One/Q45…) report **one** level; there is no L/R pair.
-- The case percentage only appears where the model reports one (Liberty 4 NC
-  at state offset 139, Liberty 3 Pro at 129 — see PROTOCOL.md).
+- There is deliberately **no case battery** anywhere in the UI: several models
+  never report one (the official app hides it too) and over-ears have no case.
+  The wire offsets remain documented in PROTOCOL.md for capture decoding.
 
 ## ANC / sound modes missing or reverting
 

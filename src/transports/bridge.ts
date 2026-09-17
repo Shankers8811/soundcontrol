@@ -241,7 +241,7 @@ export async function connectBridge(
     name: name || mac || 'soundcore',
     battery:
       windowsBattery !== null
-        ? { left: windowsBattery, right: windowsBattery, case: null, batteryScale: null }
+        ? { left: windowsBattery, right: windowsBattery, batteryScale: null }
         : null,
     dspChannel,
   };
