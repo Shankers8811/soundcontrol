@@ -267,9 +267,13 @@ A2DP control profiles accept RFCOMM connections and then never answer —
 exactly the "Connected but no battery / no ANC" failure. So `soundcore_bridge.py`
 probes each candidate with the `01:01` handshake and adopts the **first
 channel that answers with a valid `09 FF` frame**. If nothing answers it falls
-back to the first accepting socket and logs the condition (visible in
-`%AppData%\soundcontrol\main.log` on Windows, mirrored to the in-app
-diagnostics log).
+back to the first accepting socket, logs the condition together with the
+refused channels (visible in `%AppData%\soundcontrol\main.log` on Windows,
+mirrored to the in-app diagnostics log), and arms an 8 s silent-link watchdog:
+the watchdog names the fake-"Connected" state, then keeps re-sending the
+read-only handshake in the background. When the single control slot frees up
+(the Soundcore phone app closes) and the device finally answers, the bridge
+announces "battery and ANC are live now" — no manual reconnect needed.
 
 Channels **12/13** on some families are TOTA/BESOTA firmware-flash channels
 and **16** is Apple iAP2; soundcorebridge hard-blocks them. The probe only

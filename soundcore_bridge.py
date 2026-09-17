@@ -77,7 +77,10 @@ PROBE_REPLY_TIMEOUT = 1.5
 # channel (manual console use), but the UI would then sit at "Connected" with
 # empty battery/ANC forever. This watchdog names that condition out loud: if
 # the silent link has not produced a single device frame after this many
-# seconds, the bridge reports it instead of pretending all is well.
+# seconds, the bridge reports it instead of pretending all is well — and then
+# keeps re-sending the read-only handshake every SILENT_LINK_WATCHDOG_S, so a
+# control slot that frees up later (phone app closed) heals by itself and the
+# renderer is told "battery and ANC are live now" without a manual reconnect.
 SILENT_LINK_WATCHDOG_S = 8.0
 
 
@@ -206,6 +209,10 @@ class Bridge:
                 f"connected to channel {ch}, but the earbuds did not answer the "
                 f"handshake — battery and ANC will stay empty until they do"
             )
+            if failures:
+                # The user needs to see why the other candidates were rejected,
+                # not just that two channels stayed silent.
+                msg += ". Other channels refused: " + "; ".join(failures[:4])
             sys.stderr.write(f"bridge: {msg}\n")
             self.broadcast({"type": "sys", "message": msg, "channel": ch})
             threading.Thread(target=self._silent_watchdog, args=(sock, ch), daemon=True).start()
@@ -244,27 +251,48 @@ class Bridge:
         threading.Thread(target=self._reader, daemon=True).start()
 
     def _silent_watchdog(self, sock: socket.socket, ch: int) -> None:
-        """Name the fake-"Connected" condition instead of hiding it.
+        """Name the fake-"Connected" condition, then keep trying to heal it.
 
         Only started when the adopted channel never answered the handshake.
-        If the device still sends nothing within SILENT_LINK_WATCHDOG_S the
-        socket is almost certainly a non-DSP profile (or the phone app holds
-        the control slot), and the user gets an explicit message rather than
-        a forever-empty dashboard. The socket stays open on purpose so a
-        manual console session can still try commands.
+        After SILENT_LINK_WATCHDOG_S of silence the socket is almost certainly
+        a non-DSP profile, or the Soundcore phone app still holds the single
+        control slot. The bridge says so out loud (stderr + the renderer
+        console) instead of sitting at a forever-empty "Connected" — and then
+        keeps re-sending the read-only handshake in the background. When the
+        slot frees up and the device finally answers, the reader thread sets
+        `first_rx` and this thread announces that battery/ANC are live, so the
+        user does not have to reconnect by hand. The socket is never closed
+        here: a manual console session must keep working either way.
         """
-        if self.first_rx.wait(SILENT_LINK_WATCHDOG_S):
-            return  # the device spoke after all — nothing to report
+        reported = False
+        while self.sock is sock and not self.first_rx.is_set():
+            if self.first_rx.wait(SILENT_LINK_WATCHDOG_S):
+                break  # the device spoke (spontaneously or after a retry)
+            if self.sock is not sock:
+                return  # a reconnect replaced this link while we waited
+            if not reported:
+                msg = (
+                    f"silent-link watchdog: channel {ch} has sent nothing for "
+                    f"{int(SILENT_LINK_WATCHDOG_S)}s — that socket is probably not "
+                    "the DSP, or the Soundcore phone app still holds the control "
+                    "slot. Keeping the link open and retrying the handshake in "
+                    "the background; close the phone app if it is open."
+                )
+                sys.stderr.write(f"bridge: {msg}\n")
+                self.broadcast({"type": "sys", "error": msg, "channel": ch})
+                reported = True
+            try:
+                sock.sendall(HANDSHAKE)
+            except OSError:
+                return  # the link died; the reader thread reports the close
         if self.sock is not sock:
-            return  # a reconnect replaced this link while we waited
+            return
         msg = (
-            f"silent-link watchdog: channel {ch} has sent nothing for "
-            f"{int(SILENT_LINK_WATCHDOG_S)}s — that socket is probably not the "
-            "DSP. Close the Soundcore phone app (it holds the single control "
-            "slot), toggle Bluetooth on the earbuds, and reconnect."
+            f"DSP answered on channel {ch} after retry — battery and ANC are "
+            "live now"
         )
         sys.stderr.write(f"bridge: {msg}\n")
-        self.broadcast({"type": "sys", "error": msg, "channel": ch})
+        self.broadcast({"type": "sys", "message": msg, "channel": ch})
 
     @staticmethod
     def _probe(sock: socket.socket) -> bool:
