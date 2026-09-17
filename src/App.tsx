@@ -1,10 +1,13 @@
 import { Shell } from './components/Shell';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { AppProvider } from './state/store';
 
 export default function App() {
   return (
-    <AppProvider>
-      <Shell />
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <Shell />
+      </AppProvider>
+    </ErrorBoundary>
   );
 }

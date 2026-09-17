@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { useApp } from '../state/store';
-import { buildFindDevice } from '../protocol/packets';
 
 export function FindDeviceModal({ onClose }: { onClose: () => void }) {
-  const app = useApp();
   const [playingSide, setPlayingSide] = useState<'left' | 'right' | 'both' | null>(null);
   const audioRef = useRef<{ ctx: AudioContext; osc: OscillatorNode; gain: GainNode } | null>(null);
 
@@ -55,36 +52,24 @@ export function FindDeviceModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const playSide = async (side: 'left' | 'right' | 'both') => {
+  /**
+   * Plays the locator tone through the computer.
+   *
+   * This deliberately does not send anything to the earbuds: there is no
+   * "find my device" command in any Soundcore capture or in OpenSCQ30's
+   * command table, so the frame this used to inject (`01:88`) was invented.
+   * An unverified write to an unknown command is worse than no write, so the
+   * modal is now an honest local alarm and says so below.
+   */
+  const playSide = (side: 'left' | 'right' | 'both') => {
     if (playingSide === side) {
       stopTone();
       setPlayingSide(null);
-      if (app.connected) {
-        try {
-          await app.inject(buildFindDevice(false, false), 'Find Device Stop');
-        } catch {
-          /* the store displays the write error */
-        }
-      }
       return;
     }
-
     setPlayingSide(side);
     const pan = side === 'left' ? -1 : side === 'right' ? 1 : 0;
     startTone(pan);
-
-    if (app.connected) {
-      const isL = side === 'left' || side === 'both';
-      const isR = side === 'right' || side === 'both';
-      try {
-        await app.inject(buildFindDevice(isL, isR), `Find Device ${side}`);
-      } catch {
-        // The UI error banner is populated by the store. Stop the local alarm
-        // as well so a failed hardware write cannot leave a tone running.
-        stopTone();
-        setPlayingSide(null);
-      }
-    }
   };
 
   useEffect(() => {
@@ -103,6 +88,10 @@ export function FindDeviceModal({ onClose }: { onClose: () => void }) {
             <p className="text-sm font-semibold">High Volume Warning</p>
             <p className="mt-0.5 text-xs text-amber-700">
               Please remove the earbuds from your ears before triggering the alarm to avoid hearing discomfort or damage.
+            </p>
+            <p className="mt-1.5 text-[11px] leading-snug text-amber-700">
+              The tone plays through this computer, not the earbuds — the Soundcore protocol has no
+              confirmed acoustic-beacon command, so SoundControl does not pretend to send one.
             </p>
           </div>
         </div>

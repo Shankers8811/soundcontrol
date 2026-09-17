@@ -112,6 +112,8 @@ interface BridgeHello {
   type?: string;
   devices?: Array<{ mac: string; name: string; battery?: number | null }>;
   error?: string;
+  message?: string;
+  channel?: number;
 }
 
 export async function connectBridge(
@@ -119,9 +121,18 @@ export async function connectBridge(
   onRx: (data: Uint8Array) => void,
   name = '',
   windowsBattery: number | null = null,
-): Promise<{ transport: Transport; name: string; battery: Partial<BatteryState> | null }> {
+  /** Bridge diagnostics ("DSP answered on channel 4", silent-link watchdog…). */
+  onSys: (message: string, isError: boolean) => void = () => {},
+): Promise<{
+  transport: Transport;
+  name: string;
+  battery: Partial<BatteryState> | null;
+  /** RFCOMM channel the bridge verified as the DSP, once it reports one. */
+  dspChannel: number | null;
+}> {
   const url = defaultBridgeUrl(await bridgeToken());
   const ws = await openSocket(url);
+  let dspChannel: number | null = null;
 
   const transport: Transport = {
     kind: 'bridge',
@@ -154,9 +165,16 @@ export async function connectBridge(
       }
       reject(new Error(message));
     };
+    // The bridge probes up to six RFCOMM channels with a handshake before it
+    // gives up (see DSP_CHANNEL_CANDIDATES in soundcore_bridge.py). That can
+    // take ~20s on a cold stack, so this has to outlast it — a 10s timer used
+    // to abandon connections that were about to succeed.
     const timer = window.setTimeout(
-      () => fail('Could not reach the earbuds. Put them in pairing mode and retry.'),
-      10000,
+      () =>
+        fail(
+          'Could not reach the earbuds. Leave them connected in Windows Bluetooth settings (not in pairing mode), close the Soundcore phone app, and retry.',
+        ),
+      30000,
     );
     const onClose = () => fail('The desktop helper closed the connection before the earbuds connected.');
 
@@ -175,14 +193,29 @@ export async function connectBridge(
         }
         return;
       }
+      if (msg.type === 'sys' && (msg.message || msg.error)) {
+        onSys(msg.error ?? msg.message ?? '', Boolean(msg.error));
+        return;
+      }
       if (msg.type === 'connected') {
+        if (typeof msg.channel === 'number') dspChannel = msg.channel;
         window.clearTimeout(timer);
         ws.removeEventListener('message', onMsg);
         ws.removeEventListener('close', onClose);
         ws.addEventListener('message', (e) => {
           try {
-            const m = JSON.parse(String(e.data)) as { type?: string; hex?: string };
+            const m = JSON.parse(String(e.data)) as {
+              type?: string;
+              hex?: string;
+              message?: string;
+              error?: string;
+            };
             if (m.type === 'rx' && m.hex) onRx(fromHex(m.hex));
+            // Late diagnostics from the helper, e.g. the silent-link watchdog
+            // firing seconds after the connect already resolved.
+            if (m.type === 'sys' && (m.message || m.error)) {
+              onSys(m.error ?? m.message ?? '', Boolean(m.error));
+            }
           } catch {
             /* */
           }
@@ -208,8 +241,9 @@ export async function connectBridge(
     name: name || mac || 'soundcore',
     battery:
       windowsBattery !== null
-        ? { left: windowsBattery, right: windowsBattery, case: null, batteryScale: null }
+        ? { left: windowsBattery, right: windowsBattery, batteryScale: null }
         : null,
+    dspChannel,
   };
 }
 
