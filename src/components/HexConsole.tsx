@@ -11,6 +11,36 @@ import {
   xorChecksum,
 } from '../protocol/codec';
 import { useApp } from '../state/store';
+import type { LogEntry } from '../types';
+
+/** Save the activity log verbatim — the raw material a bug report needs. */
+function downloadLog(log: LogEntry[], kind: 'json' | 'csv') {
+  const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const text =
+    kind === 'json'
+      ? JSON.stringify(log, null, 2)
+      : [
+          'Timestamp,Dir,Hex,Note,ChecksumValid',
+          ...log.map((r) =>
+            [
+              new Date(r.ts).toISOString(),
+              r.dir,
+              r.hex,
+              esc(r.note ?? ''),
+              r.valid === null || r.valid === undefined ? '' : String(r.valid),
+            ].join(','),
+          ),
+        ].join('\n');
+  const blob = new Blob([text], {
+    type: kind === 'json' ? 'application/json' : 'text/csv',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `soundcontrol-log.${kind}`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export function HexConsole() {
   const app = useApp();
@@ -90,6 +120,19 @@ export function HexConsole() {
         ))}
         <button onClick={app.clearLog} className="rounded-full px-3 py-1 font-mono text-[11px] text-mute">
           Clear
+        </button>
+        {/* Bug reports: attach exactly what the app saw, nothing retyped. */}
+        <button
+          onClick={() => downloadLog(app.log, 'json')}
+          className="rounded-full px-3 py-1 font-mono text-[11px] text-mute hover:text-ink"
+        >
+          Export JSON
+        </button>
+        <button
+          onClick={() => downloadLog(app.log, 'csv')}
+          className="rounded-full px-3 py-1 font-mono text-[11px] text-mute hover:text-ink"
+        >
+          Export CSV
         </button>
       </div>
 

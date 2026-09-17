@@ -115,6 +115,8 @@ interface AppState {
   surround: boolean;
   hearId: boolean;
   log: LogEntry[];
+  /** Last few bridge devices, most recent first — one-tap reconnect. */
+  recentDevices: Array<{ mac: string; name: string }>;
   error: string | null;
   clearError: () => void;
   connectBridge: (mac: string, name?: string, windowsBattery?: number | null) => Promise<void>;
@@ -158,6 +160,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<DeviceProfile>(matchDevice('R50i'));
   const profileRef = useRef(profile);
   const [battery, setBattery] = useState<BatteryState>({ left: null, right: null, case: null });
+  const [recentDevices, setRecentDevices] = useState<Array<{ mac: string; name: string }>>(() =>
+    load('soundcontrol_recent_devices', [] as Array<{ mac: string; name: string }>),
+  );
+  // The low-battery nudge should fire once per connection, not every poll.
+  const lowBatteryWarned = useRef(false);
   const [ancMode, setAncMode] = useState<AncMode>('anc');
   const [ancLevel, setAncLevel] = useState(5);
   const [ancScene, setAncScene] = useState<AncScene>('outdoor');
@@ -349,6 +356,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
         batteryScale: profileRef.current.kind === 'earbuds' ? profileRef.current.batteryMax : null,
         presence: presence === 'unknown' ? previous.presence : presence,
       }));
+
+      // One quiet nudge per connection when any reported side drops under 20%.
+      const scale = profileRef.current.batteryMax || 5;
+      const low = (levels as Array<number | null>)
+        .filter((v): v is number => v !== null)
+        .map((v) => (v / scale) * 100)
+        .filter((p) => p < 20);
+      if (!lowBatteryWarned.current && low.length > 0) {
+        lowBatteryWarned.current = true;
+        pushLog(
+          'sys',
+          '',
+          `Low battery: ${low.map((p) => `${Math.round(p)}%`).join(', ')} — time to find the case`,
+        );
+      }
     },
     [pushLog, syncSoundModes],
   );
@@ -394,6 +416,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // per device, and showing a stale value is worse than showing none.
       setFirmware('Unknown');
       setSerial(null);
+      lowBatteryWarned.current = false;
       setLinkInfo(
         typeof dspChannel === 'number'
           ? `DSP verified on RFCOMM channel ${dspChannel}`
@@ -494,6 +517,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
           (text) => pushLog('sys', '', text),
         );
         await attach(transport, name, b, dspChannel);
+        // Settings persistence: remember the last few devices for one-tap
+        // reconnect on the next launch.
+        if (mac) {
+          setRecentDevices((prev) => {
+            const next = [
+              { mac, name: name || 'soundcore' },
+              ...prev.filter((d) => d.mac !== mac),
+            ].slice(0, 5);
+            save('soundcontrol_recent_devices', next);
+            return next;
+          });
+        }
       }),
     [attach, onRx, pushLog, wrapConnect],
   );
@@ -771,6 +806,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       surround,
       hearId,
       log,
+      recentDevices,
       error,
       clearError: () => setError(null),
       connectBridge: connectBridgePort,
@@ -850,6 +886,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       bands,
       hearId,
       log,
+      recentDevices,
       error,
       connectBridgePort,
       connectSim,
