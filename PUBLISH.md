@@ -32,13 +32,29 @@ The installer link is:
 
 ## Optional code signing
 
-Add these repository secrets before tagging a release:
+Without a certificate the installer ships unsigned and SmartScreen shows
+"Unknown publisher" — only an Authenticode certificate removes that. Routes:
 
-- `WINDOWS_CERTIFICATE_BASE64` — base64 contents of a `.p12` or `.pfx` certificate
-- `WINDOWS_CERTIFICATE_PASSWORD` — certificate password
+1. **Free:** [SignPath Foundation](https://signpath.org/) signs qualifying
+   open-source projects at no cost.
+2. **OV cert (~$75–200/yr):** publisher name shows in the dialog; reputation
+   builds over days/weeks.
+3. **EV cert (~$200–400/yr):** SmartScreen reputation is instant.
 
-Without them, Windows SmartScreen may show an unknown-publisher warning. The workflow
-never stores the certificate in the release artifact.
+To use a `.p12`/`.pfx` you already own:
+
+```bash
+openssl base64 -in cert.p12 -out cert.b64 -A
+# repository → Settings → Secrets and variables → Actions:
+#   WINDOWS_CERTIFICATE_BASE64   = contents of cert.b64
+#   WINDOWS_CERTIFICATE_PASSWORD = p12 password
+```
+
+The release workflow then sets `CSC_LINK`/`CSC_KEY_PASSWORD`, electron-builder
+signs app + installer, the **"Report Authenticode signature status"** step
+prints the signer and fails the release if the signature is not Valid, and the
+cleanup step deletes `cert.p12` before artifacts are uploaded. Verify locally
+with `Get-AuthenticodeSignature .\SoundControl-Setup.exe`.
 
 ## Verify a release
 

@@ -10,39 +10,47 @@ export function SoundsPage() {
 
   return (
     <div className="space-y-4 px-4 py-3 pb-8">
-      {/* Sound Effects Header / Toggles */}
-      <section className="space-y-2 rounded-2xl bg-wash p-3.5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="font-semibold text-ink">BassUp™</p>
-            <p className="text-xs text-mute">Real-time dynamic bass boost algorithm</p>
+      {/*
+        Sound effects. Only the 02:86 surround toggle is here: there is no
+        BassUp command in any capture or in OpenSCQ30's command table, so the
+        toggle that used to sit above this one was sending nothing and has
+        been removed rather than left as a dead switch.
+      */}
+      {app.profile.surround ? (
+        <section className="rounded-2xl bg-wash p-3.5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-ink">3D Surround Sound</p>
+              <p className="text-xs text-mute">Immersive theatre-like soundstage</p>
+            </div>
+            <button
+              disabled={!app.connected}
+              onClick={() => void app.setSurroundSound(!app.surround)}
+              className={`toggle ${app.surround ? 'on' : ''}`}
+              aria-label="3D Surround Sound"
+            />
           </div>
-          <button
-            disabled={!app.connected}
-            onClick={() => void app.setBassUp(!app.bassUp)}
-            className={`toggle ${app.bassUp ? 'on' : ''}`}
-            aria-label="BassUp"
-          />
-        </div>
+        </section>
+      ) : (
+        <p className="rounded-2xl border border-line bg-wash p-3.5 text-xs leading-relaxed text-mute">
+          {app.profile.name} ({app.profile.sku}) does not implement the 02:86 surround toggle, so
+          3D Sound is not available for this model.
+        </p>
+      )}
 
-        <div className="my-2 h-px bg-line" />
-
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="font-semibold text-ink">Spatial Audio / 3D Sound</p>
-            <p className="text-xs text-mute">Immersive theatre-like soundstage</p>
-          </div>
-          <button
-            disabled={!app.connected}
-            onClick={() => void app.setSpatialAudio(!app.spatialAudio)}
-            className={`toggle ${app.spatialAudio ? 'on' : ''}`}
-            aria-label="Spatial Audio"
-          />
-        </div>
-      </section>
+      {!app.profile.eqCommand && (
+        <p className="rounded-2xl border border-line bg-wash p-4 text-xs leading-relaxed text-mute">
+          <span className="font-semibold text-ink">Equalizer unavailable on this model.</span>{' '}
+          {app.profile.name} ({app.profile.sku}) takes its EQ over the model-specific{' '}
+          <code className="font-mono">03:87</code> HearID frame, which embeds a per-device
+          personalised curve. SoundControl will not guess that payload — sending a wrong one can
+          overwrite the hearing profile the phone app measured. Use the Soundcore app for EQ on
+          this model.
+        </p>
+      )}
 
       {/* Mode Choices */}
-      <div className="space-y-2">
+      <div className={`space-y-2 ${app.profile.eqCommand ? '' : 'pointer-events-none opacity-40'}`}>
         <Choice
           title="HearID Sound"
           sub={app.hearId ? 'Personalized to your hearing test' : 'Personalized hearing calibration test'}
@@ -72,7 +80,9 @@ export function SoundsPage() {
           <h3 className="font-semibold text-ink">Soundcore Presets</h3>
           <span className="text-xs font-mono text-mute">{EQ_PRESETS.length} presets</span>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div
+          className={`grid grid-cols-2 gap-3 ${app.profile.eqCommand ? '' : 'pointer-events-none opacity-40'}`}
+        >
           {EQ_PRESETS.map((p) => (
             <button
               key={p.id}

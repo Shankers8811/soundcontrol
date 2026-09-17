@@ -63,7 +63,7 @@ export function AmbientPage() {
         <p className="text-xs font-bold uppercase tracking-wider text-mute mb-3">Ambient Sound Mode</p>
         <div className="grid grid-cols-3 gap-2">
           <button
-            onClick={() => void app.setAnc('anc', 5)}
+            onClick={() => void app.setAnc('anc', app.profile.ancLevels ? 5 : app.ancLevel)}
             className={`flex flex-col items-center gap-2 rounded-2xl p-3 transition ${
               isAnc ? 'bg-white shadow-sm ring-2 ring-blue text-blue' : 'text-slate-600 hover:bg-white/60'
             }`}
@@ -87,8 +87,14 @@ export function AmbientPage() {
           </button>
 
           <button
+            disabled={!app.profile.transparency}
             onClick={() => void app.setAnc('transparency')}
-            className={`flex flex-col items-center gap-2 rounded-2xl p-3 transition ${
+            title={
+              app.profile.transparency
+                ? undefined
+                : `${app.profile.name} has no transparency sub-mode in its protocol`
+            }
+            className={`flex flex-col items-center gap-2 rounded-2xl p-3 transition disabled:cursor-not-allowed disabled:opacity-40 ${
               isTrans ? 'bg-white shadow-sm ring-2 ring-blue text-blue' : 'text-slate-600 hover:bg-white/60'
             }`}
           >
@@ -101,7 +107,7 @@ export function AmbientPage() {
       </div>
 
       {/* Noise Cancellation Options (No typing or selecting raw numbers) */}
-      {isAnc && (
+      {isAnc && app.profile.ancLevels && (
         <div className="space-y-2.5">
           <p className="text-xs font-bold uppercase tracking-wider text-mute">Noise Cancelling Modes</p>
           <div className="grid gap-2">
@@ -129,38 +135,45 @@ export function AmbientPage() {
             ))}
           </div>
 
-          {/* Over-ear Scene choices if applicable */}
-          {app.profile.scenes && (
-            <div className="mt-4 pt-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-mute mb-2">Environment Scenes</p>
-              <div className="grid gap-2">
-                {sceneModes.map((s) => {
-                  const active = app.ancMode === 'anc' && app.ancScene === s.id;
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => void app.setAnc('anc', app.ancLevel, s.id)}
-                      className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${
-                        active ? 'border-blue bg-sky/40' : 'border-line bg-wash hover:border-slate-300'
-                      }`}
-                    >
-                      <span className="text-xl">{s.icon}</span>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs font-bold text-ink">{s.title}</div>
-                        <div className="text-[11px] text-mute">{s.desc}</div>
-                      </div>
-                      {active && <span className="text-blue font-bold">✓</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+        </div>
+      )}
+
+      {/*
+        Environment scenes are separate from the level list on purpose: the
+        classic over-ears (Q30 / Q35 / Life Tune / Space One / Space Q45) take
+        a scene byte in every ANC frame and have no manual level at all, so
+        nesting this inside the level block would hide it from exactly the
+        models that use it.
+      */}
+      {app.profile.scenes && app.ancMode === 'anc' && (
+        <div className="space-y-2.5">
+          <p className="text-xs font-bold uppercase tracking-wider text-mute">Environment Scenes</p>
+          <div className="grid gap-2">
+            {sceneModes.map((s) => {
+              const active = app.ancMode === 'anc' && app.ancScene === s.id;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => void app.setAnc('anc', app.ancLevel, s.id)}
+                  className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${
+                    active ? 'border-blue bg-sky/40' : 'border-line bg-wash hover:border-slate-300'
+                  }`}
+                >
+                  <span className="text-xl">{s.icon}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold text-ink">{s.title}</div>
+                    <div className="text-[11px] text-mute">{s.desc}</div>
+                  </div>
+                  {active && <span className="text-blue font-bold">✓</span>}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
       {/* Transparency Mode Choices */}
-      {isTrans && (
+      {isTrans && app.profile.transparency && (
         <div className="space-y-2.5">
           <p className="text-xs font-bold uppercase tracking-wider text-mute">Transparency Options</p>
           <div className="grid gap-2">
@@ -211,17 +224,31 @@ export function AmbientPage() {
       )}
 
       {/* Wind Noise Reduction Switch */}
-      <div className="flex items-center justify-between rounded-2xl border border-line bg-wash p-4">
-        <div>
-          <p className="font-bold text-sm text-ink">Wind Noise Reduction</p>
-          <p className="text-xs text-mute">Suppresses microphone buffeting in windy conditions</p>
+      {app.profile.wind ? (
+        <div className="flex items-center justify-between rounded-2xl border border-line bg-wash p-4">
+          <div>
+            <p className="font-bold text-sm text-ink">Wind Noise Reduction</p>
+            <p className="text-xs text-mute">Suppresses microphone buffeting in windy conditions</p>
+          </div>
+          <button
+            onClick={() => void app.setWindNoise(!app.windNoise)}
+            className={`toggle ${app.windNoise ? 'on' : ''}`}
+            aria-label="Wind Noise Reduction"
+          />
         </div>
-        <button
-          onClick={() => void app.setWindNoise(!app.windNoise)}
-          className={`toggle ${app.windNoise ? 'on' : ''}`}
-          aria-label="Wind Noise Reduction"
-        />
-      </div>
+      ) : (
+        <p className="rounded-2xl border border-line bg-wash p-4 text-xs leading-relaxed text-mute">
+          {app.profile.name} ({app.profile.sku}) has no wind-noise field in its sound-mode frame, so
+          there is nothing to toggle.
+        </p>
+      )}
+
+      {app.profile.ancLayout === 'none' && (
+        <p className="rounded-2xl border border-line bg-wash p-4 text-xs leading-relaxed text-mute">
+          {app.profile.name} ({app.profile.sku}) exposes no sound-mode control at all — the official
+          app has no ANC page for it either, so SoundControl does not send one.
+        </p>
+      )}
     </div>
   );
 }

@@ -92,13 +92,18 @@ export function ConnectSheet() {
     <div className="flex flex-1 flex-col px-5 py-4">
       <div className="flex flex-col items-center pt-4">
         <div className={`radar ${searching || app.connecting ? 'on' : ''}`}>
+          {/*
+            The loading art is its own render (matte-black buds + case on the
+            same #E7F0FF the circle uses), shown larger than the old 64px
+            thumbnail it replaces.
+          */}
           <img
-            src={asset('device-earbuds.webp')}
+            src={asset('loading-earbuds.webp')}
             alt=""
-            width={704}
-            height={384}
+            width={512}
+            height={512}
             decoding="async"
-            className="h-16 w-16 object-contain"
+            className="h-24 w-24 rounded-full object-contain"
           />
         </div>
         <h2 className="mt-5 text-center text-xl font-semibold">Add Windows device</h2>
