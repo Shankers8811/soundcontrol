@@ -20,7 +20,23 @@ jobs:
       - run: npm ci
       # --publish never: electron-builder auto-detects CI and would
       # otherwise try to publish a GitHub Release on every push.
-      - run: npm run build:win -- --publish never
+      #
+      # SOUNDCONTROL_PYTHON_REQUIRED makes the `prebuild:win` hook hard-fail if
+      # the bundled Python runtime could not be staged. Without it the hook only
+      # warns and leaves an empty python-embed/ behind, so the build "succeeds"
+      # and uploads an artifact with no resources/python/ — a build whose
+      # earbud detection cannot start. Same guard the release workflow uses.
+      - name: Build Windows installer (with bundled Python runtime)
+        env:
+          SOUNDCONTROL_PYTHON_REQUIRED: '1'
+        run: npm run build:win -- --publish never
+      - name: Verify the bundled Python runtime shipped
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f release/win-unpacked/resources/python/python.exe
+          ls -la release/win-unpacked/resources/python | head -15
+          echo "Bundled runtime present in the CI artifact."
       - uses: actions/upload-artifact@v4
         with:
           name: SoundControl-Windows
