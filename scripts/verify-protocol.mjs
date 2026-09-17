@@ -13,13 +13,15 @@
  * same TypeScript that ships in the renderer — not a copy of the logic.
  */
 
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const ROOT = new URL('..', import.meta.url).pathname;
+// fileURLToPath (not URL.pathname) is the only correct file-URL -> path API:
+// .pathname yields "/D:/a/soundcontrol/soundcontrol/" on a Windows CI runner,
+// which is not a valid Win32 path and silently resolves to nothing.
+const ROOT = resolve(fileURLToPath(import.meta.url), '..', '..');
 
 let passed = 0;
 const failures = [];
@@ -45,26 +47,35 @@ function ok(label, condition, detail = '') {
 /* ------------------------------------------------------------------ bundle */
 
 const dir = mkdtempSync(join(tmpdir(), 'soundcontrol-verify-'));
-const entry = join(dir, 'entry.ts');
 const out = join(dir, 'protocol.mjs');
-writeFileSync(
-  entry,
-  [
-    `export * from '${ROOT}src/protocol/packets.ts';`,
-    `export * from '${ROOT}src/protocol/presets.ts';`,
-    `export * from '${ROOT}src/protocol/devices.ts';`,
-    `export * from '${ROOT}src/protocol/drc.ts';`,
-    `export * from '${ROOT}src/protocol/codec.ts';`,
-  ].join('\n'),
-);
 
-const bundled = spawnSync(
-  join(ROOT, 'node_modules', '.bin', 'esbuild'),
-  [entry, '--bundle', '--format=esm', `--outfile=${out}`, '--log-level=error'],
-  { encoding: 'utf8' },
-);
-if (bundled.status !== 0) {
-  console.error('esbuild failed:\n' + bundled.stderr);
+// Two Windows traps are removed at once here:
+//   1. esbuild is driven through its JS API, not by spawning
+//      node_modules/.bin/esbuild — on Windows npm only writes esbuild.cmd /
+//      esbuild.ps1 there, and Node will not spawn a .cmd without a shell, so
+//      the old call could never work on the runner that builds releases.
+//   2. the barrel module is fed over stdin with `resolveDir`, so no absolute
+//      path is ever re-emitted inside a generated source string. On Windows an
+//      interpolated path arrives as 'D:\a\...\packets.ts', where \a and \b are
+//      escape characters and file: URLs are not resolvable specifiers.
+const PROTOCOL_MODULES = ['packets', 'presets', 'devices', 'drc', 'codec'];
+try {
+  const { build } = await import('esbuild');
+  await build({
+    stdin: {
+      contents: PROTOCOL_MODULES.map((m) => `export * from './src/protocol/${m}.ts';`).join('\n'),
+      sourcefile: 'protocol-barrel.ts',
+      resolveDir: ROOT,
+      loader: 'ts',
+    },
+    bundle: true,
+    format: 'esm',
+    outfile: out,
+    logLevel: 'error',
+  });
+} catch (err) {
+  console.error(`esbuild failed:\n${err?.message ?? err}`);
+  rmSync(dir, { recursive: true, force: true });
   process.exit(1);
 }
 
