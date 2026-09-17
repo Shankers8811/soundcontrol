@@ -259,6 +259,47 @@ check("split_frame leaves nothing behind", rest == b"", f"{rest!r}")
 two, rest2 = bridge.split_frame(INFO_REPLY + INFO_REPLY)
 check("split_frame returns one frame at a time", two == INFO_REPLY and rest2 == INFO_REPLY)
 
+# 12b. Input hardening: malformed addresses and pathological buffers must be
+#      rejected cleanly — never a confusing OS error, never a crash or an
+#      unbounded scan.
+bad = bridge.Bridge()
+mac_error: Exception | None = None
+try:
+    bad.connect("nope", 4)
+except Exception as exc:  # noqa: BLE001
+    mac_error = exc
+check("invalid MAC raises before any socket work", mac_error is not None)
+check(
+    "invalid MAC error names the address problem",
+    mac_error is not None and "Invalid Bluetooth address" in str(mac_error),
+    str(mac_error),
+)
+empty_error: Exception | None = None
+try:
+    bad.connect("", 4)
+except Exception as exc:  # noqa: BLE001
+    empty_error = exc
+check("empty MAC raises too", empty_error is not None and "Invalid Bluetooth address" in str(empty_error), str(empty_error))
+check(
+    "dashed/lowercase MACs are normalised, not rejected",
+    bridge._normalize_mac("aa-bb-cc-dd-ee-ff") == "AA:BB:CC:DD:EE:FF",
+)
+
+progress, tail = bridge.split_frame(b"\x00" * 600)
+check(
+    "oversized pure-noise buffer is discarded in one bounded step",
+    progress == b"" and tail == b"",
+    f"{progress!r} / {len(tail)} bytes left",
+)
+progress2, tail2 = bridge.split_frame(b"\x09\xFF" + b"\x00" * 600)
+check(
+    "oversized buffer with a magic header shrinks one byte at a time (no crash, no hang)",
+    progress2 == b"" and len(tail2) == 601 and tail2[:1] == b"\xFF",
+    f"{progress2!r} / {len(tail2)} bytes left",
+)
+check("large garbage is never mistaken for a handshake answer", bridge._answers_handshake(b"\xAA" * 4096) is False)
+check("empty payload splits to a no-op", bridge.split_frame(b"") == (None, b""))
+
 # 13. Silent-link watchdog: a silent fallback link must be named out loud
 #     instead of leaving the UI at a fake "Connected".
 old_watchdog = bridge.SILENT_LINK_WATCHDOG_S
