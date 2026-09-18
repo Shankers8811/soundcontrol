@@ -24,6 +24,13 @@
 - All builds and release notes live on the **[Releases page](https://github.com/Shankers8811/soundcontrol/releases/latest)**.
 - The same download is built into the app under the **About** page (**Download .exe** → latest release).
 - Windows SmartScreen may show an unsigned-publisher prompt on first run (the app is free and not code-signed); choose **More info → Run anyway** — see [Code signing & SmartScreen](#-code-signing--smartscreen) for how to make that warning disappear.
+- **Lifecycle is deliberately boring:** SoundControl starts only when you launch it (it never
+  registers a Windows startup entry, and a startup entry left by an older version is removed at
+  launch), and closing the window exits completely — the Bluetooth helper is terminated, port
+  8765 is released, and nothing keeps running in the tray or background. There is no
+  launch-at-login or minimize-to-tray setting by design; obsolete entries in an old
+  `%AppData%\soundcontrol\settings.json` are stripped at startup so they can never re-enable
+  either behaviour. The complete installed package stays far below 500 MB (measured on Windows CI).
 - More docs: [TROUBLESHOOTING.md](TROUBLESHOOTING.md) (every connect failure mode, explained from the real log messages), [ROADMAP.md](ROADMAP.md) (shipped vs open), [PROTOCOL.md](PROTOCOL.md) (verified wire spec), [PUBLISH.md](PUBLISH.md) (release checklist).
 
 **🔎 Connecting earbuds on Windows (important).** SoundControl talks to devices **already paired
@@ -180,6 +187,7 @@ npm test            # everything below in sequence
 npm run test:ui     # pure UI state derivation (capabilities, earbud presence, battery math, scan machine) + a server-side render smoke of every page
 npm run test:bridge # Python bridge unit tests (channel probe, token/origin auth, WS protocol)
 npm run test:e2e    # startup/lifecycle e2e: real helper server + real renderer transport against an emulated RFCOMM device (incl. per-side earbud telemetry)
+npm run test:lifecycle # main-process exit/restart races: window close kills the real helper, port 8765 frees, no post-shutdown restart (Electron stubbed; Windows CI repeats this against the packaged app)
 ```
 None of these need Windows, Bluetooth hardware, or an Electron binary; the
 emulated helper (`scripts/emulated_bridge.py`) is test data only and is never

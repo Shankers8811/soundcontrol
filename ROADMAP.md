@@ -4,6 +4,21 @@ Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doi
 
 ## Shipped (v1.0.5 + current branch)
 
+- ✅ **Release lifecycle policy** — closing the window now always exits
+  SoundControl completely: the minimize-to-tray and launch-at-login settings
+  were removed (tray, hide-on-close and the settings write IPC with them),
+  `window-all-closed`/`before-quit` kill the helper and cancel restart timers,
+  and every startup enforces `openAtLogin: false` through Electron's login-item
+  API so registrations left by older installs are cleaned up. Legacy
+  `settings.json` keys are migrated away at startup. Proven by
+  `scripts/test_main_lifecycle.mjs` (real helper children, stubbed Electron)
+  and, on Windows CI, by `scripts/smoke-windows-lifecycle.ps1` (packaged app,
+  WM_CLOSE, process/port assertions) plus `scripts/verify-autostart.cjs`
+  (seeded legacy Run-key entry removed).
+- ✅ **Release size gate** — Windows CI measures the real NSIS installer and
+  `win-unpacked` tree and fails the build at 500 MB; the package excludes
+  source maps, legacy webp assets, test scripts and runtime node_modules
+  (the renderer is fully bundled by Vite).
 - ✅ **SC monogram app icon** — every shipped raster (window, exe, installer,
   taskbar, shortcut, tray, favicon) plus the in-app brand mark now render from
   one vector source, `assets/icon/sc-monogram.svg`: a waveform-S and an open
