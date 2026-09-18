@@ -191,6 +191,8 @@ file on Windows:
 ```powershell
 # Full automated verification used by CI (report mode)
 ./scripts/verify-windows-signing.ps1
+# (same thing via npm)
+npm run verify:signing
 
 # ...as a hard gate, exactly like the release workflow
 ./scripts/verify-windows-signing.ps1 -InstallerPath .\SoundControl-Setup.exe -RequireSigned
