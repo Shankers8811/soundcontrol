@@ -7,14 +7,19 @@
   "main": "electron-main.cjs",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
-    "build": "npm run verify:protocol && tsc --noEmit && vite build",
+    "build": "npm run verify:protocol && tsc --noEmit && vite build && node scripts/check-package-files.mjs",
     "electron": "electron electron-main.cjs",
     "build:win": "npm run build && electron-builder --win",
     "bridge": "python3 soundcore_bridge.py",
     "fetch:python-embed": "node scripts/fetch-python-embed.mjs",
     "prebuild:win": "npm run fetch:python-embed",
     "verify:protocol": "node scripts/verify-protocol.mjs",
-    "test:bridge": "python3 scripts/test_bridge_probe.py"
+    "test:bridge": "python3 scripts/test_bridge_probe.py",
+    "test:ui": "node scripts/test_ui_state.mjs && node scripts/test_ui_render.mjs",
+    "test:e2e": "node scripts/test_startup_e2e.mjs",
+    "test:lifecycle": "node scripts/test_main_lifecycle.mjs",
+    "test": "npm run test:package && npm run test:ui && npm run test:bridge && npm run test:e2e && npm run test:lifecycle",
+    "test:package": "node scripts/check-package-files.mjs --self-test"
   },
   "build": {
     "appId": "com.soundcontrol.desktop",
@@ -27,8 +32,13 @@
       "dist/**/*",
       "electron-main.cjs",
       "preload.cjs",
+      "autostart.cjs",
       "soundcore_bridge.py",
-      "public/**/*"
+      "public/**/*",
+      "!**/*.map",
+      "!**/*.webp",
+      "!node_modules",
+      "!node_modules/**"
     ],
     "asarUnpack": [
       "soundcore_bridge.py"
