@@ -353,6 +353,55 @@ try:
 finally:
     bridge.SILENT_LINK_WATCHDOG_S = old_watchdog
 
+# 16. WS command robustness: malformed or non-object JSON must receive a clean
+#     error reply. An exception escaping _handle (e.g. AttributeError from
+#     msg.get() on a JSON array) used to drop the client silently and print a
+#     socketserver traceback into main.log — hostile or buggy local payloads
+#     must never achieve either.
+class FakeWsSock:
+    """Captures the server's WebSocket frames without a real socket."""
+
+    def __init__(self) -> None:
+        self.sent = bytearray()
+
+    def sendall(self, data: bytes) -> None:
+        self.sent.extend(data)
+
+
+def ws_reply(sock: FakeWsSock):
+    """Decode the first (unmasked, server->client) text frame as JSON."""
+    raw = bytes(sock.sent)
+    assert raw and raw[0] == 0x81, f"not a text frame: {raw[:4]!r}"
+    n = raw[1] & 0x7F
+    assert not (raw[1] & 0x80), "server frames must be unmasked"
+    if n < 126:
+        return bridge.json.loads(raw[2 : 2 + n].decode())
+    assert n == 126, "test payloads are far below the 64 KiB frame size"
+    length = int.from_bytes(raw[2:4], "big")
+    return bridge.json.loads(raw[4 : 4 + length].decode())
+
+
+for label, payload in (
+    ("garbage bytes", b"\xff\xfe not json at all"),
+    ("JSON array", bridge.json.dumps([1, 2, 3]).encode()),
+    ("JSON string", bridge.json.dumps("connect").encode()),
+    ("JSON number", bridge.json.dumps(42).encode()),
+    ("JSON null", b"null"),
+    ("empty object", b"{}"),
+    ("unknown command", bridge.json.dumps({"type": "bogus-cmd"}).encode()),
+):
+    sock = FakeWsSock()
+    try:
+        bridge.Handler._handle(object(), sock, payload)
+        reply = ws_reply(sock)
+        check(
+            f"WS {label} -> clean error reply",
+            reply.get("type") == "error" and bool(reply.get("error")),
+            repr(reply)[:200],
+        )
+    except Exception as exc:  # noqa: BLE001 — the test fails on ANY escape
+        check(f"WS {label} -> clean error reply", False, f"raised {type(exc).__name__}: {exc}")
+
 print(f"  {passed} checks")
 if failures:
     print(f"\n{len(failures)} FAILED:")

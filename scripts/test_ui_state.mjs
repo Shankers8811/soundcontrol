@@ -381,6 +381,137 @@ eq('background health probe flips helper online without touching scan status', [
 const s7 = nextScanState(s6, { type: 'helper', online: false });
 eq('health probe can also report offline', s7.helper, 'offline');
 
+/* ------------------------------------------- update checker (Settings → Updates) */
+
+// Bundle src/lib/reporting.ts twice — once with the real build-time repo URL,
+// once with a non-GitHub URL — to prove the endpoint is derived ONLY from
+// __REPO_URL__ (checkForUpdates takes no URL argument, so renderer input can
+// never redirect it) and that the "unconfigured" path is real.
+const repDir = mkdtempSync(join(tmpdir(), 'soundcontrol-updates-'));
+let repBundleN = 0;
+async function bundleReporting(repoUrl) {
+  const { build: buildR } = await import('esbuild');
+  // Unique filename per build: identical names would hit the ESM import
+  // cache and every "different REPO_URL" bundle would silently be the first.
+  const out = join(repDir, `reporting-${repBundleN++}.mjs`);
+  await buildR({
+    stdin: {
+      contents: `export * from './src/lib/reporting.ts';`,
+      sourcefile: 'reporting-barrel.ts',
+      resolveDir: ROOT,
+      loader: 'ts',
+    },
+    bundle: true,
+    format: 'esm',
+    platform: 'neutral',
+    define: { __REPO_URL__: JSON.stringify(repoUrl) },
+    outfile: out,
+    logLevel: 'error',
+  });
+  return import(pathToFileURL(out).href);
+}
+const R = await bundleReporting('https://github.com/Shankers8811/soundcontrol');
+
+eq(
+  'API URL is derived from the build-time repo URL only',
+  R.latestReleaseApiUrl(),
+  'https://api.github.com/repos/Shankers8811/soundcontrol/releases/latest',
+);
+
+// Numeric version compare — a string compare would rank 1.0.10 < 1.0.9.
+eq('compareVersions is numeric, v-prefix and length tolerant', [
+  R.compareVersions('1.0.10', '1.0.9'),
+  R.compareVersions('v1.2.3', '1.2.3'),
+  R.compareVersions('1.0', '1.0.0'),
+  R.compareVersions('2.0.0', '10.0.0'),
+], [1, 0, 0, -1]);
+
+// Every check runs through a scripted fetch; the real one is restored after.
+const realFetch = globalThis.fetch;
+let fetchCalls = [];
+function stubFetch(handler) {
+  fetchCalls = [];
+  globalThis.fetch = async (url) => {
+    fetchCalls.push(String(url));
+    return handler(String(url));
+  };
+}
+const okJson = (body, status = 200) => ({
+  status,
+  ok: status >= 200 && status < 300,
+  json: async () => body,
+});
+const TAG_URL = 'https://github.com/Shankers8811/soundcontrol/releases/tag/v1.2.3';
+
+try {
+  stubFetch(() => okJson({ tag_name: 'v1.2.3', html_url: TAG_URL }));
+  let r = await R.checkForUpdates('1.0.5');
+  eq('newer tag → available with the validated html_url', [r.kind, r.release?.tag, r.release?.url], ['available', 'v1.2.3', TAG_URL]);
+  eq('the check hits ONLY the official API endpoint', fetchCalls, [R.latestReleaseApiUrl()]);
+
+  stubFetch(() => okJson({ tag_name: '1.0.5', html_url: TAG_URL }));
+  r = await R.checkForUpdates('1.0.5');
+  eq('same version → latest', r.kind, 'latest');
+
+  stubFetch(() => okJson({ tag_name: 'v0.9.0', html_url: TAG_URL }));
+  r = await R.checkForUpdates('1.0.5');
+  eq('older tag → latest', r.kind, 'latest');
+
+  stubFetch(() => ({ status: 404, ok: false, json: async () => ({}) }));
+  r = await R.checkForUpdates('1.0.5');
+  eq('no releases published (404) → none, an honest answer', r.kind, 'none');
+
+  stubFetch(() => ({ status: 500, ok: false, json: async () => ({}) }));
+  r = await R.checkForUpdates('1.0.5');
+  eq('HTTP 500 → error with the real status', [r.kind, r.message], ['error', 'GitHub replied HTTP 500']);
+
+  stubFetch(() => {
+    throw new TypeError('fetch failed');
+  });
+  r = await R.checkForUpdates('1.0.5');
+  check('network failure → honest reachability error', r.kind === 'error' && /Could not reach GitHub/.test(r.message), JSON.stringify(r));
+
+  stubFetch(() => okJson({}));
+  r = await R.checkForUpdates('1.0.5');
+  eq('response without tag_name → error, never a fabricated version', [r.kind, r.message], ['error', 'Release response contained no version tag']);
+
+  stubFetch(() => okJson([1, 2, 3]));
+  r = await R.checkForUpdates('1.0.5');
+  eq('JSON array response → error', r.kind, 'error');
+
+  stubFetch(() => okJson({ tag_name: 42, html_url: TAG_URL }));
+  r = await R.checkForUpdates('1.0.5');
+  eq('non-string tag_name → error', r.kind, 'error');
+
+  stubFetch(() => ({
+    status: 200,
+    ok: true,
+    json: async () => {
+      throw new SyntaxError('Unexpected token');
+    },
+  }));
+  r = await R.checkForUpdates('1.0.5');
+  check('malformed JSON body → honest error', r.kind === 'error' && /Could not reach GitHub/.test(r.message), JSON.stringify(r));
+
+  // A non-github.com html_url must never be surfaced — the checker falls
+  // back to the repository's own releases page instead.
+  stubFetch(() => okJson({ tag_name: 'v9.9.9', html_url: 'https://evil.example.com/malware.exe' }));
+  r = await R.checkForUpdates('1.0.5');
+  eq('foreign html_url → falls back to the repo releases page', [r.kind, r.release?.url], ['available', 'https://github.com/Shankers8811/soundcontrol/releases/latest']);
+
+  // Invalid/untrusted REPO_URL values → unconfigured, and fetch never runs.
+  const R2 = await bundleReporting('https://gitlab.com/foo/bar');
+  stubFetch(() => okJson({ tag_name: 'v1.0.0' }));
+  r = await R2.checkForUpdates('1.0.5');
+  eq('non-GitHub REPO_URL → unconfigured without any fetch', [R2.latestReleaseApiUrl(), r.kind, fetchCalls.length], [null, 'unconfigured', 0]);
+
+  const R3 = await bundleReporting('https://github.com.evil.com/foo/bar');
+  eq('lookalike-host REPO_URL → unconfigured', [R3.latestReleaseApiUrl()], [null]);
+} finally {
+  globalThis.fetch = realFetch;
+  rmSync(repDir, { recursive: true, force: true });
+}
+
 /* ------------------------------------------------------------- verdict */
 
 rmSync(dir, { recursive: true, force: true });

@@ -126,7 +126,16 @@ export function DevicesPage() {
       return;
     }
     setMacHint(null);
-    void connect(mac);
+    // When the typed address is in the current scan results, reuse the
+    // identity Windows already reported for it: the model name selects the
+    // right device profile (and with it the correct battery scale — a
+    // scale-5 model read against the generic scale-10 default would show
+    // half the real percentage). Only real scan data is used; an address
+    // Windows cannot name still connects with the honest generic default.
+    const known = scan.devices.find(
+      (d) => typeof d.mac === 'string' && d.mac.toUpperCase() === mac,
+    );
+    void connect(mac, known?.name, known?.battery ?? null);
   };
 
   const busy = app.connecting;
