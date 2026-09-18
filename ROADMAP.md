@@ -54,10 +54,17 @@ Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doi
 - ✅ **Model table by SKU** — A3959 = P30i/R50i NC vs A3949 = R50i, four
   `06:81` sound-mode layouts, 22 preset curves verbatim, custom EQ `FE FE`,
   DRC second channel byte-identical to 22 live P20i captures.
-- ✅ **Signing gate + guide** — release workflow reports Authenticode status
-  and fails when certificate secrets exist but the signature is invalid;
-  README/PUBLISH document SignPath Foundation (free), OV (~$75–200/yr) and
-  EV (~$200–400/yr) routes.
+- ✅ **Signing gate + guide** — release builds are now *always* gated on
+  Authenticode signing: the workflow fails without `WIN_CSC_LINK`/
+  `WIN_CSC_KEY_PASSWORD` secrets, electron-builder runs with
+  `forceCodeSigning` (SHA-256 + RFC 3161), and
+  `scripts/verify-windows-signing.ps1` verifies the actual installer (Valid
+  signature, trusted chain via `signtool /pa`, publisher identity, SHA-256
+  recorded, every shipped executable signed) before a GitHub Release is
+  published. `docs/WINDOWS-CODE-SIGNING.md` documents secrets, cert routes
+  (SignPath Foundation free, OV ~$75–200/yr, EV ~$200–400/yr) and honest
+  SmartScreen reputation expectations. **Still open:** obtain the certificate
+  and configure the secrets — releases cannot ship until then.
 - ✅ **UX hardening** — error boundary, recent-device one-tap reconnect
   (localStorage), activity log export (JSON/CSV), low-battery nudge, new
   loading art, bridge diagnostics surfaced in-app.
