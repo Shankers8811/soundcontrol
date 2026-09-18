@@ -4,6 +4,16 @@ Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doi
 
 ## Shipped (v1.0.5 + current branch)
 
+- ✅ **SC monogram app icon** — every shipped raster (window, exe, installer,
+  taskbar, shortcut, tray, favicon) plus the in-app brand mark now render from
+  one vector source, `assets/icon/sc-monogram.svg`: a waveform-S and an open
+  signal-C with its source node on a deep-navy tile, electric-blue strokes,
+  legible from 512 px down to the 16 px tray slot. `scripts/generate-icons.mjs`
+  regenerates the committed PNG set; no runtime dependency added.
+- ✅ **Spoken earbud state** — the earbud panels carry complete accessible
+  names ("Left earbud connected, 80 percent", "Right earbud unknown, awaiting
+  device telemetry", "… disconnected"), so connection state is never conveyed
+  by colour or brightness alone.
 - ✅ **DSP channel discovery** — handshake probe over 4/12/15/10/30/1, adopts
   the first channel answering a valid `09 FF`; silent-channel fallback for
   manual console use.

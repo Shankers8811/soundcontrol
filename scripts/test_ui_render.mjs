@@ -23,7 +23,7 @@
  * Run: node scripts/test_ui_render.mjs   (part of `npm run test:ui`)
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -244,6 +244,8 @@ check('unknown: "Detecting earbuds…" hint shown', unknownHtml.includes('Detect
 check('unknown: NEVER rendered as Disconnected (TEST 14)', !unknownHtml.includes('>Disconnected<') && !unknownHtml.includes('Not connected'));
 check('unknown: neutral visuals (0.65), no batteries', (unknownHtml.match(/opacity="0\.65"/g) ?? []).length === 2 && !/\d+%/.test(unknownHtml));
 check('unknown: accessible names say awaiting telemetry', (unknownHtml.match(/unknown, awaiting device telemetry/g) ?? []).length === 2);
+check('both: accessible names carry state + percentage', bothHtml.includes('Left earbud connected, 100 percent') && bothHtml.includes('Right earbud connected, 90 percent'));
+check('left-only: disconnected side announced textually', leftHtml.includes('Right earbud disconnected') && leftHtml.includes('Left earbud connected, 100 percent'));
 
 // UNAVAILABLE — over-ear model (TEST 15: no L/R surface at all).
 const unavailHtml = renderCard({ left: 80, right: null, batteryScale: null }, overEarCaps);
@@ -255,6 +257,24 @@ check('unavailable: no side labels or percents leaked', !unavailHtml.includes('L
 // state as the truth (defense in depth).
 const staleHtml = renderCard({ left: 100, right: 90, batteryScale: null, presence: 'left' }, twsCaps);
 check('stale right=90 in state + presence left → right shows no percent', !staleHtml.includes('90%') && staleHtml.includes('>Disconnected<'));
+
+/* ======================================================================== */
+/* Shipped icon assets (Pass 5) — single vector source, consistent rasters   */
+/* ======================================================================== */
+
+console.log('\n[icons] SC monogram asset set');
+
+for (const size of [512, 256, 128, 64, 48, 32, 16]) {
+  const f = join(ROOT, 'public', `icon-${size}.png`);
+  check(`public/icon-${size}.png exists and is non-empty`, existsSync(f) && statSync(f).size > 100);
+}
+const fav = join(ROOT, 'public', 'favicon-64.png');
+check('favicon-64.png exists and matches icon-64.png', existsSync(fav) && readFileSync(fav).equals(readFileSync(join(ROOT, 'public', 'icon-64.png'))));
+check('index.html references the shipped favicon', readFileSync(join(ROOT, 'index.html'), 'utf8').includes('favicon-64.png'));
+check('vector source of truth is committed', existsSync(join(ROOT, 'assets', 'icon', 'sc-monogram.svg')));
+const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+check('electron packaging points at the monogram icon', (pkg.build?.win?.icon ?? pkg.build?.icon) === 'public/icon-512.png');
+check('icon renderer needs no package.json dependency', !pkg.dependencies?.['@resvg/resvg-js'] && !pkg.devDependencies?.['@resvg/resvg-js']);
 
 /* ------------------------------------------------------------- verdict */
 

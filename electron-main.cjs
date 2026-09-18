@@ -95,7 +95,11 @@ function applyLaunchAtLogin() {
 
 function trayIconImage() {
   try {
-    const img = nativeImage.createFromPath(path.join(__dirname, 'public', 'icon-512.png'));
+    // The 32px render of the SC monogram halves cleanly into the 16px tray
+    // slot; fall back to the 512px app icon if the small asset is absent.
+    const small = path.join(__dirname, 'public', 'icon-32.png');
+    const source = fs.existsSync(small) ? small : path.join(__dirname, 'public', 'icon-512.png');
+    const img = nativeImage.createFromPath(source);
     return img.isEmpty() ? null : img.resize({ width: 16, height: 16 });
   } catch {
     return null;
