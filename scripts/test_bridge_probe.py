@@ -300,6 +300,77 @@ check(
 check("large garbage is never mistaken for a handshake answer", bridge._answers_handshake(b"\xAA" * 4096) is False)
 check("empty payload splits to a no-op", bridge.split_frame(b"") == (None, b""))
 
+# 12c. Pass 11 §10 stream hardening: fragmented feeds, lying length fields,
+#      unknown opcodes, minimal and all-FF frames — split_frame never
+#      crashes, never merges two frames into one, never invents a boundary.
+half = len(INFO_REPLY) // 2
+frame_p, rest_p = bridge.split_frame(INFO_REPLY[:half])
+check(
+    "truncated frame waits for its tail instead of inventing a boundary",
+    frame_p is None and rest_p == INFO_REPLY[:half],
+    f"{frame_p!r} / {len(rest_p)} bytes held",
+)
+frame_c, rest_c = bridge.split_frame(INFO_REPLY[:half] + INFO_REPLY[half:])
+check("same frame split across two reads is reassembled whole", frame_c == INFO_REPLY and rest_c == b"")
+
+lying_large = bytearray(INFO_REPLY)
+lying_large[7] = (len(INFO_REPLY) + 6) & 0xFF
+lying_large[-1] = sum(lying_large[:-1]) & 0xFF
+frame_l, rest_l = bridge.split_frame(bytes(lying_large))
+check(
+    "length field lying too large falls back to the checksum boundary",
+    frame_l == bytes(lying_large) and rest_l == b"",
+    f"{frame_l!r}",
+)
+
+lying_small = bytearray(INFO_REPLY)
+lying_small[7] = 20
+lying_small[8] = 0
+lying_small[-1] = sum(lying_small[:-1]) & 0xFF
+frame_s, rest_s = bridge.split_frame(bytes(lying_small))
+check(
+    "length field lying too small is not trusted without a valid checksum",
+    frame_s == bytes(lying_small) and rest_s == b"",
+    f"{frame_s!r}",
+)
+
+unknown_op = bytes([0x09, 0xFF, 0x00, 0x00, 0x7F, 0x7F, 0x01, 12, 0x00]) + b"\xAB\xCD"
+unknown_op += bytes([sum(unknown_op) & 0xFF])
+frame_u, rest_u = bridge.split_frame(unknown_op)
+check(
+    "unknown-opcode frame with a valid checksum passes through intact (renderer decides)",
+    frame_u == unknown_op and rest_u == b"",
+    f"{frame_u!r}",
+)
+
+minimal = reply_frame(b"")
+frame_m, rest_m = bridge.split_frame(minimal)
+check(
+    "minimal zero-payload 10-byte frame extracts cleanly",
+    len(minimal) == 10 and frame_m == minimal and rest_m == b"",
+)
+
+ff_frame = reply_frame(b"\xFF\xFF")
+frame_f, rest_f = bridge.split_frame(ff_frame)
+check("all-FF battery payload frame extracts cleanly", frame_f == ff_frame and rest_f == b"")
+
+stream = b"\xAA\xBB" + INFO_REPLY + INFO_REPLY + INFO_REPLY[:half]
+buf = stream
+frames: list[bytes] = []
+held: bytes = b""
+while True:
+    frame, rest = bridge.split_frame(buf)
+    if frame is None:
+        held = rest
+        break
+    if frame:
+        frames.append(frame)
+    buf = rest
+check("noise + two whole frames + a truncated tail resync frame-per-frame", frames == [INFO_REPLY, INFO_REPLY], f"{len(frames)} frames")
+check("stream loop parks exactly the incomplete tail", held == INFO_REPLY[:half], f"{len(held)} bytes held")
+frame_t, rest_t = bridge.split_frame(held + INFO_REPLY[half:])
+check("arriving tail completes the third frame with nothing left over", frame_t == INFO_REPLY and rest_t == b"")
+
 # 13. Silent-link watchdog: a silent fallback link must be named out loud
 #     instead of leaving the UI at a fake "Connected".
 old_watchdog = bridge.SILENT_LINK_WATCHDOG_S
