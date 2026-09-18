@@ -1,7 +1,7 @@
 {
   "name": "soundcontrol",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.6",
   "type": "module",
   "description": "Windows desktop controls for Anker Soundcore earbuds and headphones over Bluetooth RFCOMM.",
   "main": "electron-main.cjs",
