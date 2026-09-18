@@ -30,8 +30,11 @@ const LEGACY_SETTINGS_KEYS = ['launchAtLogin', 'minimizeToTray'];
 function enforceNoAutostart(app, log, exePath = process.execPath) {
   try {
     // openAtLogin:false is the removal path in Electron's Windows login-item
-    // implementation: it deletes the Run-key entry (and startup-approval
-    // value) whose command line matches this executable.
+    // implementation: it deletes the Run-key value (and the StartupApproved
+    // value) stored under the app's AppUserModelID — exactly the name older
+    // SoundControl builds wrote when launch-at-login was enabled, because
+    // electron-main sets the same AUMID before this runs. `path` keeps the
+    // recorded command line identical for any API that compares it.
     app.setLoginItemSettings({ openAtLogin: false, path: exePath });
     log(`autostart enforcement: setLoginItemSettings(openAtLogin=false) for ${exePath}`);
   } catch (err) {
