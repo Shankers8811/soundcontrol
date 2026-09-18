@@ -189,18 +189,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // {mac,name} entries survive, and a non-array value falls back to empty —
   // consumers map/filter this list during connect and render, so a corrupt
   // stored value must degrade to "no recents", never to a crash.
+  // Pass 11 §19: the MAC must also be syntactically valid, and duplicates
+  // (including case variants of the same address) are dropped keeping the
+  // first — the Devices list renders one row per MAC as a React key, so
+  // duplicate entries would mean duplicate keys and the same device twice.
   const [recentDevices, setRecentDevices] = useState<Array<{ mac: string; name: string }>>(() => {
     const raw = load<unknown>('soundcontrol_recent_devices', []);
     if (!Array.isArray(raw)) return [];
-    return raw.filter(
-      (d): d is { mac: string; name: string } =>
-        typeof d === 'object' &&
-        d !== null &&
-        typeof (d as { mac?: unknown }).mac === 'string' &&
-        (d as { mac: string }).mac.length > 0 &&
-        typeof (d as { name?: unknown }).name === 'string' &&
-        (d as { name: string }).name.length > 0,
-    );
+    const MAC_RE = /^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$/;
+    const seen = new Set<string>();
+    const out: Array<{ mac: string; name: string }> = [];
+    for (const d of raw) {
+      if (typeof d !== 'object' || d === null) continue;
+      const mac = (d as { mac?: unknown }).mac;
+      const name = (d as { name?: unknown }).name;
+      if (typeof mac !== 'string' || !MAC_RE.test(mac)) continue;
+      if (typeof name !== 'string' || name.length === 0) continue;
+      const key = mac.toUpperCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ mac: key, name });
+    }
+    return out;
   });
   // The low-battery nudge should fire once per connection, not every poll.
   const lowBatteryWarned = useRef(false);
@@ -698,9 +708,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // reconnect on the next launch.
         if (mac) {
           setRecentDevices((prev) => {
+            // Canonical uppercase MAC (the bridge's normal form) so a
+            // lowercase manual entry cannot persist as a case-variant
+            // duplicate of the same address.
+            const key = mac.toUpperCase();
             const next = [
-              { mac, name: name || 'soundcore' },
-              ...prev.filter((d) => d.mac !== mac),
+              { mac: key, name: name || 'soundcore' },
+              ...prev.filter((d) => d.mac.toUpperCase() !== key),
             ].slice(0, 5);
             save('soundcontrol_recent_devices', next);
             return next;
@@ -1089,7 +1103,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       recentDevices,
       forgetRecentDevice: (mac: string) => {
         setRecentDevices((prev) => {
-          const next = prev.filter((d) => d.mac !== mac);
+          const key = mac.toUpperCase();
+          const next = prev.filter((d) => d.mac.toUpperCase() !== key);
           save('soundcontrol_recent_devices', next);
           return next;
         });
