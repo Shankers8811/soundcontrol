@@ -7,7 +7,7 @@
   "main": "electron-main.cjs",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
-    "build": "npm run verify:protocol && tsc --noEmit && vite build",
+    "build": "npm run verify:protocol && tsc --noEmit && vite build && node scripts/check-package-files.mjs",
     "electron": "electron electron-main.cjs",
     "build:win": "npm run build && electron-builder --win",
     "bridge": "python3 soundcore_bridge.py",
@@ -35,7 +35,7 @@
       "soundcore_bridge.py",
       "public/**/*",
       "!**/*.map",
-      "!public/*.webp",
+      "!**/*.webp",
       "!node_modules",
       "!node_modules/**"
     ],
