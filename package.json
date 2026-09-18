@@ -15,8 +15,9 @@
     "prebuild:win": "npm run fetch:python-embed",
     "verify:protocol": "node scripts/verify-protocol.mjs",
     "test:bridge": "python3 scripts/test_bridge_probe.py",
+    "test:ui": "node scripts/test_ui_state.mjs && node scripts/test_ui_render.mjs",
     "test:e2e": "node scripts/test_startup_e2e.mjs",
-    "test": "npm run test:bridge && npm run test:e2e"
+    "test": "npm run test:ui && npm run test:bridge && npm run test:e2e"
   },
   "build": {
     "appId": "com.soundcontrol.desktop",

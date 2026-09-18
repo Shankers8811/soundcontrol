@@ -28,7 +28,7 @@ function isLocalHost(): boolean {
 let cachedToken: string | null | undefined;
 async function bridgeToken(): Promise<string | null> {
   if (cachedToken !== undefined) return cachedToken;
-  const get = window.electronAPI?.getBridgeToken;
+  const get = typeof window === 'undefined' ? undefined : window.electronAPI?.getBridgeToken;
   if (!get) {
     cachedToken = null;
     return cachedToken;
@@ -117,6 +117,66 @@ export async function scanBridgeDevices(fresh = false): Promise<NearbyDevice[]> 
     }));
   } catch {
     return [];
+  }
+}
+
+export interface ScanResult {
+  devices: NearbyDevice[];
+  /** Human-readable failure reason, or null when the scan itself succeeded. */
+  error: string | null;
+}
+
+/**
+ * Same real Windows PnP scan as `scanBridgeDevices`, but it distinguishes
+ * "helper answered with zero devices" from "the scan failed" so the Devices
+ * page can show an honest error + retry instead of an empty-result message
+ * for a transport failure. Existing callers keep the old swallow-to-[]
+ * behavior; this is purely additive.
+ */
+export async function scanBridgeDevicesDetailed(fresh = false): Promise<ScanResult> {
+  const base = scanHttpBase();
+  if (!base) {
+    return {
+      devices: [],
+      error:
+        'Scanning is blocked in this context: a public HTTPS page cannot reach the loopback helper (browser Private Network Access rules). Use the Windows desktop app.',
+    };
+  }
+  try {
+    const token = await bridgeToken();
+    const res = await fetch(`${base}/scan${fresh ? '?fresh=1' : ''}`, {
+      signal: AbortSignal.timeout(10000),
+      headers: authHeaders(token),
+    });
+    if (res.status === 401 || res.status === 403) {
+      return {
+        devices: [],
+        error:
+          'The Bluetooth helper refused this scan (session token or origin rejected). Restart SoundControl; if it persists, a stale helper from a previous session may own port 8765.',
+      };
+    }
+    if (!res.ok) {
+      return { devices: [], error: `The Bluetooth helper returned HTTP ${res.status} for the device scan.` };
+    }
+    const json = (await res.json()) as {
+      devices?: Array<{ mac: string; name: string; battery?: number | null }>;
+    };
+    return {
+      devices: (json.devices ?? []).map((d) => ({
+        id: d.mac,
+        name: d.name || d.mac,
+        mac: d.mac,
+        battery: d.battery ?? null,
+        source: 'bridge' as const,
+      })),
+      error: null,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      devices: [],
+      error: `The device scan did not complete (${msg}). The helper may still be starting — retry in a moment.`,
+    };
   }
 }
 

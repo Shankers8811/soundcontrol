@@ -6,43 +6,8 @@ export type AncScene = 'transport' | 'outdoor' | 'indoor';
 
 export type DeviceFamily = 'classic' | 'tws';
 
-export type TabId = 'device' | 'sounds' | 'controls' | 'sleep' | 'settings';
-
-export type StackId =
-  | null
-  | 'ambient'
-  | 'eq-custom'
-  | 'hearid'
-  | 'touch'
-  | 'diagnostics'
-  | 'about'
-  | 'safe-volume'
-  | 'connect'
-  | 'find-device'
-  | 'device-select';
-
-export type GestureAction =
-  | 'play'
-  | 'next'
-  | 'prev'
-  | 'vol-up'
-  | 'vol-down'
-  | 'anc'
-  | 'trans'
-  | 'voice-assistant'
-  | 'game'
-  | 'off';
-
-export interface TouchMap {
-  leftSingle: GestureAction;
-  leftDouble: GestureAction;
-  leftTriple: GestureAction;
-  leftHold: GestureAction;
-  rightSingle: GestureAction;
-  rightDouble: GestureAction;
-  rightTriple: GestureAction;
-  rightHold: GestureAction;
-}
+/** Desktop sidebar pages. Every page is a real, working view — see PART D. */
+export type PageId = 'dashboard' | 'devices' | 'equalizer' | 'controls' | 'settings' | 'about';
 
 export type EarbudPresence = 'both' | 'left' | 'right' | 'none' | 'unknown';
 
@@ -138,6 +103,14 @@ export interface DeviceProfile {
   eqCommand: EqCommand | null;
   state: StateOffsets;
   /**
+   * True only when the `01:85` factory-reset frame is documented for THIS
+   * model. The only public source (OpenSCQ30) maps it to the Soundcore
+   * Motion+ A3116 speaker, which is not in this table — so no headphone or
+   * earbud profile may claim it. Falsy ⇒ the UI shows an honest unsupported
+   * note instead of firing an undocumented, destructive frame at hardware.
+   */
+  factoryReset?: boolean;
+  /**
    * Human-readable provenance for the profile, so a future reader can tell a
    * reverse-engineered layout from a guessed one.
    */
@@ -165,14 +138,3 @@ export interface Transport {
 export const EQ_HZ = [100, 200, 400, 800, 1600, 3200, 6400, 12800] as const;
 
 export const ZERO_BANDS = [0, 0, 0, 0, 0, 0, 0, 0];
-
-export const DEFAULT_TOUCH: TouchMap = {
-  leftSingle: 'vol-down',
-  leftDouble: 'prev',
-  leftTriple: 'voice-assistant',
-  leftHold: 'anc',
-  rightSingle: 'vol-up',
-  rightDouble: 'next',
-  rightTriple: 'game',
-  rightHold: 'play',
-};

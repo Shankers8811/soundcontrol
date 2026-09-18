@@ -22,7 +22,7 @@
 | 🪟 **Windows app (installer)** | [**Download the latest `SoundControl-Setup.exe`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup.exe) | NSIS setup, Start-menu & desktop shortcuts. Ships its own built-in Bluetooth runtime — no Python needed |
 
 - All builds and release notes live on the **[Releases page](https://github.com/Shankers8811/soundcontrol/releases/latest)**.
-- The same **Download for Windows** button is built into the app under **Settings → About → Windows release**.
+- The same download is built into the app under the **About** page (**Download .exe** → latest release).
 - Windows SmartScreen may show an unsigned-publisher prompt on first run (the app is free and not code-signed); choose **More info → Run anyway** — see [Code signing & SmartScreen](#-code-signing--smartscreen) for how to make that warning disappear.
 - More docs: [TROUBLESHOOTING.md](TROUBLESHOOTING.md) (every connect failure mode, explained from the real log messages), [ROADMAP.md](ROADMAP.md) (shipped vs open), [PROTOCOL.md](PROTOCOL.md) (verified wire spec), [PUBLISH.md](PUBLISH.md) (release checklist).
 
@@ -31,9 +31,10 @@ with Windows** through a small local bridge that runs on a Python runtime **bund
 installer** — no Python to install, nothing to configure:
 
 1. Pair the earbuds in **Settings → Bluetooth & devices** and leave them connected.
-2. Launch SoundControl → **Add device** → **Refresh paired devices**. Your paired buds are listed
-   automatically (even while playing audio) — tap to connect. If the list stays empty, use the
-   **Connect by MAC** field (the address appears in Settings → device → Device properties).
+2. Launch SoundControl → **Devices** page → **Scan devices**. Your paired buds are listed
+   automatically (even while playing audio) — select one and press **Connect**. If the list stays
+   empty, use the **Connect by address** field (the address appears in Settings → device →
+   Device properties).
    The helper's start-up is logged to `%AppData%\soundcontrol\main.log`.
    The helper only listens on `127.0.0.1`, answers the app's own origins (never
    `Access-Control-Allow-Origin: *`), and requires a per-session token the desktop
@@ -62,21 +63,29 @@ freshly downloaded app — it is not hung. If SmartScreen appears, choose **More
 
 ## 🎧 Windows desktop feature coverage
 
+Every ✅ below is a command verified in [PROTOCOL.md](PROTOCOL.md); every ⚠️/❌ is a control the
+UI shows **disabled with the protocol reason** — SoundControl never renders a fake switch.
+
 | Feature | Official Android App | SoundControl for Windows |
 |---|:---:|:---:|
-| **Ambient Sound (ANC)** | ✅ 5-Level Manual, Adaptive, Multi-Scene | ✅ Level 1–5, Adaptive, Transport/Outdoor/Indoor |
-| **Transparency Mode** | ✅ Fully Transparent & Talk Mode | ✅ Fully Transparent & Talk Mode |
-| **Equalizer Presets** | ✅ 22 Soundcore Curated Presets | ✅ All 22 Exact Soundcore Presets |
-| **Custom Graphic EQ** | ✅ 8-Band Slider Curve (-6 to +6 dB) | ✅ Interactive 8-Band SVG Bezier EQ |
+| **Ambient Sound (ANC)** | ✅ 5-Level Manual, Adaptive, Multi-Scene | ✅ Real `06:81` frames with per-model layouts: scenes + transparency sub-modes on classic over-ears; manual level, adaptive and wind-noise bytes on TWS |
+| **Transparency Mode** | ✅ Fully Transparent & Talk Mode | ✅ Fully Transparent & Talk Mode (vocal byte where the model documents one) |
+| **Equalizer Presets** | ✅ 22 Soundcore Curated Presets | ✅ All 22 presets on EQ-capable models (`02:81` / `02:83`); HearID models (`03:87`) get a disabled page with the reason — never a guessed frame |
+| **Custom Graphic EQ** | ✅ 8-Band Slider Curve (-6 to +6 dB) | ✅ 8-band −6…+6 dB curve sent as the real `FE FE` custom preset (same model gating) |
+| **Per-earbud connection state** | ✅ Live per-side status | ✅ Derived from the device's own battery bytes (`0xFF` = that side is not connected); "Status unavailable" stays distinct from "Not connected" |
 | **BassUp™ Technology** | ✅ Dynamic Low-End Boost | ⚠️ No `02:82` command exists in any public capture — bass curves live in the preset table (Bass Booster / Reducer) |
-| **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ✅ Interactive Left/Right Audio Test |
-| **Superior Sleep** | ✅ Ambient White Noise Mixer | ✅ Procedural Nature Sound Synthesizer |
-| **Touch Remapping** | ✅ 1-Tap, 2-Tap, 3-Tap, Hold per ear | ✅ Left & Right Earbud Gestures |
-| **Game Mode** | ✅ 80ms Low Latency | ✅ 0x87 Packet Low-Latency Switch |
-| **LDAC High-Res** | ✅ Sony 990 kbps Codec Flip | ✅ LDAC Query & Command Dispatch |
-| **Dual Connection** | ✅ Multipoint PC + Phone | ✅ Dual Connection Command 0x84 |
-| **Safe Volume** | ✅ Decibel Limiter & Warnings | ✅ Interactive Volume Limiter |
+| **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ⚠️ No HearID test/write command in any public capture — no fake audiogram UI; the `03:87` EQ is left untouched to protect measured profiles |
+| **Superior Sleep** | ✅ Ambient White Noise Mixer | ❌ Not implemented — the earlier claim was UI-only and was removed; the protocol has no sleep command |
+| **Touch Remapping** | ✅ 1-Tap, 2-Tap, 3-Tap, Hold per ear | ⚠️ No gesture-write command is publicly documented — the Controls page says so explicitly instead of offering remaps that cannot reach the device |
+| **Game Mode** | ✅ 80ms Low Latency | ✅ Real `01:87` toggle (`10:85` on Liberty 4 NC / Liberty 5) |
+| **LDAC High-Res** | ✅ Sony 990 kbps Codec Flip | ✅ Real `01:7F` query + `01:FF` enable/disable |
+| **Dual Connection** | ✅ Multipoint PC + Phone | ✅ Real `0B:84` toggle |
+| **3D Surround** | ✅ Spatial audio toggle | ✅ Real `02:86` toggle on models that document it |
+| **Device Volume** | ✅ In-app slider | ⚠️ No volume command exists in any published capture — the volume card renders disabled with that explanation instead of faking a headset change |
+| **Safe Volume** | ✅ Decibel Limiter & Warnings | ❌ Not implemented — would require the volume command that does not exist |
+| **Factory reset** | ✅ | ⚠️ `01:85` is documented only for the Motion+ (A3116) speaker; capability-gated per model, never sent speculatively |
 | **Find My Device** | ✅ Acoustic Locator Chirps | ⚠️ No RFCOMM command in any public capture — never faked; see PROTOCOL.md |
+| **Capability gating** | — | ✅ Every page adapts per model: unsupported controls show a disabled state with the protocol reason |
 | **Diagnostics / Console**| ❌ Hidden / Unavailable | ✅ Live Hex Frame Inspector & TX/RX Logger |
 | **Battery telemetry** | ✅ Live L/R/Case Levels | ✅ Live L/R Levels (case never shown — many models don't report it; over-ears have none) + 30 s refresh + Windows % fallback |
 | **Capture decoding** | ❌ Hidden / Unavailable | ✅ Base64→Hex + BLE→RFCOMM Map in Diagnostics |
@@ -111,7 +120,7 @@ Every packet transmitted between the host application and the hardware device fo
   - `0x05`: serial + firmware (ASCII).
   - `0x7F` / `0xFF`: LDAC High-Resolution audio query and enable/disable.
   - `0x87`: Low-latency Game Mode toggle (`10:85` on Liberty 4 NC / Liberty 5).
-  - `0x85`: Factory reset (Motion+ A3116 only — offered with a warning).
+  - `0x85`: Factory reset — documented only for the Motion+ A3116 speaker, so the UI capability-gates it per model and never sends it speculatively.
 - **Category `0x02` (Audio DSP & Equalizer)**:
   - `0x81`: 8-Band Graphic EQ (classic over-ears). Target bands: 100 Hz, 200 Hz, 400 Hz, 800 Hz, 1.6 kHz, 3.2 kHz, 6.4 kHz, 12.8 kHz.
   - `0x83`: 10-band EQ + DRC compensation channel (P20i/P30i family) — byte-identical to 22 live captures.
@@ -121,7 +130,10 @@ Every packet transmitted between the host application and the hardware device fo
 - **Category `0x06` (Ambient Sound & ANC)**:
   - `0x81`: sound-mode selector, four per-model layouts. Classic over-ears: mode `0x00` = ANC, `0x01` = Transparency, `0x02` = Normal, plus NC scene (Transport/Outdoor/Indoor) and transparency sub-mode bytes. TWS models use 6–7 byte layouts (manual level, adaptive, wind, scenes). Inbound mirror is `06:01`.
 - **Category `0x08` (Touch & Button Controls)**:
-  - Mapping gesture indices (Single tap, Double tap, Triple tap, Long press) to action IDs (Volume, Play/Pause, Skip, ANC cycle, Voice Assistant).
+  - **No write command is publicly documented.** Button mappings appear in some *inbound* state
+    parses only; no capture shows how to send new mappings. SoundControl therefore displays
+    "Gesture customization is not supported by this protocol" instead of remap UI that could
+    never reach the device.
 - **Category `0x0B` (Connectivity)**:
   - `0x84`: Dual Connection (Multipoint pairing) toggle.
 
@@ -140,7 +152,7 @@ BLE frames use an XOR checksum; RFCOMM frames use the additive Σ checksum. The 
 ### Troubleshooting connections
 
 - **"Windows helper: not responding"** means the renderer could not reach `/health`. Restart SoundControl and check `%AppData%\soundcontrol\main.log` for `bridge started via …` or a Python startup error. The status no longer depends on the slow PnP scan, so a slow machine will not false-positive.
-- **Empty paired-device list** with the helper running means Windows has no paired RFCOMM device to enumerate. Pair in **Settings → Bluetooth & devices**, then use **Refresh paired devices** (which forces a fresh `?fresh=1` scan).
+- **Empty paired-device list** with the helper running means Windows has no paired RFCOMM device to enumerate. Pair in **Settings → Bluetooth & devices**, then use **Refresh** on the Devices page (which forces a fresh `?fresh=1` scan).
 - **Battery stuck?** The app re-queries `01 03` every 30 s while connected to real hardware and falls back to the Windows PnP percentage when protocol telemetry is unavailable.
 
 ---
@@ -161,6 +173,17 @@ npm run dev
 
 This starts the local Vite renderer used while developing the Windows Electron app.
 Use `npm run electron` with the renderer available when testing the desktop shell.
+
+### Tests
+```bash
+npm test            # everything below in sequence
+npm run test:ui     # pure UI state derivation (capabilities, earbud presence, battery math, scan machine) + a server-side render smoke of every page
+npm run test:bridge # Python bridge unit tests (channel probe, token/origin auth, WS protocol)
+npm run test:e2e    # startup/lifecycle e2e: real helper server + real renderer transport against an emulated RFCOMM device (incl. per-side earbud telemetry)
+```
+None of these need Windows, Bluetooth hardware, or an Electron binary; the
+emulated helper (`scripts/emulated_bridge.py`) is test data only and is never
+packaged into the installer.
 
 ### Build the renderer
 ```bash

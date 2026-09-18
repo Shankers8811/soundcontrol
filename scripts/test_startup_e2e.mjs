@@ -52,6 +52,11 @@
  *                             frame: each is answered or drops only that
  *                             client; clean disconnect still works and the
  *                             server stays healthy for new sessions.
+ *   7. earbud side states   — the emulated device reports both / left-only /
+ *                             right-only / no sides connected (--earbud-state,
+ *                             0xFF = side absent): the exact per-side bytes
+ *                             the UI earbud-status derivation consumes must
+ *                             survive the real helper→WS→transport pipeline.
  *
  * Limitation (documented for CI): the RFCOMM layer, PowerShell enumeration
  * and Electron itself are fakes/ports; physical Bluetooth behaviour can only
@@ -153,7 +158,7 @@ async function freshRenderer() {
 
 /* ------------------------------------------------------ helper management */
 
-function spawnHelper({ token, startupDelay = 0, rfcommDelay = 0 }) {
+function spawnHelper({ token, startupDelay = 0, rfcommDelay = 0, earbudState = 'both' }) {
   const child = spawn(
     PYTHON,
     [
@@ -162,6 +167,7 @@ function spawnHelper({ token, startupDelay = 0, rfcommDelay = 0 }) {
       '--port', String(BRIDGE_PORT),
       '--startup-delay', String(startupDelay),
       '--rfcomm-delay', String(rfcommDelay),
+      '--earbud-state', earbudState,
     ],
     {
       // Same channel Electron uses for the real helper: env, never argv.
@@ -797,6 +803,81 @@ if (occupied !== null) {
   process.exit(1);
 }
 
+/* ------------------------------------------------------------------------ */
+/* Scenario 7: per-side earbud telemetry (both / left / right / none)        */
+/*                                                                           */
+/* The UI's Earbud Connection card is driven exclusively by the device's     */
+/* 01:03 battery replies, where 0xFF means "that side is not connected to    */
+/* the host". This scenario runs all four side combinations through the      */
+/* REAL pipeline — real helper server, real WebSocket transport, real        */
+/* checksummed RFCOMM frames — and asserts the exact bytes the renderer's    */
+/* presence derivation consumes. Emulator data only; production never sees   */
+/* these states (the packaged app talks to real hardware).                   */
+/* ------------------------------------------------------------------------ */
+
+/** The renderer's real 01:03 battery query (see src/protocol/packets.ts). */
+const BATTERY_QUERY = Uint8Array.from(
+  '08EE00000001030A0004'.match(/../g).map((h) => parseInt(h, 16)),
+);
+
+const EARBUD_EXPECTATIONS = [
+  ['both', 0x04, 0x04],
+  ['left', 0x04, 0xff],
+  ['right', 0xff, 0x04],
+  ['none', 0xff, 0xff],
+];
+
+async function scenarioEarbudStates() {
+  console.log('\nScenario 7: per-side earbud telemetry (both/left/right/none)');
+  for (const [state, wantLeft, wantRight] of EARBUD_EXPECTATIONS) {
+    const token = randomToken();
+    sessionToken = token;
+    const helper = spawnHelper({ token, earbudState: state });
+    const mod = await freshRenderer();
+    try {
+      const ready = await waitForHelperReady(helper, token);
+      check(`[${state}] helper ready`, ready.ready, JSON.stringify(ready));
+      if (!ready.ready) continue;
+
+      const rxLog = [];
+      const conn = await mod.connectBridge(
+        'AA:BB:CC:DD:EE:FF',
+        (data) => rxLog.push(data),
+        'Soundcore Liberty 4 NC',
+        null,
+      );
+      check(`[${state}] connect succeeds`, Boolean(conn?.transport));
+
+      rxLog.length = 0;
+      await conn.transport.write(BATTERY_QUERY);
+
+      // Wait for the 01:03 reply specifically (the connect handshake may
+      // still deliver its own ack frames into the same log).
+      let reply = null;
+      const deadline = Date.now() + 4000;
+      while (Date.now() < deadline && !reply) {
+        reply = rxLog.find((f) => f.length >= 11 && f[0] === 0x09 && f[1] === 0xff && f[5] === 0x01 && f[6] === 0x03) ?? null;
+        if (!reply) await sleep(50);
+      }
+      check(`[${state}] device answered the 01:03 battery query`, reply !== null);
+      if (reply) {
+        check(`[${state}] reply is checksum-valid`, frameIsValid(reply));
+        check(
+          `[${state}] per-side bytes are ${wantLeft.toString(16)}/${wantRight.toString(16)} (0xFF = side absent)`,
+          reply[9] === wantLeft && reply[10] === wantRight,
+          `got ${reply[9]?.toString(16)}/${reply[10]?.toString(16)}`,
+        );
+      }
+      await conn.transport.close();
+    } catch (err) {
+      check(`[${state}] scenario ran without transport errors`, false, String(err?.message ?? err));
+    } finally {
+      await killHelper(helper);
+    }
+  }
+  check('helper healthy check: port free after last earbud scenario', (await probeHealth(null)) === null);
+}
+
 const startedAll = Date.now();
 try {
   await scenarioConstants();
@@ -806,6 +887,7 @@ try {
   await scenarioHttpWsSurface();
   await scenarioCloseDuringConnect();
   await scenarioProtocolAbuse();
+  await scenarioEarbudStates();
 } catch (err) {
   failures.push(`harness crashed: ${err?.stack ?? err}`);
   console.error(err);
