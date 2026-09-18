@@ -20,11 +20,19 @@ import { LATEST_RELEASE_URL, REPO_URL } from './downloads';
  *    before anything is displayed; failures are shown as failures.
  */
 
-/** Strip anything token-shaped — belt and braces on top of helper redaction. */
+/**
+ * Strip token- and address-shaped strings — belt and braces on top of the
+ * helper's own redaction. Bluetooth addresses are stable device identifiers:
+ * a diagnostics snapshot that leaves the app must not carry them, so any
+ * colon- or dash-separated MAC (case-insensitive) is scrubbed here. This is
+ * applied to every report, feedback file and console export, not just the
+ * free-text fields.
+ */
 export function redactSecrets(text: string): string {
   return text
     .replace(/token=[A-Za-z0-9._~+/=-]+/gi, 'token=[redacted]')
-    .replace(/(authorization:\s*)bearer\s+[^\s]+/gi, '$1Bearer [redacted]');
+    .replace(/(authorization:\s*)bearer\s+[^\s]+/gi, '$1Bearer [redacted]')
+    .replace(/\b[0-9A-Fa-f]{2}([:-][0-9A-Fa-f]{2}){5}\b/g, '[mac removed]');
 }
 
 export function buildFeedbackText(input: {

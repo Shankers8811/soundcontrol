@@ -10,18 +10,25 @@ import {
   withChecksum,
   xorChecksum,
 } from '../protocol/codec';
+import { redactSecrets } from '../lib/reporting';
 import { useApp } from '../state/store';
 import type { LogEntry } from '../types';
 
-/** Save the activity log verbatim — the raw material a bug report needs. */
+/**
+ * Save the activity log — the raw material a bug report needs — with
+ * token- and address-shaped strings scrubbed first. Frame bytes are
+ * unaffected (raw hex has no separators); only text fields can carry an
+ * identifier, and an exported diagnostics snapshot must not.
+ */
 function downloadLog(log: LogEntry[], kind: 'json' | 'csv') {
+  const clean = log.map((r) => ({ ...r, hex: redactSecrets(r.hex), note: redactSecrets(r.note ?? '') }));
   const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
   const text =
     kind === 'json'
-      ? JSON.stringify(log, null, 2)
+      ? JSON.stringify(clean, null, 2)
       : [
           'Timestamp,Dir,Hex,Note,ChecksumValid',
-          ...log.map((r) =>
+          ...clean.map((r) =>
             [
               new Date(r.ts).toISOString(),
               r.dir,
