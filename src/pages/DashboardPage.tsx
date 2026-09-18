@@ -190,7 +190,7 @@ export function DashboardPage() {
   return (
     <div>
       <PageHeader
-        title="Dashboard"
+        title="Home"
         sub={
           <>
             <StatusBadge phase={app.connectionPhase} />

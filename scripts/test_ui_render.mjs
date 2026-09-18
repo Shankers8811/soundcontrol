@@ -65,7 +65,7 @@ try {
         export { EqualizerPage } from './src/pages/EqualizerPage.tsx';
         export { ControlsPage } from './src/pages/ControlsPage.tsx';
         export { SettingsPage } from './src/pages/SettingsPage.tsx';
-        export { AboutPage } from './src/pages/AboutPage.tsx';
+        export { AboutSection } from './src/pages/AboutPage.tsx';
       `,
       sourcefile: 'ui-render-barrel.tsx',
       resolveDir: ROOT,
@@ -117,15 +117,20 @@ function render(el) {
 
 console.log('\n[shell] desktop frame + sidebar navigation');
 const shell = render(React.createElement(M.DesktopShell));
-for (const item of ['Dashboard', 'Devices', 'Equalizer', 'Controls', 'Settings', 'About']) {
+// Pass 8 IA: EXACTLY five top-level destinations.
+for (const item of ['Home', 'Devices', 'Equalizer', 'Noise Control', 'Settings']) {
   check(`sidebar renders nav item "${item}"`, shell.includes(`>${item}</span>`));
 }
+// Removed/secondary labels must NOT be top-level nav entries.
+for (const gone of ['Dashboard', 'Controls', 'About', 'Feedback & rating', 'Report a problem', 'Theme', 'Appearance', 'Updates', 'Check for updates']) {
+  check(`sidebar has no top-level "${gone}" entry`, !shell.includes(`>${gone}</span>`));
+}
 check('sidebar shows the real disconnected chip', shell.includes('No device'));
-check('shell renders the default page (Dashboard)', shell.includes('Dashboard'));
+check('shell renders the default page (Home)', shell.includes('>Home<'));
 
 console.log('\n[dashboard]');
 const dash = render(React.createElement(M.DashboardPage));
-check('header title', dash.includes('>Dashboard<'));
+check('header title (Pass 8: Home)', dash.includes('>Home<') && !dash.includes('>Dashboard<'));
 check('disconnected status badge', dash.includes('Disconnected'));
 check('disconnected battery pill says "No device" — never an invented percentage', dash.includes('>No device<') && !/>\s*\d+\s*%/.test(dash));
 check('no-ANC default profile gets the unsupported note, not fake buttons', dash.includes('Noise control is not available on this model'));
@@ -162,7 +167,8 @@ check('disabled while not connected', eq.includes('Connect a device to apply pre
 
 console.log('\n[controls]');
 const controls = render(React.createElement(M.ControlsPage));
-check('page title', controls.includes('>Controls<'));
+check('page title (Pass 8: Noise Control)', controls.includes('>Noise Control<') && !controls.includes('>Controls<'));
+check('ANC component is embedded in the Noise Control page', controls.includes('Noise control is not available on this model'));
 check('gesture customization is explicitly unsupported — no decorative remap UI', controls.includes('Gesture customization is not supported by this protocol'));
 // 01:85 is documented only for the Motion+ (A3116); no profile in the table
 // may fire an undocumented destructive frame — the card must explain instead.
@@ -178,11 +184,25 @@ check('autostart + tray toggles removed (release policy)', !settings.includes('L
 check('Settings states the fixed startup/exit policy', settings.includes('never starts with Windows') && settings.includes('quits completely when the window is closed'));
 check('log folder row references the real path', settings.includes('soundcontrol') && settings.includes('main.log'));
 check('production build hides developer tools', !settings.includes('Developer tools'));
-check('no fake theme/accent/updater rows', !settings.includes('Check for updates') && !settings.includes('Accent color'));
 
-console.log('\n[about]');
-const about = render(React.createElement(M.AboutPage));
-check('page title', about.includes('>About<'));
+// ---- Pass 8 consolidated sections ----
+check('Settings has a Device section (honest when disconnected)', settings.includes('>Device<') && settings.includes('No device connected'));
+check('Settings has Appearance with System/Dark/Light (accessible group)', settings.includes('aria-label="Theme"') && settings.includes('>System<') && settings.includes('>Dark<') && settings.includes('>Light<'));
+check('theme selection persists through the store setting key', settings.includes('persists between launches'));
+check('Settings has Updates with a real check button and honest idle copy', settings.includes('Check for updates') && settings.includes('no background updater') && settings.includes('Installed version'));
+check('no fake update result is pre-rendered', !settings.includes('You are on the latest release') && !settings.includes('A newer release is available'));
+check('no accent-color picker (branding is fixed)', !settings.includes('Accent color'));
+check('Settings has Feedback & rating with five accessible star buttons', settings.includes('Feedback &amp; rating') && settings.includes('aria-label="Rating, 0 to 5 stars"') && (settings.match(/stars?"/g) ?? []).length >= 5);
+check('feedback is truthful: no backend, nothing uploaded', settings.includes('Prepare feedback') && settings.includes('No feedback server exists') && !settings.includes('submitted successfully'));
+check('Settings has Report a problem with device context + diagnostics toggle', settings.includes('Report a problem') && settings.includes('Device context (added automatically)') && settings.includes('Include protocol diagnostics'));
+check('report is truthful: no upload backend claimed', settings.includes('Prepare report') && settings.includes('nothing is uploaded behind your back') && !settings.includes('report submitted'));
+check('report mentions token redaction', settings.includes('redacted'));
+check('Settings embeds About (version, MIT, disclaimer, real links)', settings.includes('MIT License') && settings.includes('not affiliated with') && settings.includes('https://github.com/Shankers8811/soundcontrol'));
+check('Startup & exit remains a static policy (no toggles)', settings.includes('Startup &amp; exit') && settings.includes('manual launch · quits on close') && !settings.includes('Launch at login') && !settings.includes('Minimize to tray') && !settings.includes('Start with Windows'));
+
+console.log('\n[about section]');
+const about = render(React.createElement(M.AboutSection));
+check('About renders as an embeddable section (no standalone page header)', !about.includes('<h1') && about.includes('SoundControl'));
 check('real branding + version line', about.includes('SoundControl') && about.includes('version'));
 check('MIT license statement', about.includes('MIT License'));
 check('real repository links only', about.includes('https://github.com/Shankers8811/soundcontrol'));

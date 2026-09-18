@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { getAppVersion, isDesktop } from '../lib/appSettings';
 import { LATEST_RELEASE_URL, REPO_URL, WINDOWS_DOWNLOAD_URL } from '../lib/downloads';
 import { IconExternal, IconLogo } from '../components/Icons';
-import { Card, PageHeader } from '../components/ui';
+import { Card } from '../components/ui';
 
 /**
- * About page (PART Q) — real information only.
+ * About section (PART Q, Pass 8 IA) — real information only, embedded in
+ * Settings → About (About is no longer a sidebar page).
  *
  * The version is the actual application version (package.json via Vite in
  * the renderer, app.getVersion() in the desktop app — they are the same
@@ -20,7 +21,7 @@ import { Card, PageHeader } from '../components/ui';
 // main process (same value in a packaged app), then to an honest "dev".
 const BUILD_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
 
-export function AboutPage() {
+export function AboutSection() {
   const [version, setVersion] = useState<string>(BUILD_VERSION);
 
   useEffect(() => {
@@ -36,10 +37,7 @@ export function AboutPage() {
   }, []);
 
   return (
-    <div>
-      <PageHeader title="About" />
-
-      <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
         <Card>
           <div className="flex items-start gap-5">
             <IconLogo size={64} />
@@ -121,7 +119,6 @@ export function AboutPage() {
             </p>
           </Card>
         </div>
-      </div>
     </div>
   );
 }

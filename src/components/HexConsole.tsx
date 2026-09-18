@@ -143,7 +143,7 @@ export function HexConsole() {
         </button>
       </div>
 
-      <div className="rounded-xl border border-edge bg-[#0b101c] p-3">
+      <div className="console-well rounded-xl border border-edge p-3">
         <label className="text-[10px] uppercase tracking-wider text-faint" htmlFor="hex-payload">
           Payload
         </label>
@@ -226,7 +226,7 @@ export function HexConsole() {
         </p>
       </div>
 
-      <div className="h-[280px] overflow-auto rounded-xl border border-edge bg-[#0b101c] font-mono text-[11px] text-ink">
+      <div className="console-well h-[280px] overflow-auto rounded-xl border border-edge font-mono text-[11px] text-ink">
         {rows.length === 0 && <p className="p-4 text-faint">No frames yet.</p>}
         {rows.map((row) => (
           <div key={row.id} className="grid grid-cols-[72px_32px_1fr] gap-2 border-b border-edge-soft px-3 py-1.5">
