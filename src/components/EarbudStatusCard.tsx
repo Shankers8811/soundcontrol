@@ -27,6 +27,14 @@ import { IconBolt } from './Icons';
 function SidePanel({ side, label }: { side: EarbudSide; label: 'Left' | 'Right' }) {
   const connected = side.state === 'connected';
   const unknown = side.state === 'unknown';
+  // State is communicated textually, never by brightness/colour alone.
+  const spoken = connected
+    ? side.battery !== null
+      ? `${label} earbud connected, ${side.battery} percent`
+      : `${label} earbud connected, battery pending`
+    : unknown
+      ? `${label} earbud unknown, awaiting device telemetry`
+      : `${label} earbud disconnected`;
 
   return (
     <div
@@ -38,9 +46,7 @@ function SidePanel({ side, label }: { side: EarbudSide; label: 'Left' | 'Right' 
             : /* disconnected: visibly lighter/desaturated against the dark theme */
               'border-edge/60 bg-sunken/45'
       }`}
-      aria-label={`${label} earbud: ${
-        connected ? 'connected' : unknown ? 'unknown, awaiting device telemetry' : 'disconnected'
-      }`}
+      aria-label={spoken}
     >
       {/* Earbud glyph — darker/saturated when live, washed out when not. */}
       <svg width="34" height="44" viewBox="0 0 34 44" aria-hidden className="mt-0.5">

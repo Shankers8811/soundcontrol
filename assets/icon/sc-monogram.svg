@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SoundControl application icon — "SC Monogram" (design concept #5).
+
+  Single source of truth for every raster asset the app ships
+  (scripts/generate-icons.mjs renders all sizes from this file):
+  window/taskbar/shortcut/installer icon, tray, favicon, README badge.
+
+  Language: deep-navy rounded square, electric-blue geometric SC monogram.
+  The S is drawn as a controlled waveform (sinuous integral-like spine);
+  the C is an open signal arc with a single source node in its mouth —
+  audio + wireless control, without imitating any Bluetooth mark.
+  Pure paths/gradients only: no text, no photography, no trademark shapes.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#18243f"/>
+      <stop offset="0.55" stop-color="#101a30"/>
+      <stop offset="1" stop-color="#0a0f1d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="236" cy="222" r="230" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3d7bff" stop-opacity="0.22"/>
+      <stop offset="0.6" stop-color="#3d7bff" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#3d7bff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mark" x1="80" y1="120" x2="450" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8ab6ff"/>
+      <stop offset="0.5" stop-color="#4f8dff"/>
+      <stop offset="1" stop-color="#2f6bff"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded Windows-friendly tile, full bleed; corners stay transparent. -->
+  <rect width="512" height="512" rx="84" fill="url(#tile)"/>
+  <rect x="1.5" y="1.5" width="509" height="509" rx="82.5" fill="none"
+        stroke="#ffffff" stroke-opacity="0.07" stroke-width="3"/>
+  <rect width="512" height="512" rx="84" fill="url(#glow)"/>
+
+  <!-- S — geometric two-bowl letterform whose waist is a short controlled
+       wave (the waveform cue), round terminals. Strokes stay >=1.4px at 16. -->
+  <path d="M 167 162
+           C 155 142 127 134 105 146
+           C 83 158 77 186 91 204
+           C 103 220 125 228 143 238
+           C 161 248 175 262 173 284
+           C 171 310 149 328 123 326
+           C 101 324 85 310 81 292"
+        fill="none" stroke="url(#mark)" stroke-width="46" stroke-linecap="round"/>
+
+  <!-- C — open signal arc (mouth faces right), kerned clear of the S. -->
+  <path d="M 396.6 334.8 A 100 100 0 1 1 396.6 177.2"
+        fill="none" stroke="url(#mark)" stroke-width="46" stroke-linecap="round"/>
+
+  <!-- Signal source node in the C's mouth. -->
+  <circle cx="393" cy="256" r="16" fill="#a9cdff"/>
+</svg>

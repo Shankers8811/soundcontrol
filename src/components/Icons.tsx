@@ -354,18 +354,37 @@ export function IconSound(p: P) {
 
 /* ---------------------------------------------------------- brand + battery */
 
-/** SoundControl's own mark: a rounded tile with a three-bar sound wave. */
+/**
+ * In-app brand mark — the same "SC monogram" as the application icon
+ * (assets/icon/sc-monogram.svg), drawn inline at UI scale: navy rounded
+ * tile, waveform-S, signal-C with its source node. Decorative only; the
+ * adjacent wordmark carries the accessible name.
+ */
 export function IconLogo({ size = 28 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
-      <rect width="32" height="32" rx="8" fill="#3d7bff" />
-      <rect x="0.5" y="0.5" width="31" height="31" rx="7.5" stroke="rgb(255 255 255 / 0.25)" />
+      <rect width="32" height="32" rx="8" fill="#101b31" />
       <path
-        d="M9 19.5v-7M14 22.5v-13M19 18v-4.5M24 20.5v-9"
-        stroke="#fff"
-        strokeWidth="2.4"
+        d="M 10.44 10.13
+           C 9.69 8.88 7.94 8.38 6.56 9.13
+           C 5.19 9.88 4.81 11.63 5.69 12.75
+           C 6.44 13.75 7.81 14.25 8.94 14.88
+           C 10.06 15.5 10.94 16.38 10.81 17.75
+           C 10.69 19.38 9.31 20.5 7.69 20.38
+           C 6.31 20.25 5.31 19.38 5.06 18.25"
+        fill="none"
+        stroke="#5b95ff"
+        strokeWidth="2.9"
         strokeLinecap="round"
       />
+      <path
+        d="M 24.79 20.93 A 6.25 6.25 0 1 1 24.79 11.08"
+        fill="none"
+        stroke="#5b95ff"
+        strokeWidth="2.9"
+        strokeLinecap="round"
+      />
+      <circle cx="24.56" cy="16" r="1.05" fill="#a9cdff" />
     </svg>
   );
 }
