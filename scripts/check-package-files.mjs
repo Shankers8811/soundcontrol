@@ -31,8 +31,16 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
 const patterns = pkg.build?.files ?? [];
 
+/**
+ * Paths are compared in POSIX form on every platform: `path.join()` yields
+ * backslashes on Windows, which silently broke every pattern comparison there
+ * (`dist/**\/*` did not match `dist\\index.html`).
+ */
+const norm = (p) => p.replace(/\\/g, '/');
+
 /** Minimal evaluator for the whitelist shapes actually used here. */
 const matches = (pattern, rel) => {
+  rel = norm(rel);
   const negated = pattern.startsWith('!');
   const body = negated ? pattern.slice(1) : pattern;
   let hit;
@@ -61,7 +69,26 @@ const packaged = (rel) => {
   return included;
 };
 
+// Payload that must never reach a user's machine, even when a whitelist
+// pattern happens to cover it.
+const FORBIDDEN = [
+  { re: /\.map$/, why: 'source map' },
+  { re: /\.webp$/, why: 'legacy webp raster' },
+  { re: /\.log$/, why: 'log file' },
+  { re: /^scripts\//, why: 'developer/test script' },
+  { re: /(^|\/)node_modules\//, why: 'node_modules' },
+  { re: /(^|\/)\.(git|github)\//, why: 'source-control metadata' },
+  { re: /(emulated_bridge|test_ui_|test_bridge|test_startup|test_main_lifecycle)/, why: 'test/emulator payload' },
+  { re: /(^|\/)\.env(\.|$)|\.(pem|key|p12|pfx)$/, why: 'credential material' },
+];
+
+const forbiddenHit = (rel) => FORBIDDEN.find(({ re }) => re.test(norm(rel)));
+
+/** The verdict that matters: the whitelist includes it and nothing forbids it. */
+const wouldShip = (rel) => packaged(rel) && !forbiddenHit(rel);
+
 const walk = (rel, out) => {
+  rel = norm(rel);
   const abs = join(ROOT, rel);
   let st;
   try {
@@ -73,7 +100,7 @@ const walk = (rel, out) => {
     out.push(rel);
     return out;
   }
-  for (const entry of readdirSync(abs)) walk(join(rel, entry), out);
+  for (const entry of readdirSync(abs)) walk(`${rel}/${entry}`, out);
   return out;
 };
 
@@ -91,21 +118,39 @@ const packagedFiles = [...candidates].filter((f) => f === 'package.json' || pack
 // The violation scan is about payload, not the manifest itself.
 const checkedFiles = packagedFiles.filter((f) => f !== 'package.json');
 
-const forbidden = [
-  { re: /\.map$/, why: 'source map' },
-  { re: /\.webp$/, why: 'legacy webp raster' },
-  { re: /\.log$/, why: 'log file' },
-  { re: /^scripts\//, why: 'developer/test script' },
-  { re: /(^|\/)node_modules\//, why: 'node_modules' },
-  { re: /(^|\/)\.(git|github)\//, why: 'source-control metadata' },
-  { re: /(emulated_bridge|test_ui_|test_bridge|test_startup|test_main_lifecycle)/, why: 'test/emulator payload' },
-  { re: /(^|\/)\.env(\.|$)|\.(pem|key|p12|pfx)$/, why: 'credential material' },
-];
 const violations = [];
 for (const file of checkedFiles) {
-  for (const { re, why } of forbidden) {
-    if (re.test(file)) violations.push(`${file} (${why})`);
+  const hit = forbiddenHit(file);
+  if (hit) violations.push(`${file} (${hit.why})`);
+}
+
+if (process.argv.includes('--self-test')) {
+  // Regression coverage for the Windows path bug: these inputs use backslashes,
+  // exactly what path.join() produced on the runner that broke the build.
+  const cases = [
+    ['dist\\index.html', true, 'rendered entry point is packaged'],
+    ['dist\\assets\\index-abc.js', true, 'built bundle is packaged'],
+    ['dist\\assets\\index-abc.js.map', false, 'source map is not packaged'],
+    ['dist\\device-earbuds.webp', false, 'legacy raster in dist is not packaged'],
+    ['public\\device-earbuds.webp', false, 'legacy raster in public is not packaged'],
+    ['electron-main.cjs', true, 'main process file is packaged'],
+    ['soundcore_bridge.py', true, 'bridge is packaged'],
+    ['scripts\\check-package-files.mjs', false, 'build tooling is not packaged'],
+    ['scripts\\test_ui_state.mjs', false, 'tests are not packaged'],
+    ['node_modules\\foo\\index.js', false, 'node_modules is not packaged'],
+    ['dist\\emulated_bridge.py', false, 'emulator is not packaged'],
+  ];
+  let failed = 0;
+  for (const [file, expected, why] of cases) {
+    const actual = wouldShip(file);
+    if (actual !== expected) {
+      console.error(`self-test FAIL: ${file} -> ${actual}, expected ${expected} (${why})`);
+      failed += 1;
+    }
   }
+  if (failed) process.exit(1);
+  console.log(`Packaging guard self-test passed: ${cases.length}/${cases.length} cases (Windows-style paths included).`);
+  process.exit(0);
 }
 
 const required = ['package.json', 'electron-main.cjs', 'preload.cjs', 'autostart.cjs', 'soundcore_bridge.py', 'dist/index.html'];
