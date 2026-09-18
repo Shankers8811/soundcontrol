@@ -408,6 +408,27 @@ eq('unknown model: raw 0 → unavailable (no invented 0%)', batteryPercent(0, 'u
 eq('unknown model: raw 5 → unavailable', batteryPercent(5, 'unknown'), null);
 eq('Windows PnP percent passthrough preserved (scale null)', batteryPercent(73, null), 73);
 
+// Pass 11 §13 boundary matrix: corrupt levels and corrupt scales must never
+// crash and never invent a plausible-looking percentage.
+eq('negative level → unavailable (not a clamped guess)', batteryPercent(-2, 5), null);
+eq('NaN level → unavailable', batteryPercent(NaN, 5), null);
+eq('+Infinity level → unavailable', batteryPercent(Infinity, 5), null);
+eq('-Infinity level → unavailable', batteryPercent(-Infinity, 10), null);
+eq('zero scale is corrupt profile data → unavailable', batteryPercent(3, 0), null);
+eq('negative scale → unavailable', batteryPercent(3, -5), null);
+eq('NaN scale → unavailable', batteryPercent(3, NaN), null);
+eq('+Infinity scale → unavailable', batteryPercent(3, Infinity), null);
+eq('scale-5 range ends: 0→0%, 5→100%', [batteryPercent(0, 5), batteryPercent(5, 5)], [0, 100]);
+eq('scale-10 range ends: 0→0%, 10→100%', [batteryPercent(0, 10), batteryPercent(10, 10)], [0, 100]);
+eq('percent-shaped level above its scale still degrades gracefully', batteryPercent(1700, 5), 100);
+eq('batteryLevel rejects negative raws', batteryLevel(-1), null);
+eq('batteryLevel rejects NaN', batteryLevel(NaN), null);
+eq('batteryLevel rejects Infinity', batteryLevel(Infinity), null);
+eq('batteryLevel passes valid wire bytes through', [batteryLevel(0), batteryLevel(4), batteryLevel(100)], [0, 4, 100]);
+eq('batteryLevel still maps 0xFF / undefined / >100 to null', [batteryLevel(0xff), batteryLevel(undefined), batteryLevel(101)], [null, null, null]);
+eq('presence treats negative and NaN raws as unknown, never present', [presenceFromRaw(-1, 4), presenceFromRaw(NaN, 4), presenceFromRaw(4, NaN)], ['unknown', 'unknown', 'unknown']);
+eq('presence still decodes valid pairs', [presenceFromRaw(4, 4), presenceFromRaw(0xff, 4), presenceFromRaw(4, 0xff), presenceFromRaw(0xff, 0xff)], ['both', 'right', 'left', 'none']);
+
 // Wire-level rules are scale-independent and stay exactly as documented.
 eq('0xFF remains "side absent", never 0%', batteryLevel(0xff), null);
 eq('level above 100 remains invalid noise', batteryLevel(173), null);
