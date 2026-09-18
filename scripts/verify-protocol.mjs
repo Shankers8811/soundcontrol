@@ -440,10 +440,20 @@ check('matchDevice("soundcore P20i")', P.matchDevice('soundcore P20i').sku, 'A39
 check('matchDevice("soundcore Life Q35")', P.matchDevice('soundcore Life Q35').sku, 'A3027');
 check('matchDevice("soundcore Life Tune")', P.matchDevice('soundcore Life Tune').sku, 'A3029');
 check('matchDevice("soundcore Liberty 4 NC")', P.matchDevice('soundcore Liberty 4 NC').sku, 'A3947');
-check('matchDevice("soundcore Liberty 4")', P.matchDevice('soundcore Liberty 4').sku, 'A3947');
+/* Pass 11 §12: unverified marketing names must NOT borrow a verified
+   profile. Liberty 4 (A3953) ≠ Liberty 4 NC (A3947); Sport X10 (A3961) and
+   Sleep A10 (A6610) are not A3949. They stay on the unknown-model profile
+   while matchNote explains the treatment. */
+check('matchDevice("soundcore Liberty 4") stays unknown', P.matchDevice('soundcore Liberty 4').id, 'unknown');
+check('matchDevice("A3953") stays unknown', P.matchDevice('A3953').id, 'unknown');
+check('matchDevice("soundcore Sport X10") stays unknown', P.matchDevice('soundcore Sport X10').id, 'unknown');
+check('matchDevice("soundcore Sleep A10") stays unknown', P.matchDevice('soundcore Sleep A10').id, 'unknown');
+check('matchDevice("A3961") stays unknown', P.matchDevice('A3961').id, 'unknown');
+check('matchDevice("A6610") stays unknown', P.matchDevice('A6610').id, 'unknown');
 ok('matchNote flags the unverified Liberty 4 alias', P.matchNote('soundcore Liberty 4') !== null);
+ok('matchNote still treats "Liberty 4 NC" as verified (no note)', P.matchNote('soundcore Liberty 4 NC') === null);
 ok('matchNote is null for a verified name', P.matchNote('soundcore P30i') === null);
-console.log('  10 name-matching checks');
+console.log('  16 name-matching checks');
 
 /* --------------------------------------------------------------- wrap-up */
 

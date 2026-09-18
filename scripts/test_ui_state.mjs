@@ -400,6 +400,19 @@ eq('real name still resolves to its documented model', matchDevice('Soundcore Li
 check('unknown identity carries an explanatory note', /could not be identified/.test(matchNote('AA:BB:CC:DD:EE:01') ?? ''), String(matchNote('AA:BB:CC:DD:EE:01')).slice(0, 120));
 eq('verified model match produces no note', matchNote('Soundcore Liberty 4 NC'), null);
 
+// Pass 11 §12: unverified marketing names and SKUs must STAY UNKNOWN —
+// Liberty 4 (A3953) is a different product from Liberty 4 NC (A3947), and
+// Sport X10 (A3961) / Sleep A10 (A6610) are not A3949. Borrowing a verified
+// profile would assert an unproven battery scale and ANC layout.
+eq('unverified "Liberty 4" (A3953) stays on the unknown profile', matchDevice('Soundcore Liberty 4').id, 'unknown');
+eq('unverified SKU A3953 stays on the unknown profile', matchDevice('A3953').id, 'unknown');
+eq('unverified "Sport X10" stays on the unknown profile', matchDevice('Soundcore Sport X10').id, 'unknown');
+eq('unverified "Sleep A10" stays on the unknown profile', matchDevice('soundcore Sleep A10').id, 'unknown');
+eq('unverified SKUs A3961/A6610 stay unknown', [matchDevice('A3961').id, matchDevice('A6610').id], ['unknown', 'unknown']);
+check('unverified alias note explains the unknown treatment', /unknown model/.test(matchNote('Soundcore Liberty 4') ?? ''), String(matchNote('Soundcore Liberty 4')).slice(0, 80));
+check('unverified alias note never claims a borrowed profile', !/using the/i.test(matchNote('Soundcore Sport X10') ?? ''), String(matchNote('Soundcore Sport X10')).slice(0, 80));
+eq('longest-alias ranking still separates Liberty 4 NC from Liberty 3 Pro', [matchDevice('Soundcore Liberty 4 NC').id, matchDevice('Soundcore Liberty 3 Pro').id], ['liberty-4-nc', 'liberty-3-pro']);
+
 // §3 percent matrix: known scales interpret, unknown NEVER converts.
 eq('known scale-5 model: raw 4 → 80%', batteryPercent(4, 5), 80);
 eq('known scale-10 model: raw 4 → 40%', batteryPercent(4, 10), 40);
