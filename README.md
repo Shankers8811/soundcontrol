@@ -22,7 +22,7 @@
 | 🪟 **Windows app (installer)** | [**Download the latest `SoundControl-Setup.exe`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup.exe) | NSIS setup, Start-menu & desktop shortcuts. Ships its own built-in Bluetooth runtime — no Python needed |
 
 - All builds and release notes live on the **[Releases page](https://github.com/Shankers8811/soundcontrol/releases/latest)**.
-- The same download is built into the app under the **About** page (**Download .exe** → latest release).
+- The same download is built into the app under **Settings → About** (**Download .exe** → latest release).
 - Windows SmartScreen may show an unsigned-publisher prompt on first run (the app is free and not code-signed); choose **More info → Run anyway** — see [Code signing & SmartScreen](#-code-signing--smartscreen) for how to make that warning disappear.
 - **Lifecycle is deliberately boring:** SoundControl starts only when you launch it (it never
   registers a Windows startup entry, and a startup entry left by an older version is removed at
@@ -83,7 +83,7 @@ UI shows **disabled with the protocol reason** — SoundControl never renders a 
 | **BassUp™ Technology** | ✅ Dynamic Low-End Boost | ⚠️ No `02:82` command exists in any public capture — bass curves live in the preset table (Bass Booster / Reducer) |
 | **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ⚠️ No HearID test/write command in any public capture — no fake audiogram UI; the `03:87` EQ is left untouched to protect measured profiles |
 | **Superior Sleep** | ✅ Ambient White Noise Mixer | ❌ Not implemented — the earlier claim was UI-only and was removed; the protocol has no sleep command |
-| **Touch Remapping** | ✅ 1-Tap, 2-Tap, 3-Tap, Hold per ear | ⚠️ No gesture-write command is publicly documented — the Controls page says so explicitly instead of offering remaps that cannot reach the device |
+| **Touch Remapping** | ✅ 1-Tap, 2-Tap, 3-Tap, Hold per ear | ⚠️ No gesture-write command is publicly documented — the Noise Control page says so explicitly instead of offering remaps that cannot reach the device |
 | **Game Mode** | ✅ 80ms Low Latency | ✅ Real `01:87` toggle (`10:85` on Liberty 4 NC / Liberty 5) |
 | **LDAC High-Res** | ✅ Sony 990 kbps Codec Flip | ✅ Real `01:7F` query + `01:FF` enable/disable |
 | **Dual Connection** | ✅ Multipoint PC + Phone | ✅ Real `0B:84` toggle |

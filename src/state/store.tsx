@@ -48,6 +48,7 @@ import type {
   DeviceProfile,
   LogEntry,
   PageId,
+  ThemePref,
   Transport,
 } from '../types';
 import { ZERO_BANDS } from '../types';
@@ -124,6 +125,9 @@ interface AppState {
   dual: boolean;
   /** Local interface sounds (real app behavior, persisted). */
   prompts: boolean;
+  /** Appearance preference (Settings → Appearance), persisted. */
+  theme: ThemePref;
+  setTheme: (t: ThemePref) => void;
   firmware: string;
   serial: string | null;
   linkInfo: string | null;
@@ -195,6 +199,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [ldac, setLdacState] = useState(false);
   const [dual, setDualState] = useState(false);
   const [prompts, setPromptsState] = useState(() => load('sc.prompts', true));
+  // Appearance preference. Sanitized on load: a corrupt/legacy value falls
+  // back to 'system' rather than an invalid data-theme attribute.
+  const [theme, setThemeState] = useState<ThemePref>(() => {
+    const v = load<string>('sc.theme', 'system');
+    return v === 'dark' || v === 'light' ? v : 'system';
+  });
   // Read from the device over `01:05` (or the state blob where the layout is
   // known). "Unknown" until the hardware answers — never a made-up version.
   const [firmware, setFirmware] = useState('Unknown');
@@ -1058,6 +1068,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setPromptsState(on);
         save('sc.prompts', on);
       },
+      theme,
+      setTheme: (t) => {
+        setThemeState(t);
+        save('sc.theme', t);
+      },
       applyPreset,
       setBand,
       commitEq,
@@ -1090,6 +1105,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dual,
       surround,
       prompts,
+      theme,
       firmware,
       serial,
       linkInfo,

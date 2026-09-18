@@ -6,8 +6,22 @@ export type AncScene = 'transport' | 'outdoor' | 'indoor';
 
 export type DeviceFamily = 'classic' | 'tws';
 
-/** Desktop sidebar pages. Every page is a real, working view — see PART D. */
-export type PageId = 'dashboard' | 'devices' | 'equalizer' | 'controls' | 'settings' | 'about';
+/**
+ * Desktop sidebar pages. Five top-level destinations (Pass 8 information
+ * architecture): Home, Devices, Equalizer, Noise Control, Settings. Internal
+ * ids keep their original names ('dashboard', 'controls') so routing, store
+ * persistence and tests stay stable — only the user-facing labels changed.
+ * About moved into Settings; it is no longer a page id.
+ */
+export type PageId = 'dashboard' | 'devices' | 'equalizer' | 'controls' | 'settings';
+
+/**
+ * Appearance preference (Settings → Appearance). 'system' follows the OS
+ * prefers-color-scheme; 'dark'/'light' force the theme. Persisted in
+ * localStorage like every other real setting — resolved to a concrete
+ * 'dark'|'light' on <html data-theme> by the shell.
+ */
+export type ThemePref = 'system' | 'dark' | 'light';
 
 export type EarbudPresence = 'both' | 'left' | 'right' | 'none' | 'unknown';
 

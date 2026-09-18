@@ -425,3 +425,18 @@ export function IconBattery({
     </div>
   );
 }
+
+/** Star for the Settings → Feedback rating (stroke style; usage may set fill="currentColor" when selected). */
+export function IconStar(p: P) {
+  return (
+    <S {...p}>
+      <path
+        d="M12 3.6l2.55 5.17 5.7.83-4.12 4.02.97 5.68L12 16.62l-5.1 2.68.97-5.68L3.75 9.6l5.7-.83L12 3.6z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </S>
+  );
+}

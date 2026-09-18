@@ -38,12 +38,61 @@
   --color-warn: #f5a524;
 }
 
+/*
+ * Light theme (Settings → Appearance). Same design language: the accent
+ * electric blue is untouched, surfaces flip from dark navy to cool paper,
+ * and ink stays in the same navy hue family. Applied by the shell as
+ * <html data-theme="light">; 'system' resolves to one of the two concrete
+ * values in JS (matchMedia), so CSS never has to guess.
+ */
+html[data-theme='light'] {
+  --color-bg: #f3f5fa;
+  --color-sunken: #e9edf5;
+  --color-panel: #ffffff;
+  --color-raised: #eef1f8;
+  --color-edge: #ccd5e4;
+  --color-edge-soft: #dfe5ef;
+
+  --color-ink: #101a2c;
+  --color-mute: #4c5a72;
+  --color-faint: #7c889e;
+
+  /* Accent unchanged; the soft variant darkens so it stays readable text
+     on light surfaces (it is used for links/active labels). */
+  --color-accent-soft: #2f6bff;
+
+  --color-danger: #d92d55;
+  --color-warn: #b26a00;
+
+  color-scheme: light;
+}
+
+:root {
+  color-scheme: dark;
+}
+
 html,
 body,
 #root {
   min-height: 100%;
-  background: #0a0e17;
-  color: #e9eef7;
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+
+/*
+ * The diagnostics console is a terminal well: it stays dark in BOTH themes
+ * (a hex dump on paper-white is unreadable). Re-declaring the ink/edge
+ * tokens inside the well scopes every text-ink/text-mute utility rendered
+ * within it back to the dark palette — no per-element color hacks.
+ */
+.console-well {
+  --color-ink: #e9eef7;
+  --color-mute: #93a0b4;
+  --color-faint: #64718a;
+  --color-edge: #223049;
+  --color-edge-soft: #1a2438;
+  background: #0b101c;
+  color-scheme: dark;
 }
 
 body {
@@ -82,13 +131,13 @@ textarea {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #223049;
+  background: var(--color-edge);
   border-radius: 99px;
-  border: 2px solid #0a0e17;
+  border: 2px solid var(--color-bg);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #2e405f;
+  background: var(--color-faint);
 }
 
 /* ---------------------------------------------------------------- */

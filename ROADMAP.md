@@ -4,6 +4,17 @@ Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doi
 
 ## Shipped (v1.0.5 + current branch)
 
+- ✅ **Final navigation IA (Pass 8)** — the sidebar is now exactly five
+  destinations (Home, Devices, Equalizer, Noise Control, Settings); the
+  former About page is a Settings section, the Controls page leads with the
+  real ANC component under the name Noise Control, and Settings consolidates
+  every secondary feature: Device info, Appearance (System/Dark/Light theme,
+  persisted, applied live via `data-theme` + matchMedia), Updates (honest
+  check against the official GitHub Releases API — no background updater),
+  Feedback & rating and Report a problem (no backend exists, so both prepare
+  real local text — token-redacted — for copy/download and link to the
+  project's issue tracker instead of pretending to submit), the fixed
+  Startup & exit policy, and the diagnostics console.
 - ✅ **Release lifecycle policy** — closing the window now always exits
   SoundControl completely: the minimize-to-tray and launch-at-login settings
   were removed (tray, hide-on-close and the settings write IPC with them),

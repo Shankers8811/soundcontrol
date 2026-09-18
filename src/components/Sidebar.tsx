@@ -6,27 +6,27 @@ import {
   IconDashboard,
   IconDevices,
   IconEqualizer,
-  IconInfo,
   IconLogo,
   IconSettings,
 } from './Icons';
 import type { ConnectionPhase } from '../state/derive';
 
 /**
- * Desktop left navigation (PART D). Six real pages, each fully working.
- * Active state uses the blue accent; every item is a native button, so
- * keyboard focus and activation come for free.
+ * Desktop left navigation (PART D, Pass 8 IA). Five real destinations:
+ * Home, Devices, Equalizer, Noise Control, Settings — everything secondary
+ * (About, updates, feedback, theme…) lives inside Settings. Active state
+ * uses the blue accent; every item is a native button, so keyboard focus
+ * and activation come for free.
  */
 
 type IconComponent = ComponentType<SVGProps<SVGSVGElement> & { size?: number }>;
 
 const NAV: Array<{ id: PageId; label: string; icon: IconComponent }> = [
-  { id: 'dashboard', label: 'Dashboard', icon: IconDashboard },
+  { id: 'dashboard', label: 'Home', icon: IconDashboard },
   { id: 'devices', label: 'Devices', icon: IconDevices },
   { id: 'equalizer', label: 'Equalizer', icon: IconEqualizer },
-  { id: 'controls', label: 'Controls', icon: IconControls },
+  { id: 'controls', label: 'Noise Control', icon: IconControls },
   { id: 'settings', label: 'Settings', icon: IconSettings },
-  { id: 'about', label: 'About', icon: IconInfo },
 ];
 
 const DOT: Record<ConnectionPhase, string> = {
