@@ -7,7 +7,7 @@
  * test framework. Every rule here is derived from PROTOCOL.md and the
  * per-model profiles in `src/protocol/devices.ts` — nothing is guessed.
  */
-import type { AncLayout, BatteryState, DeviceProfile, EarbudPresence } from '../types';
+import type { AncLayout, AncMode, AncScene, BatteryState, DeviceProfile, EarbudPresence } from '../types';
 
 /* ------------------------------------------------------------------ */
 /* Capabilities                                                        */
@@ -141,24 +141,46 @@ export function batteryPercent(level: number | null, scale: number | null | unde
 
 /**
  * Presence straight from the wire: each side's byte is `0xFF` when that
- * bud is not connected to the host. When only one byte exists (over-ears,
- * truncated frames) the per-side status is *unknown* — never "disconnected".
+ * bud is not connected to the host. A side only counts as *present* when
+ * its byte decodes to a trustworthy level (≤ 100); a missing byte (over-ears,
+ * truncated frames) or layout noise (> 100) leaves the pair *unknown* —
+ * untrustworthy telemetry is never promoted to a confirmed state.
  */
 export function presenceFromRaw(rawLeft: number | undefined, rawRight: number | undefined): EarbudPresence {
-  if (rawLeft === undefined || rawRight === undefined) return 'unknown';
-  const left = rawLeft !== 0xff;
-  const right = rawRight !== 0xff;
-  if (left && right) return 'both';
-  if (left) return 'left';
-  if (right) return 'right';
+  const side = (raw: number | undefined): 'present' | 'absent' | 'unknown' => {
+    if (raw === undefined) return 'unknown';
+    if (raw === 0xff) return 'absent';
+    return raw > 100 ? 'unknown' : 'present';
+  };
+  const left = side(rawLeft);
+  const right = side(rawRight);
+  if (left === 'unknown' || right === 'unknown') return 'unknown';
+  if (left === 'present' && right === 'present') return 'both';
+  if (left === 'present') return 'left';
+  if (right === 'present') return 'right';
   return 'none';
 }
 
-export type SideConnection = 'connected' | 'disconnected' | 'unknown';
+/**
+ * Per-side state, explicit about every degree of knowledge:
+ *
+ * - `connected`    — the device explicitly reports this side present.
+ * - `disconnected` — the device explicitly reports this side absent (`0xFF`).
+ * - `unknown`      — the model supports L/R telemetry but no valid current
+ *                    telemetry has arrived (fresh link, pending query,
+ *                    truncated/untrustworthy frame). NEVER "disconnected".
+ * - `unavailable`  — the model does not expose individual sides at all
+ *                    (over-ears); no L/R visualization may be rendered.
+ */
+export type EarbudSideState = 'connected' | 'disconnected' | 'unknown' | 'unavailable';
+
+/** Aggregate, derived ONLY from the two side states — never from battery. */
+export type EarbudConnectionState = EarbudPresence | 'unavailable';
 
 export interface EarbudSide {
-  connection: SideConnection;
-  /** Percent, or null when unavailable (never invented). */
+  /** Source of truth for the side; battery is NEVER used as connection proof. */
+  state: EarbudSideState;
+  /** Percent, or null when unavailable (never invented, never stale). */
   battery: number | null;
   /** Null when the device never reported a charging flag for this side. */
   charging: boolean | null;
@@ -167,40 +189,146 @@ export interface EarbudSide {
 export interface EarbudState {
   left: EarbudSide;
   right: EarbudSide;
+  connection: EarbudConnectionState;
+  /** False for models without independent L/R hardware. */
+  supported: boolean;
+}
+
+/** The cleared battery state: no levels, no flags, presence unknown. */
+export function emptyBattery(): BatteryState {
+  return {
+    left: null,
+    right: null,
+    leftCharging: undefined,
+    rightCharging: undefined,
+    batteryScale: null,
+    presence: 'unknown',
+  };
+}
+
+/** One decoded battery-bearing frame (`01:01` state blob or `01:03` query). */
+export interface BatteryFrame {
+  rawLeft: number | undefined;
+  rawRight: number | undefined;
+  /** Only `01:01`/`01:04` carry charging bits; `01:03` leaves them unset. */
+  chargingLeft?: boolean;
+  chargingRight?: boolean;
+  /** The model's raw-level maximum (0..5 / 0..10), or null for percents. */
+  scale: number | null;
 }
 
 /**
- * Per-side earbud state for the Earbud Connection card, or null when the
- * profile has no independent left/right hardware (over-ears) — callers must
- * then not render per-side status at all.
+ * The single source-of-truth merge for battery telemetry (Pass 4 §4/§5).
  *
- * `unknown` presence yields `unknown` sides ("Status unavailable"), which is
- * deliberately distinct from `disconnected` ("Not connected"): presence is
- * only known once the device answered a battery/state frame with both side
- * bytes. Battery is only shown for a side the device reports as connected,
- * so a stale pre-disconnect level can never appear next to "Not connected".
+ * Mandatory invariants — a side whose current byte is `0xFF` (explicitly
+ * absent), missing, or untrustworthy (> 100) gets `null` battery and cleared
+ * charging: **a previous level can NEVER survive new telemetry that says the
+ * side is gone.** Only a side whose byte is present-and-valid in THIS frame
+ * may keep prior charging information (frames that legitimately carry no
+ * charging bits, like `01:03`, must not wipe them). Presence comes from the
+ * current frame alone — no stickiness, so incomplete telemetry degrades to
+ * `unknown` instead of pretending an older confirmation still holds.
  */
-export function deriveEarbudState(battery: BatteryState, caps: Capabilities): EarbudState | null {
-  if (!caps.supportsEarbudState) return null;
+export function mergeBatteryTelemetry(previous: BatteryState, frame: BatteryFrame): BatteryState {
+  const side = (raw: number | undefined) => ({
+    trusted: raw !== undefined && raw !== 0xff && raw <= 100,
+    level: batteryLevel(raw),
+  });
+  const l = side(frame.rawLeft);
+  const r = side(frame.rawRight);
+  return {
+    left: l.level,
+    right: r.level,
+    leftCharging: l.trusted ? frame.chargingLeft ?? previous.leftCharging : undefined,
+    rightCharging: r.trusted ? frame.chargingRight ?? previous.rightCharging : undefined,
+    batteryScale: frame.scale,
+    presence: presenceFromRaw(frame.rawLeft, frame.rawRight),
+  };
+}
+
+/**
+ * Per-side earbud state for the Earbud Connection card. Always returns a
+ * complete value; `supported` is false (and both sides read `unavailable`)
+ * for profiles without independent left/right hardware — callers must then
+ * not render per-side status at all.
+ *
+ * `unknown` presence yields `unknown` sides ("Detecting earbuds…"), which is
+ * deliberately distinct from `disconnected` ("Disconnected"): presence is
+ * only known once the device answered a battery/state frame with both side
+ * bytes. Battery is shown only for a side the device reports as connected,
+ * so a stale pre-disconnect level can never appear next to "Disconnected".
+ */
+export function deriveEarbudState(battery: BatteryState, caps: Capabilities): EarbudState {
+  if (!caps.supportsEarbudState) {
+    const unavailable: EarbudSide = { state: 'unavailable', battery: null, charging: null };
+    return { left: unavailable, right: unavailable, connection: 'unavailable', supported: false };
+  }
   const presence: EarbudPresence = battery.presence ?? 'unknown';
 
   const side = (which: 'left' | 'right'): EarbudSide => {
-    let connection: SideConnection;
-    if (presence === 'unknown') connection = 'unknown';
-    else if (presence === 'both') connection = 'connected';
-    else if (presence === 'none') connection = 'disconnected';
-    else connection = presence === which ? 'connected' : 'disconnected';
+    let state: EarbudSideState;
+    if (presence === 'unknown') state = 'unknown';
+    else if (presence === 'both') state = 'connected';
+    else if (presence === 'none') state = 'disconnected';
+    else state = presence === which ? 'connected' : 'disconnected';
 
     const raw = which === 'left' ? battery.left : battery.right;
     const charging = which === 'left' ? battery.leftCharging : battery.rightCharging;
     return {
-      connection,
-      battery: connection === 'connected' ? batteryPercent(raw, battery.batteryScale) : null,
-      charging: connection === 'connected' && charging !== undefined ? charging : null,
+      state,
+      battery: state === 'connected' ? batteryPercent(raw, battery.batteryScale) : null,
+      charging: state === 'connected' && charging !== undefined ? charging : null,
     };
   };
 
-  return { left: side('left'), right: side('right') };
+  return { left: side('left'), right: side('right'), connection: presence, supported: true };
+}
+
+/* ------------------------------------------------------------------ */
+/* Sound-mode mirror (`06:01`) — the device confirming its own ANC     */
+/* ------------------------------------------------------------------ */
+
+/** What a `06:01` device mirror confirms; absent fields stay untouched. */
+export interface SoundModeReport {
+  mode: AncMode;
+  /** Manual ANC level 1..5 when the layout carries one in the high nibble. */
+  level?: number;
+  /** Classic over-ears only. */
+  scene?: AncScene;
+  transVocal?: boolean;
+  wind?: boolean;
+}
+
+/**
+ * Parse the device's own sound-mode report. Returns null for layouts without
+ * ANC, short payloads, or an out-of-range mode byte — a malformed mirror must
+ * never overwrite the last CONFIRMED state (Pass 4 §17: only real device
+ * acknowledgements move the UI).
+ */
+export function parseSoundModes(
+  payload: ArrayLike<number>,
+  layout: AncLayout,
+): SoundModeReport | null {
+  if (layout === 'none' || payload.length < 2) return null;
+  const b0 = payload[0];
+  if (b0 !== 0x00 && b0 !== 0x01 && b0 !== 0x02) return null;
+  const report: SoundModeReport = {
+    mode: b0 === 0x00 ? 'anc' : b0 === 0x01 ? 'transparency' : 'normal',
+  };
+  const manual = (payload[1] >> 4) & 0x0f;
+  if (manual >= 1 && manual <= 5) report.level = manual;
+  if (layout === 'tws-l4nc' && payload.length >= 5) {
+    report.transVocal = (payload[2] & 0x01) !== 0;
+    report.wind = (payload[4] & 0x01) !== 0;
+  } else if ((layout === 'tws-p30i' || layout === 'tws-l3pro') && payload.length >= 5) {
+    report.wind = (payload[4] & 0x01) !== 0;
+  }
+  if (layout === 'classic' && payload.length >= 4) {
+    report.transVocal = (payload[2] & 0x01) !== 0;
+    const scene = payload[1];
+    report.scene = scene === 0x00 ? 'transport' : scene === 0x02 ? 'indoor' : 'outdoor';
+  }
+  return report;
 }
 
 /* ------------------------------------------------------------------ */

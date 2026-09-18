@@ -33,10 +33,25 @@ Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doi
   status derives from real `0xFF` presence bytes with "unknown" kept
   distinct from "disconnected". Real persisted desktop settings
   (launch-at-login, minimize-to-tray) via Electron IPC.
-- ✅ **UI truth test suites** — `npm run test:ui` (121 pure state-derivation
-  checks + 47 server-side render-smoke checks over the real React tree) and
-  e2e scenario 7 (per-side earbud telemetry both/left/right/none through the
-  real helper→WS→transport pipeline; `--earbud-state` on the emulator).
+- ✅ **UI truth test suites** — `npm run test:ui` (pure state-derivation
+  checks + server-side render-smoke checks over the real React tree) and
+  e2e scenario 7 (per-side earbud telemetry through the real
+  helper→WS→transport pipeline; `--earbud-state` on the emulator).
+- ✅ **Live L/R correctness (Pass 4)** — battery telemetry merges through a
+  single pure `mergeBatteryTelemetry`: a side whose current byte is `0xFF`,
+  missing, or untrustworthy (>100) drops to `null` at the source — the old
+  `?? previous` fallback that let a stale 90% survive a removed bud is gone.
+  Explicit four-state side model (`connected` / `disconnected` / `unknown` /
+  `unavailable`) with `supported` flag; unknown renders "Detecting earbuds…"
+  and is never conflated with disconnected; disconnect and unexpected
+  link-down clear ALL device state (name, battery, presence, charging,
+  firmware, serial, ANC intent, feature toggles, EQ); device switch resets
+  feature state to power-on defaults; `onRx` ignores checksum-invalid frames;
+  malformed `06:01` mirrors can no longer move the confirmed ANC state
+  (pure `parseSoundModes`); earbud product art dims per side independently
+  from real telemetry. Emulator gains `--earbud-state unknown` and
+  `--earbud-script both,left,both` live transitions (e2e scenario 8).
+  Suites: 170 state + 69 render + 51 bridge + 96 e2e checks.
 
 ## Next (small, high value)
 
