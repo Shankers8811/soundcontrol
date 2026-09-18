@@ -59,7 +59,17 @@ _EARBUD_STATE_BYTES = {
     "left": (4, 0xFF),
     "right": (0xFF, 4),
     "none": (0xFF, 0xFF),
+    # 'unknown' answers with a valid ack frame that carries NO battery bytes:
+    # the renderer must keep both sides 'unknown' (detecting), never fall back
+    # to stale levels and never guess 'disconnected'.
+    "unknown": None,
 }
+# Optional scripted transitions (--earbud-script both,left,both): each
+# explicit 01:03 battery-query reply consumes the next entry, so tests can
+# drive BOTH -> LEFT_ONLY -> BOTH live over one connection. 01:01 handshake
+# acks (channel probe, INIT) show the current entry without consuming it.
+EMULATED_EARBUD_SCRIPT = []
+_EMULATED_SCRIPT_IDX = 0
 
 
 def _device_frame(cat: int, typ: int, payload: bytes) -> bytes:
@@ -77,8 +87,19 @@ def _ack_payload(cat: int, typ: int) -> bytes:
         # Serial + firmware: 10 bytes ASCII firmware, then 16 bytes serial.
         return b"04.88" + b"04.88" + b"EMU0000000000001"
     if (cat, typ) in ((0x01, 0x01), (0x01, 0x03)):
-        left, right = _EARBUD_STATE_BYTES[EMULATED_EARBUD_STATE]
-        return bytes([left, right])  # per-side battery levels (0xFF = absent)
+        global _EMULATED_SCRIPT_IDX
+        if EMULATED_EARBUD_SCRIPT:
+            state = EMULATED_EARBUD_SCRIPT[
+                min(_EMULATED_SCRIPT_IDX, len(EMULATED_EARBUD_SCRIPT) - 1)
+            ]
+            if (cat, typ) == (0x01, 0x03):
+                _EMULATED_SCRIPT_IDX += 1
+        else:
+            state = EMULATED_EARBUD_STATE
+        pair = _EARBUD_STATE_BYTES[state]
+        if pair is None:
+            return b""  # 'unknown': valid ack, no battery telemetry inside
+        return bytes(pair)  # per-side battery levels (0xFF = absent)
     return b""
 
 
@@ -204,13 +225,25 @@ def main() -> None:
         choices=sorted(_EARBUD_STATE_BYTES),
         default="both",
         help="Which earbud sides the fake device reports as connected "
-        "(battery replies use 0xFF for an absent side).",
+        "(battery replies use 0xFF for an absent side; 'unknown' replies "
+        "with no battery bytes at all).",
+    )
+    p.add_argument(
+        "--earbud-script",
+        default="",
+        help="Comma-separated --earbud-state values consumed one per 01:03 "
+        "battery-query reply (live-transition fixture, e.g. both,left,both). "
+        "Overrides --earbud-state while entries remain; the last one sticks.",
     )
     args = p.parse_args()
 
-    global RFCOMM_DELAY, EMULATED_EARBUD_STATE
+    global RFCOMM_DELAY, EMULATED_EARBUD_STATE, EMULATED_EARBUD_SCRIPT
     RFCOMM_DELAY = max(0.0, args.rfcomm_delay)
     EMULATED_EARBUD_STATE = args.earbud_state
+    EMULATED_EARBUD_SCRIPT = [x.strip() for x in args.earbud_script.split(",") if x.strip()]
+    for entry in EMULATED_EARBUD_SCRIPT:
+        if entry not in _EARBUD_STATE_BYTES:
+            p.error(f"--earbud-script: unknown state {entry!r}")
 
     token = args.token.strip() or os.environ.get("SOUNDCONTROL_BRIDGE_TOKEN", "").strip()
     if token:

@@ -83,6 +83,9 @@ const {
   batteryPercent,
   presenceFromRaw,
   deriveEarbudState,
+  emptyBattery,
+  mergeBatteryTelemetry,
+  parseSoundModes,
   deriveConnectionPhase,
   nextScanState,
   INITIAL_SCAN_STATE,
@@ -182,37 +185,161 @@ eq('right only (0xFF left)', presenceFromRaw(0xff, 4), 'right');
 eq('neither side (0xFF both)', presenceFromRaw(0xff, 0xff), 'none');
 eq('single byte (over-ear) is unknown, not none', presenceFromRaw(4, undefined), 'unknown');
 eq('no bytes at all is unknown', presenceFromRaw(undefined, undefined), 'unknown');
+eq('untrustworthy byte (>100) is unknown, never "present"', presenceFromRaw(0xff, 245), 'unknown');
+eq('garbage on both sides is unknown', presenceFromRaw(245, 245), 'unknown');
 
 const twsCaps = deriveCapabilities(byId('liberty-4-nc'));
 const overEarCaps = deriveCapabilities(byId('q45'));
 
-eq('over-ears get no per-side card at all', deriveEarbudState({ left: 4, right: null }, overEarCaps), null);
+// TEST 6 — unsupported/non-TWS: explicit 'unavailable', never fake sides.
+const overEar = deriveEarbudState({ left: 4, right: null }, overEarCaps);
+eq('over-ears: supported=false, aggregate unavailable', [overEar.supported, overEar.connection], [false, 'unavailable']);
+eq('over-ears: both sides explicitly unavailable with no data', [
+  overEar.left.state, overEar.left.battery, overEar.right.state, overEar.right.battery,
+], ['unavailable', null, 'unavailable', null]);
 
-const unknownState = deriveEarbudState({ left: 80, right: 80, batteryScale: null, presence: 'unknown' }, twsCaps);
-eq('unknown presence → both sides "unknown"', [unknownState.left.connection, unknownState.right.connection], ['unknown', 'unknown']);
-eq('unknown presence → no battery claimed per side', [unknownState.left.battery, unknownState.right.battery], [null, null]);
+// TEST 5 — no valid telemetry: unknown (never 'disconnected').
+const unknownState = deriveEarbudState(emptyBattery(), twsCaps);
+eq('unknown: both sides unknown', [unknownState.left.state, unknownState.right.state], ['unknown', 'unknown']);
+eq('unknown: aggregate unknown', unknownState.connection, 'unknown');
+eq('unknown: no battery claimed per side', [unknownState.left.battery, unknownState.right.battery], [null, null]);
+check('unknown: supported flag stays true (model HAS sides)', unknownState.supported === true);
 
 const leftOnly = deriveEarbudState(
   { left: 4, right: 4, batteryScale: 5, presence: 'left', leftCharging: true, rightCharging: true },
   twsCaps,
 );
-eq('left-only: left connected at 80%', [leftOnly.left.connection, leftOnly.left.battery], ['connected', 80]);
-eq('left-only: right disconnected', leftOnly.right.connection, 'disconnected');
+eq('left-only: left connected at 80%', [leftOnly.left.state, leftOnly.left.battery], ['connected', 80]);
+eq('left-only: right explicitly disconnected', leftOnly.right.state, 'disconnected');
 eq('left-only: stale right battery suppressed', leftOnly.right.battery, null);
+eq('left-only: aggregate is left', leftOnly.connection, 'left');
 eq('left-only: charging shown only for the connected side', [leftOnly.left.charging, leftOnly.right.charging], [true, null]);
 
 const both = deriveEarbudState({ left: 8, right: 6, batteryScale: 10, presence: 'both' }, twsCaps);
 eq('both: independent per-side percents', [both.left.battery, both.right.battery], [80, 60]);
+eq('both: aggregate both from side states', [both.left.state, both.right.state, both.connection], ['connected', 'connected', 'both']);
+
+const rightOnly = deriveEarbudState({ left: 0, right: 9, batteryScale: 10, presence: 'right' }, twsCaps);
+eq('right-only: left disconnected (stale 0 suppressed), right 90%', [
+  rightOnly.left.state, rightOnly.left.battery, rightOnly.right.state, rightOnly.right.battery, rightOnly.connection,
+], ['disconnected', null, 'connected', 90, 'right']);
 
 const none = deriveEarbudState({ left: 4, right: 4, batteryScale: 5, presence: 'none' }, twsCaps);
 eq('none: both sides disconnected, no batteries', [
-  none.left.connection, none.left.battery, none.right.connection, none.right.battery,
-], ['disconnected', null, 'disconnected', null]);
+  none.left.state, none.left.battery, none.right.state, none.right.battery, none.connection,
+], ['disconnected', null, 'disconnected', null, 'none']);
 
 const missingPresence = deriveEarbudState({ left: 4, right: 4, batteryScale: 5 }, twsCaps);
 eq('absent presence field defaults to unknown', [
-  missingPresence.left.connection, missingPresence.right.connection,
-], ['unknown', 'unknown']);
+  missingPresence.left.state, missingPresence.right.state, missingPresence.connection,
+], ['unknown', 'unknown', 'unknown']);
+
+/* ================ 3b. source-of-truth telemetry merge ==================== */
+/* The store merges every battery frame through mergeBatteryTelemetry. These */
+/* are the Pass-4 regression tests: a side reported 0xFF (or missing, or      */
+/* untrustworthy) must lose its previous level AT THE SOURCE — the UI never   */
+/* gets a chance to mask a stale value. Raw percents (scale null) are used so */
+/* the numbers match the spec cases exactly: L=100 R=90 etc.                  */
+
+console.log('\n[3b] stale-battery regressions (mergeBatteryTelemetry)');
+
+const merge = (prev, rawL, rawR, extra = {}) =>
+  mergeBatteryTelemetry(prev, { rawLeft: rawL, rawRight: rawR, scale: null, ...extra });
+
+// TEST 9 shape: the cleared state every connect/disconnect starts from.
+eq('emptyBattery: no levels, no flags, presence unknown', emptyBattery(), {
+  left: null, right: null, leftCharging: undefined, rightCharging: undefined,
+  batteryScale: null, presence: 'unknown',
+});
+
+// TEST 10 — fresh connection: unknown until the first valid frame, then confirmed.
+const t10a = merge(emptyBattery(), undefined, undefined);
+eq('fresh link, no bytes yet → unknown/null', [t10a.left, t10a.right, t10a.presence], [null, null, 'unknown']);
+const t10b = merge(t10a, 100, 90);
+eq('first valid frame confirms both sides', [t10b.left, t10b.right, t10b.presence], [100, 90, 'both']);
+
+// TEST 1 — BOTH: L=100 R=90.
+const t1 = merge(emptyBattery(), 100, 90);
+const t1d = deriveEarbudState(t1, twsCaps);
+eq('TEST 1 both: states/aggregate', [t1d.left.state, t1d.right.state, t1d.connection], ['connected', 'connected', 'both']);
+eq('TEST 1 both: batteries 100/90', [t1d.left.battery, t1d.right.battery], [100, 90]);
+
+// TEST 2 + TEST 7 (CRITICAL) — R goes 0xFF while its previous level was 90.
+const t2 = merge(t1, 100, 0xff);
+eq('TEST 2 left-only: merge keeps left, nulls right', [t2.left, t2.right, t2.presence], [100, null, 'left']);
+check('TEST 7 CRITICAL: previous right=90 does NOT survive 0xFF', t2.right !== 90 && t2.right === null);
+const t2d = deriveEarbudState(t2, twsCaps);
+eq('TEST 2 left-only: right side disconnected, battery null', [t2d.right.state, t2d.right.battery], ['disconnected', null]);
+check('TEST 2 explicit: right.battery !== 90', t2d.right.battery !== 90);
+eq('TEST 2 left-only: aggregate left, left battery 100', [t2d.connection, t2d.left.battery], ['left', 100]);
+
+// TEST 3 + TEST 8 — mirror image: L goes 0xFF while its previous level was 100.
+const t3 = merge(t1, 0xff, 90);
+eq('TEST 3 right-only: merge nulls left, keeps right', [t3.left, t3.right, t3.presence], [null, 90, 'right']);
+check('TEST 8 CRITICAL: previous left=100 does NOT survive 0xFF', t3.left === null);
+const t3d = deriveEarbudState(t3, twsCaps);
+eq('TEST 3 right-only: left disconnected/null, right connected/90', [
+  t3d.left.state, t3d.left.battery, t3d.right.state, t3d.right.battery, t3d.connection,
+], ['disconnected', null, 'connected', 90, 'right']);
+
+// TEST 4 — NONE: both sides 0xFF.
+const t4 = merge(t1, 0xff, 0xff);
+const t4d = deriveEarbudState(t4, twsCaps);
+eq('TEST 4 none: both disconnected, no batteries, aggregate none', [
+  t4d.left.state, t4d.left.battery, t4d.right.state, t4d.right.battery, t4d.connection,
+], ['disconnected', null, 'disconnected', null, 'none']);
+
+// TEST 11 — LIVE TRANSITION both → left-only → both, on ONE state chain.
+const tr1 = merge(emptyBattery(), 100, 90);          // both
+const tr2 = merge(tr1, 100, 0xff);                   // right removed
+const tr3 = merge(tr2, 100, 90);                     // right returned
+eq('TEST 11 step 1: both 100/90', [tr1.left, tr1.right, tr1.presence], [100, 90, 'both']);
+eq('TEST 11 step 2: right gone → null immediately', [tr2.left, tr2.right, tr2.presence], [100, null, 'left']);
+eq('TEST 11 step 3: right back from FRESH bytes, not reused', [tr3.left, tr3.right, tr3.presence], [100, 90, 'both']);
+eq('TEST 11 aggregates follow the sides', [
+  deriveEarbudState(tr1, twsCaps).connection,
+  deriveEarbudState(tr2, twsCaps).connection,
+  deriveEarbudState(tr3, twsCaps).connection,
+], ['both', 'left', 'both']);
+
+// Charging flags: cleared for absent sides, kept across frames that carry none.
+const c1 = merge(emptyBattery(), 100, 90, { chargingLeft: true, chargingRight: true });
+eq('charging flags stored from a state frame', [c1.leftCharging, c1.rightCharging], [true, true]);
+const c2 = merge(c1, 100, 90); // 01:03-style frame without charging bits
+eq('a frame without charging bits keeps the confirmed flags', [c2.leftCharging, c2.rightCharging], [true, true]);
+const c3 = merge(c2, 100, 0xff);
+eq('absent side loses its charging flag too', c3.rightCharging, undefined);
+const c4 = merge(c3, 100, undefined);
+eq('missing side byte clears level AND charging (untrusted telemetry)', [c4.right, c4.rightCharging, c4.presence], [null, undefined, 'unknown']);
+const c5 = merge(emptyBattery(), 245, 90);
+eq('untrustworthy byte (>100) never becomes a battery', [c5.left, c5.presence], [null, 'unknown']);
+
+// Scale conversion still applies to raw-step devices through the merge.
+const sc = mergeBatteryTelemetry(emptyBattery(), { rawLeft: 4, rawRight: 0xff, scale: 5 });
+const scd = deriveEarbudState(sc, twsCaps);
+eq('raw steps: 4/5 → 80%, absent side null', [scd.left.battery, scd.right.battery], [80, null]);
+
+/* ============ 3c. sound-mode mirror parsing (confirmed ANC state) ======== */
+
+console.log('\n[3c] parseSoundModes — device-confirmed ANC mirror');
+
+eq('classic ANC + transport scene + vocal', parseSoundModes([0x00, 0x00, 0x01, 0x00], 'classic'), {
+  mode: 'anc', transVocal: true, scene: 'transport',
+});
+eq('classic transparency + indoor', parseSoundModes([0x01, 0x02, 0x00, 0x00], 'classic'), {
+  mode: 'transparency', transVocal: false, scene: 'indoor',
+});
+eq('l4nc: manual level 3 + wind on', parseSoundModes([0x00, 0x30, 0x00, 0x00, 0x01], 'tws-l4nc'), {
+  mode: 'anc', level: 3, transVocal: false, wind: true,
+});
+eq('p30i: adaptive nibble below 1 is not a level', parseSoundModes([0x02, 0x00, 0x00, 0x00, 0x00], 'tws-p30i'), {
+  mode: 'normal', wind: false,
+});
+// TEST 12 input — a malformed mirror must be REJECTED, so the last confirmed
+// mode survives (the store only moves ANC state on a non-null report).
+eq('garbage mode byte → null (confirmed state untouched)', parseSoundModes([0x07, 0x00, 0x00, 0x00], 'classic'), null);
+eq('short payload → null', parseSoundModes([0x00], 'classic'), null);
+eq('layouts without ANC never parse', parseSoundModes([0x00, 0x00, 0x00, 0x00], 'none'), null);
 
 /* ======================= 4. connection phase ============================ */
 
