@@ -60,6 +60,16 @@ jobs:
           if ($installer.Length -ge 524288000) { throw "NSIS installer is $(MB $installer.Length) MB - exceeds the 500 MB release limit" }
           if ($unpacked -ge 524288000) { throw "win-unpacked is $(MB $unpacked) MB - exceeds the 500 MB release limit" }
           Write-Host 'SIZE_GATE_PASS installer and win-unpacked are both under 500 MB'
+      # Informational only: this CI artifact is not distributed, so it stays
+      # unsigned (no signing secrets are staged here). The release workflow is
+      # the one that hard-fails on unsigned output — see release-windows.yml.
+      # This step runs the same verifier in report mode so the signature
+      # status of every CI build is recorded in the run log.
+      - name: Report Authenticode signature status (CI builds stay unsigned)
+        shell: pwsh
+        run: |
+          ./scripts/verify-windows-signing.ps1 -ReleaseDir release
+          if ($LASTEXITCODE -ne 0) { throw "signature status step failed (exit $LASTEXITCODE)" }
       - uses: actions/upload-artifact@v4
         with:
           name: SoundControl-Windows

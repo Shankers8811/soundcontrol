@@ -30,31 +30,41 @@ The installer link is:
 
 `https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup.exe`
 
-## Optional code signing
+## Code signing (required for releases)
 
-Without a certificate the installer ships unsigned and SmartScreen shows
-"Unknown publisher" — only an Authenticode certificate removes that. Routes:
+Releases must be Authenticode-signed — the release workflow fails without
+signing credentials and verifies the real generated EXE before publishing, so
+an unsigned installer can never be released. Routes to a certificate:
 
 1. **Free:** [SignPath Foundation](https://signpath.org/) signs qualifying
    open-source projects at no cost.
 2. **OV cert (~$75–200/yr):** publisher name shows in the dialog; reputation
    builds over days/weeks.
-3. **EV cert (~$200–400/yr):** SmartScreen reputation is instant.
+3. **EV cert (~$200–400/yr):** SmartScreen reputation is effectively instant.
 
 To use a `.p12`/`.pfx` you already own:
 
 ```bash
 openssl base64 -in cert.p12 -out cert.b64 -A
 # repository → Settings → Secrets and variables → Actions:
-#   WINDOWS_CERTIFICATE_BASE64   = contents of cert.b64
-#   WINDOWS_CERTIFICATE_PASSWORD = p12 password
+#   WIN_CSC_LINK          = contents of cert.b64
+#   WIN_CSC_KEY_PASSWORD  = p12 password
 ```
 
-The release workflow then sets `CSC_LINK`/`CSC_KEY_PASSWORD`, electron-builder
-signs app + installer, the **"Report Authenticode signature status"** step
-prints the signer and fails the release if the signature is not Valid, and the
-cleanup step deletes `cert.p12` before artifacts are uploaded. Verify locally
-with `Get-AuthenticodeSignature .\SoundControl-Setup.exe`.
+The release workflow decodes the certificate into `cert.p12`, hands it to
+electron-builder via `WIN_CSC_LINK`/`WIN_CSC_KEY_PASSWORD` (SHA-256 +
+RFC 3161 timestamping, `forceCodeSigning` enabled), and
+`scripts/verify-windows-signing.ps1 -RequireSigned` then verifies the actual
+installer — Valid signature, trusted chain (`signtool verify /pa`), publisher
+identity (pinned by the `WINDOWS_EXPECTED_PUBLISHER` variable when set),
+SHA-256 recorded — before the GitHub Release is published. The cleanup step
+deletes `cert.p12` before artifacts are uploaded. Local `npm run build:win`
+stays unsigned (development builds are not distributed). Full details:
+[docs/WINDOWS-CODE-SIGNING.md](docs/WINDOWS-CODE-SIGNING.md).
+
+Until the `WIN_CSC_LINK`/`WIN_CSC_KEY_PASSWORD` secrets exist, every release
+attempt fails at the credentials gate — do not cut a release before
+configuring them.
 
 ## Verify a release
 
