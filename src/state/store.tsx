@@ -185,9 +185,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<DeviceProfile>(matchDevice('R50i'));
   const profileRef = useRef(profile);
   const [battery, setBattery] = useState<BatteryState>({ left: null, right: null });
-  const [recentDevices, setRecentDevices] = useState<Array<{ mac: string; name: string }>>(() =>
-    load('soundcontrol_recent_devices', [] as Array<{ mac: string; name: string }>),
-  );
+  // Persisted recent-device list. Sanitized on load: only well-formed
+  // {mac,name} entries survive, and a non-array value falls back to empty —
+  // consumers map/filter this list during connect and render, so a corrupt
+  // stored value must degrade to "no recents", never to a crash.
+  const [recentDevices, setRecentDevices] = useState<Array<{ mac: string; name: string }>>(() => {
+    const raw = load<unknown>('soundcontrol_recent_devices', []);
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(
+      (d): d is { mac: string; name: string } =>
+        typeof d === 'object' &&
+        d !== null &&
+        typeof (d as { mac?: unknown }).mac === 'string' &&
+        typeof (d as { name?: unknown }).name === 'string',
+    );
+  });
   // The low-battery nudge should fire once per connection, not every poll.
   const lowBatteryWarned = useRef(false);
   const [ancMode, setAncMode] = useState<AncMode>('anc');
@@ -198,7 +210,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [gaming, setGamingState] = useState(false);
   const [ldac, setLdacState] = useState(false);
   const [dual, setDualState] = useState(false);
-  const [prompts, setPromptsState] = useState(() => load('sc.prompts', true));
+  // Sanitized on load: only a real boolean survives; anything corrupt falls
+  // back to the default (prompts on), matching the theme sanitization below.
+  const [prompts, setPromptsState] = useState(() => {
+    const p = load<unknown>('sc.prompts', true);
+    return typeof p === 'boolean' ? p : true;
+  });
   // Appearance preference. Sanitized on load: a corrupt/legacy value falls
   // back to 'system' rather than an invalid data-theme attribute.
   const [theme, setThemeState] = useState<ThemePref>(() => {
@@ -623,6 +640,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // from the Settings tab): tear the old session down first so its
         // WebSocket is not left registered in the helper's client list.
         await releaseTransport();
+        // Manual-address connects carry no label. Fall back to the name
+        // Windows reported the last time THIS mac connected (the persisted
+        // recent list): the model name selects the device profile — and with
+        // it the battery scale — so restoring a real persisted name beats
+        // treating a known device as generic (a scale-5 model read against
+        // the scale-10 default shows half its real percentage). Nothing is
+        // invented: a mac that was never named stays unnamed.
+        const resolvedLabel =
+          label ??
+          recentDevices.find((d) => d.mac.toUpperCase() === mac.toUpperCase())?.name;
         // Filled in once connectBridge resolves; the link-down callback uses
         // it to verify the dropped transport is still the active one (a fast
         // disconnect→reconnect must not let the old socket's close tear down
@@ -631,7 +658,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const { transport, name, battery: b, dspChannel } = await connectBridge(
           mac,
           onRx,
-          label,
+          resolvedLabel,
           windowsBattery ?? null,
           // Bridge diagnostics (probe results, silent-link watchdog) belong
           // in the same console the user watches while connecting.
@@ -667,7 +694,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           });
         }
       }),
-    [attach, clearDeviceState, onRx, prompts, pushLog, releaseTransport, wrapConnect],
+    [attach, clearDeviceState, onRx, prompts, pushLog, recentDevices, releaseTransport, wrapConnect],
   );
 
   const connectSim = useCallback(

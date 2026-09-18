@@ -928,6 +928,14 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             send_ws(sock, json.dumps({"type": "error", "error": "invalid json"}).encode())
             return
+        if not isinstance(msg, dict):
+            # Valid JSON that is not an object (array/string/number/null) has
+            # no "type" field. Answer with a clean error: letting msg.get()
+            # raise AttributeError would drop the client silently and print a
+            # socketserver traceback into the log — a malformed or hostile
+            # local payload must never produce either.
+            send_ws(sock, json.dumps({"type": "error", "error": "invalid message"}).encode())
+            return
         kind = msg.get("type")
         try:
             if kind == "connect":
