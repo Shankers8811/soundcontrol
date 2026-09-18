@@ -160,9 +160,18 @@ environmental (shared-runner timing; the step asserts 30 s helper startup and
 touches no application, packaging-list or lifecycle code — with no
 certificate configured, electron-builder skips signing entirely
 (`cscInfo = null` → no-op) and the packaged app is bit-for-bit the same flow
-as before. A follow-up run of the same tree was triggered to confirm; see
-§12. Rerun/dispatch could not be used from this environment (token lacks
-`actions:write`).
+as before. Rerun/dispatch could not be used from this environment (token
+lacks `actions:write`), so a follow-up run of the same suite was triggered.
+
+**Third CI round** (report commit `7f5ffbc`, same code): Tests ✅
+([35384134345](https://github.com/Shankers8811/soundcontrol/actions/runs/35384134345)),
+Windows Build ✅ incl. the signature-report step
+([35384134393](https://github.com/Shankers8811/soundcontrol/actions/runs/35384134393)),
+Windows Desktop Smoke Test ✅ — **including the previously flaky
+"Clean install, two launches, uninstall" step**
+([35384134327](https://github.com/Shankers8811/soundcontrol/actions/runs/35384134327)),
+confirming the second-round failure was an environmental flake, not a
+regression.
 
 No existing test was weakened or removed.
 
