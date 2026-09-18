@@ -24,14 +24,25 @@ import { IconBolt } from './Icons';
  * battery readout on the Dashboard instead — no misleading L/R status.
  */
 
-function SidePanel({ side, label }: { side: EarbudSide; label: 'Left' | 'Right' }) {
+function SidePanel({
+  side,
+  label,
+  scaleUnknown,
+}: {
+  side: EarbudSide;
+  label: 'Left' | 'Right';
+  /** True when the device model — and with it the battery scale — is unknown. */
+  scaleUnknown: boolean;
+}) {
   const connected = side.state === 'connected';
   const unknown = side.state === 'unknown';
   // State is communicated textually, never by brightness/colour alone.
   const spoken = connected
     ? side.battery !== null
       ? `${label} earbud connected, ${side.battery} percent`
-      : `${label} earbud connected, battery pending`
+      : scaleUnknown
+        ? `${label} earbud connected, battery unavailable (model unknown)`
+        : `${label} earbud connected, battery pending`
     : unknown
       ? `${label} earbud unknown, awaiting device telemetry`
       : `${label} earbud disconnected`;
@@ -112,7 +123,11 @@ function SidePanel({ side, label }: { side: EarbudSide; label: 'Left' | 'Right' 
             {side.charging && <span className="text-[10px] text-warn/90">charging</span>}
           </>
         ) : connected ? (
-          <span className="text-[11px] text-faint">Battery pending…</span>
+          // An unknown model has no proven battery scale: "pending" would
+          // promise a percentage that can never be derived — say unavailable.
+          <span className="text-[11px] text-faint">
+            {scaleUnknown ? 'Battery unavailable' : 'Battery pending…'}
+          </span>
         ) : (
           <span className="text-[11px] text-faint">—</span>
         )}
@@ -130,6 +145,7 @@ export function EarbudStatusCard() {
   if (!state.supported) return null;
 
   const known = state.left.state !== 'unknown' || state.right.state !== 'unknown';
+  const scaleUnknown = app.battery.batteryScale === 'unknown';
 
   return (
     <Card
@@ -143,8 +159,8 @@ export function EarbudStatusCard() {
       }
     >
       <div className="grid grid-cols-2 gap-3">
-        <SidePanel side={state.left} label="Left" />
-        <SidePanel side={state.right} label="Right" />
+        <SidePanel side={state.left} label="Left" scaleUnknown={scaleUnknown} />
+        <SidePanel side={state.right} label="Right" scaleUnknown={scaleUnknown} />
       </div>
     </Card>
   );

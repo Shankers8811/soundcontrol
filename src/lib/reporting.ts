@@ -177,7 +177,13 @@ export async function checkForUpdates(currentVersion: string): Promise<UpdateChe
   const url = latestReleaseApiUrl();
   if (!url) return { kind: 'unconfigured' };
   try {
-    const res = await fetch(url, { headers: { Accept: 'application/vnd.github+json' } });
+    // Bounded on purpose: a hung connection must not leave the section in
+    // "Checking…" forever (the button is disabled while a check runs). An
+    // abort lands in the same honest error path as any network failure.
+    const res = await fetch(url, {
+      headers: { Accept: 'application/vnd.github+json' },
+      signal: AbortSignal.timeout(10000),
+    });
     if (res.status === 404) return { kind: 'none' };
     if (!res.ok) return { kind: 'error', message: `GitHub replied HTTP ${res.status}` };
     const data: unknown = await res.json();

@@ -30,13 +30,21 @@ export function QuickActions() {
         supported={caps.supportsEqualizer}
         noteTitle="No quick sound actions on this model"
         note={
-          <>
-            {app.profile.name} ({app.profile.sku}) takes its equalizer over the model-specific{' '}
-            <code className="font-mono text-ink/80">03:87</code> HearID frame, which SoundControl
-            deliberately does not guess — a wrong payload could overwrite the hearing profile the
-            Soundcore phone app measured. Preset shortcuts are therefore unavailable; see the
-            Equalizer page for details.
-          </>
+          app.profile.id === 'unknown' ? (
+            <>
+              This device’s model could not be identified, so SoundControl sends no equalizer
+              frames — a guessed EQ command or payload for unknown firmware could write a wrong
+              hearing profile. Preset shortcuts become available as soon as the model is known.
+            </>
+          ) : (
+            <>
+              {app.profile.name} ({app.profile.sku}) takes its equalizer over the model-specific{' '}
+              <code className="font-mono text-ink/80">03:87</code> HearID frame, which SoundControl
+              deliberately does not guess — a wrong payload could overwrite the hearing profile the
+              Soundcore phone app measured. Preset shortcuts are therefore unavailable; see the
+              Equalizer page for details.
+            </>
+          )
         }
       >
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">

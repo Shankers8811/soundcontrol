@@ -154,12 +154,22 @@ export function NoiseControl() {
         supported={caps.supportsNoiseControl}
         noteTitle="Noise control is not available on this model"
         note={
-          <>
-            {app.profile.name} ({app.profile.sku}) registers no sound-mode module — its firmware
-            has no noise-cancelling hardware to command (documented per model in PROTOCOL.md).
-            SoundControl never sends a frame the device would silently discard, so no mode buttons
-            are shown.
-          </>
+          app.profile.id === 'unknown' ? (
+            <>
+              This device’s model could not be identified, and every supported model uses a
+              different <span className="font-mono">06:81</span> sound-mode byte layout — sending a
+              guessed frame could silently set the wrong ANC state. Noise control stays disabled
+              until the model is known (a Windows-readable device name, a previous connection, or a
+              manual profile override on the Devices page).
+            </>
+          ) : (
+            <>
+              {app.profile.name} ({app.profile.sku}) registers no sound-mode module — its firmware
+              has no noise-cancelling hardware to command (documented per model in PROTOCOL.md).
+              SoundControl never sends a frame the device would silently discard, so no mode buttons
+              are shown.
+            </>
+          )
         }
       >
         <div className="flex items-start justify-center gap-8 py-2 sm:gap-12">
