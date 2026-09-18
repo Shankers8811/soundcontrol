@@ -295,7 +295,71 @@ Operational rules borrowed from soundcorebridge (all observed behaviour):
 * Earbuds must stay *connected* in Windows Bluetooth settings (audio can be
   playing); "pairing mode" is the wrong state and the error text says so.
 
-## Model table (what each SKU really supports)
+## Telemetry persistence and freshness
+
+What the UI may keep, and for how long, is a protocol question — not a UI
+preference. Two rules decide it everywhere:
+
+1. **A field moves only when this connection produced valid telemetry for
+   it.** Frames that fail the length/checksum/shape checks are logged as
+   invalid and mutate nothing.
+2. **A field persists only across frames that provably do not carry it.**
+   If a frame carries the field's bytes, those bytes decide (including
+   “side absent”); nothing is remembered through them.
+
+### Connection phases
+
+`deriveConnectionPhase` folds the store's state into four phases; the finer
+distinctions the UI needs are expressed per field, not per phase:
+
+| Phase | Means | Ends when |
+|---|---|---|
+| `connecting` | RFCOMM probe + `01:01` handshake in flight (bounded: 2.5 s per candidate, one candidate set per connect) | a channel answers with a checksum-valid `09 FF`, or the connect fails |
+| `connected` | the channel was **proven** by the handshake — but this says nothing yet about the *audio* link or either earbud | the link drops, or the user disconnects |
+| `error` | the connect attempt failed; the message carries the real reason (no device / slot busy / no DSP answer) | the next attempt starts |
+| `disconnected` | no session | a connect starts |
+
+Two conditions do **not** get their own phase because they are per-field:
+**connected-but-unconfirmed telemetry** (battery/presence read “unavailable”
+or “detecting”, never a number, until the first valid `01:03`/`01:01`
+arrives) and **connected-but-silent** (the 8 s silent-link watchdog names it
+in the diagnostics log; the header reports the drop honestly). Disconnecting
+is a transient bounded teardown, so it is never shown as a stable state.
+
+Related: “RFCOMM connected” is never translated into “both earbuds
+connected”. Side presence comes only from the `01:03`/`01:01` bytes; an
+over-ear reports one level and structurally has no L/R; an unknown model
+exposes presence but no percentage (see the model table).
+
+### What persists, per field
+
+| Field | Written by | Persists across | Cleared by | Why |
+|---|---|---|---|---|
+| Left/right level | `01:03` (byte0/byte1) and the `01:01` blob head | **Nothing** — recomputed from every valid frame | same | Levels are instantaneous readings; a recalled level next to “Disconnected” would be a fabricated state |
+| Side presence | same bytes (`0xFF` = absent) | **Nothing** | same | Presence is line-state, not configuration; a missing byte means *unknown*, never “still present” |
+| Charging flags | `01:04` / `01:01` (bit 0 of the side's charging byte) | `01:03` battery-only polls, **while the side is trusted in the current frame** | side absent/untrusted byte | `01:03` has no charging bits, so “no bit” must not be read as “not charging”; an absent side must not keep a stale bolt |
+| Firmware version, serial | `01:05` | The rest of the connection | disconnect | Immutable while a device is connected; re-read per session |
+| Sound mode (ANC) | `06:01` mirror (authoritative) and the local `06:81` write intent | Session | disconnect / device switch | A phone-app change arrives as `06:01` and overrides the UI; a write that never reached the device is rolled back |
+| EQ preset / custom bands | EQ mirror (where the model has one) and the local write intent | Session | disconnect / device switch | Same two sources as ANC; `02:83` custom curves commit with a debounce, one write per gesture |
+| Identity → profile → capabilities | Scan name, the persisted name for that exact MAC, or the user's explicit override | Session | disconnect (resets to the default profile) | Identity must come from a verified source; never from MAC bytes, telemetry, packet shape or battery values |
+| Battery scale | The profile's documented maximum (5 or 10), or “unknown” | With the identity | identity change | The scale is a property of the model, so it can never outlive the model |
+| Connection state, link info | The transport (probe result, channel, transport label) | Session | disconnect | Transport facts, not device telemetry |
+
+### Freshness invariants (pinned by tests)
+
+* Invalid or checksum-failed frames mutate nothing and are logged as invalid.
+* Repeated identical frames are idempotent; the newest valid value wins.
+* A single-side frame clears the other side's level, charging and presence
+  rather than remembering them (see the table).
+* Frames can only reach the session they belong to: connects are serialized
+  in the bridge, the previous socket's reader exits as soon as its socket
+  identity is replaced, the renderer tears its old WebSocket down before a
+  new connect and resets all device state at every connect start — so a late
+  frame from the previous link cannot seed the new session.
+* Disconnect clears every device-derived field in the table above, including
+  the profile and any percentage.
+
+---
 
 From OpenSCQ30's device definitions and i18n names; `verified` in
 `src/protocol/devices.ts` marks rows with at least one published capture.
