@@ -259,6 +259,118 @@ check("split_frame leaves nothing behind", rest == b"", f"{rest!r}")
 two, rest2 = bridge.split_frame(INFO_REPLY + INFO_REPLY)
 check("split_frame returns one frame at a time", two == INFO_REPLY and rest2 == INFO_REPLY)
 
+# 12b. Input hardening: malformed addresses and pathological buffers must be
+#      rejected cleanly — never a confusing OS error, never a crash or an
+#      unbounded scan.
+bad = bridge.Bridge()
+mac_error: Exception | None = None
+try:
+    bad.connect("nope", 4)
+except Exception as exc:  # noqa: BLE001
+    mac_error = exc
+check("invalid MAC raises before any socket work", mac_error is not None)
+check(
+    "invalid MAC error names the address problem",
+    mac_error is not None and "Invalid Bluetooth address" in str(mac_error),
+    str(mac_error),
+)
+empty_error: Exception | None = None
+try:
+    bad.connect("", 4)
+except Exception as exc:  # noqa: BLE001
+    empty_error = exc
+check("empty MAC raises too", empty_error is not None and "Invalid Bluetooth address" in str(empty_error), str(empty_error))
+check(
+    "dashed/lowercase MACs are normalised, not rejected",
+    bridge._normalize_mac("aa-bb-cc-dd-ee-ff") == "AA:BB:CC:DD:EE:FF",
+)
+
+progress, tail = bridge.split_frame(b"\x00" * 600)
+check(
+    "oversized pure-noise buffer is discarded in one bounded step",
+    progress == b"" and tail == b"",
+    f"{progress!r} / {len(tail)} bytes left",
+)
+progress2, tail2 = bridge.split_frame(b"\x09\xFF" + b"\x00" * 600)
+check(
+    "oversized buffer with a magic header shrinks one byte at a time (no crash, no hang)",
+    progress2 == b"" and len(tail2) == 601 and tail2[:1] == b"\xFF",
+    f"{progress2!r} / {len(tail2)} bytes left",
+)
+check("large garbage is never mistaken for a handshake answer", bridge._answers_handshake(b"\xAA" * 4096) is False)
+check("empty payload splits to a no-op", bridge.split_frame(b"") == (None, b""))
+
+# 12c. Pass 11 §10 stream hardening: fragmented feeds, lying length fields,
+#      unknown opcodes, minimal and all-FF frames — split_frame never
+#      crashes, never merges two frames into one, never invents a boundary.
+half = len(INFO_REPLY) // 2
+frame_p, rest_p = bridge.split_frame(INFO_REPLY[:half])
+check(
+    "truncated frame waits for its tail instead of inventing a boundary",
+    frame_p is None and rest_p == INFO_REPLY[:half],
+    f"{frame_p!r} / {len(rest_p)} bytes held",
+)
+frame_c, rest_c = bridge.split_frame(INFO_REPLY[:half] + INFO_REPLY[half:])
+check("same frame split across two reads is reassembled whole", frame_c == INFO_REPLY and rest_c == b"")
+
+lying_large = bytearray(INFO_REPLY)
+lying_large[7] = (len(INFO_REPLY) + 6) & 0xFF
+lying_large[-1] = sum(lying_large[:-1]) & 0xFF
+frame_l, rest_l = bridge.split_frame(bytes(lying_large))
+check(
+    "length field lying too large falls back to the checksum boundary",
+    frame_l == bytes(lying_large) and rest_l == b"",
+    f"{frame_l!r}",
+)
+
+lying_small = bytearray(INFO_REPLY)
+lying_small[7] = 20
+lying_small[8] = 0
+lying_small[-1] = sum(lying_small[:-1]) & 0xFF
+frame_s, rest_s = bridge.split_frame(bytes(lying_small))
+check(
+    "length field lying too small is not trusted without a valid checksum",
+    frame_s == bytes(lying_small) and rest_s == b"",
+    f"{frame_s!r}",
+)
+
+unknown_op = bytes([0x09, 0xFF, 0x00, 0x00, 0x7F, 0x7F, 0x01, 12, 0x00]) + b"\xAB\xCD"
+unknown_op += bytes([sum(unknown_op) & 0xFF])
+frame_u, rest_u = bridge.split_frame(unknown_op)
+check(
+    "unknown-opcode frame with a valid checksum passes through intact (renderer decides)",
+    frame_u == unknown_op and rest_u == b"",
+    f"{frame_u!r}",
+)
+
+minimal = reply_frame(b"")
+frame_m, rest_m = bridge.split_frame(minimal)
+check(
+    "minimal zero-payload 10-byte frame extracts cleanly",
+    len(minimal) == 10 and frame_m == minimal and rest_m == b"",
+)
+
+ff_frame = reply_frame(b"\xFF\xFF")
+frame_f, rest_f = bridge.split_frame(ff_frame)
+check("all-FF battery payload frame extracts cleanly", frame_f == ff_frame and rest_f == b"")
+
+stream = b"\xAA\xBB" + INFO_REPLY + INFO_REPLY + INFO_REPLY[:half]
+buf = stream
+frames: list[bytes] = []
+held: bytes = b""
+while True:
+    frame, rest = bridge.split_frame(buf)
+    if frame is None:
+        held = rest
+        break
+    if frame:
+        frames.append(frame)
+    buf = rest
+check("noise + two whole frames + a truncated tail resync frame-per-frame", frames == [INFO_REPLY, INFO_REPLY], f"{len(frames)} frames")
+check("stream loop parks exactly the incomplete tail", held == INFO_REPLY[:half], f"{len(held)} bytes held")
+frame_t, rest_t = bridge.split_frame(held + INFO_REPLY[half:])
+check("arriving tail completes the third frame with nothing left over", frame_t == INFO_REPLY and rest_t == b"")
+
 # 13. Silent-link watchdog: a silent fallback link must be named out loud
 #     instead of leaving the UI at a fake "Connected".
 old_watchdog = bridge.SILENT_LINK_WATCHDOG_S
@@ -311,6 +423,55 @@ try:
     )
 finally:
     bridge.SILENT_LINK_WATCHDOG_S = old_watchdog
+
+# 16. WS command robustness: malformed or non-object JSON must receive a clean
+#     error reply. An exception escaping _handle (e.g. AttributeError from
+#     msg.get() on a JSON array) used to drop the client silently and print a
+#     socketserver traceback into main.log — hostile or buggy local payloads
+#     must never achieve either.
+class FakeWsSock:
+    """Captures the server's WebSocket frames without a real socket."""
+
+    def __init__(self) -> None:
+        self.sent = bytearray()
+
+    def sendall(self, data: bytes) -> None:
+        self.sent.extend(data)
+
+
+def ws_reply(sock: FakeWsSock):
+    """Decode the first (unmasked, server->client) text frame as JSON."""
+    raw = bytes(sock.sent)
+    assert raw and raw[0] == 0x81, f"not a text frame: {raw[:4]!r}"
+    n = raw[1] & 0x7F
+    assert not (raw[1] & 0x80), "server frames must be unmasked"
+    if n < 126:
+        return bridge.json.loads(raw[2 : 2 + n].decode())
+    assert n == 126, "test payloads are far below the 64 KiB frame size"
+    length = int.from_bytes(raw[2:4], "big")
+    return bridge.json.loads(raw[4 : 4 + length].decode())
+
+
+for label, payload in (
+    ("garbage bytes", b"\xff\xfe not json at all"),
+    ("JSON array", bridge.json.dumps([1, 2, 3]).encode()),
+    ("JSON string", bridge.json.dumps("connect").encode()),
+    ("JSON number", bridge.json.dumps(42).encode()),
+    ("JSON null", b"null"),
+    ("empty object", b"{}"),
+    ("unknown command", bridge.json.dumps({"type": "bogus-cmd"}).encode()),
+):
+    sock = FakeWsSock()
+    try:
+        bridge.Handler._handle(object(), sock, payload)
+        reply = ws_reply(sock)
+        check(
+            f"WS {label} -> clean error reply",
+            reply.get("type") == "error" and bool(reply.get("error")),
+            repr(reply)[:200],
+        )
+    except Exception as exc:  # noqa: BLE001 — the test fails on ANY escape
+        check(f"WS {label} -> clean error reply", False, f"raised {type(exc).__name__}: {exc}")
 
 print(f"  {passed} checks")
 if failures:

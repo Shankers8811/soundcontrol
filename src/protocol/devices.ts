@@ -345,25 +345,38 @@ export const DEVICES: DeviceProfile[] = [
 ];
 
 /**
- * Profiles kept for name matching only. These SKUs are **not** in OpenSCQ30's
- * device table, so nothing about their protocol is confirmed; they resolve to
- * the closest verified profile and the UI says so.
+ * Names kept for EXPLANATION only — never for resolution (Pass 11 §12).
+ *
+ * These SKUs are not in OpenSCQ30's device table and no capture proves
+ * their protocol layout, so `matchDevice` returns the unknown-model
+ * profile for them and this table only supplies the explanatory note:
+ *
+ *  - Liberty 4 (A3953) is a DIFFERENT product from Liberty 4 NC (A3947);
+ *    an approximate marketing name is not evidence, and borrowing the NC
+ *    profile would assert its battery scale, ANC layout and capabilities
+ *    without proof.
+ *  - Sport X10 (A3961) and Sleep A10 (A6610) are likewise not A3949
+ *    (P20i); their wiring is unproven, so nothing is assumed.
+ *
+ * If a future capture verifies one of these layouts, promote it to a real
+ * `DEVICES` entry with its own `source:` evidence instead of re-adding a
+ * resolves-to fallback here.
  */
-export const UNVERIFIED_ALIASES: Array<{ names: string[]; resolvesTo: string; note: string }> = [
+export const UNVERIFIED_ALIASES: Array<{ names: string[]; note: string }> = [
   {
     names: ['Liberty 4', 'A3953'],
-    resolvesTo: 'liberty-4-nc',
-    note: 'Liberty 4 (A3953) has no published protocol; using the Liberty 4 NC profile',
+    note:
+      'Liberty 4 (A3953) is a distinct product from Liberty 4 NC (A3947) and no capture proves its protocol layout, so SoundControl treats it as an unknown model: firmware, serial and earbud presence still work, but battery percentages and model-specific controls stay unavailable.',
   },
   {
     names: ['Sport X10', 'A3961'],
-    resolvesTo: 'p20i',
-    note: 'Sport X10 (A3961) has no published protocol; using the A3949 profile',
+    note:
+      'Sport X10 (A3961) has no published protocol capture, so SoundControl treats it as an unknown model rather than borrowing another device’s battery scale or ANC layout: firmware, serial and earbud presence still work, but battery percentages and model-specific controls stay unavailable.',
   },
   {
     names: ['Sleep A10', 'A6610'],
-    resolvesTo: 'p20i',
-    note: 'Sleep A10 (A6610) has no published protocol; using the A3949 profile',
+    note:
+      'Sleep A10 (A6610) has no published protocol capture, so SoundControl treats it as an unknown model rather than borrowing another device’s battery scale or ANC layout: firmware, serial and earbud presence still work, but battery percentages and model-specific controls stay unavailable.',
   },
 ];
 
@@ -376,19 +389,83 @@ const RANKED_ALIASES: Array<{ alias: string; id: string }> = DEVICES.flatMap((d)
   [...d.names, d.sku].map((alias) => ({ alias: alias.toLowerCase(), id: d.id })),
 ).sort((a, b) => b.alias.length - a.alias.length);
 
-const RANKED_UNVERIFIED: Array<{ alias: string; resolvesTo: string; note: string }> =
-  UNVERIFIED_ALIASES.flatMap((a) =>
-    a.names.map((n) => ({ alias: n.toLowerCase(), resolvesTo: a.resolvesTo, note: a.note })),
-  ).sort((a, b) => b.alias.length - a.alias.length);
+const RANKED_UNVERIFIED: Array<{ alias: string; note: string }> = UNVERIFIED_ALIASES.flatMap(
+  (a) => a.names.map((n) => ({ alias: n.toLowerCase(), note: a.note })),
+).sort((a, b) => b.alias.length - a.alias.length);
+
+/**
+ * The unidentified-model profile (Pass 10 §1/§2/§5).
+ *
+ * A device whose name matched nothing in the table is NOT a P30i, NOT an
+ * R50i and NOT any other row: borrowing a real model's profile would guess
+ * its battery scale (a scale-5 level shown against scale 10 reads as half
+ * the real charge), its ANC byte layout and its capabilities. This profile
+ * therefore claims only what the protocol documents for EVERY device:
+ *
+ *  - `01:05` firmware/serial (implemented by all supported models),
+ *  - the `01:03` battery-query presence layout — byte0 left, byte1 right
+ *    (TWS) or one level (over-ear), `0xFF` = side absent (PROTOCOL.md,
+ *    OpenSCQ30 `request_battery_level.rs`) — presence only, never percent:
+ *    `batteryMax: null` keeps the raw-level scale unproven, so the UI shows
+ *    "Battery unavailable" instead of a precise-looking guess,
+ *  - the shared TWS state-blob head (battery at 2/3) for spontaneous
+ *    `01:01` updates — again presence-level information only; charging,
+ *    EQ and sound-mode offsets stay null because no layout is proven.
+ *
+ * Everything model-specific is disabled: no ANC controls (layout unknown —
+ * sending a guessed `06:81` would silently set the wrong state), no EQ, no
+ * gaming/surround/dual/LDAC toggles. Identity can still arrive later (scan
+ * name, persisted recents, manual profile override); until then the model
+ * stays unknown rather than inferred. Deliberately NOT part of `DEVICES`,
+ * so the preview picker and the model-table tests keep enumerating only
+ * real, documented devices.
+ */
+export const UNKNOWN_PROFILE: DeviceProfile = {
+  id: 'unknown',
+  name: 'Unknown model',
+  sku: '—',
+  kind: 'earbuds',
+  family: 'tws',
+  gaming: false,
+  ancLevels: false,
+  scenes: false,
+  ldac: false,
+  dual: false,
+  surround: false,
+  wind: false,
+  transparency: false,
+  batteryMax: null,
+  names: [],
+  ancLayout: 'none',
+  eqCommand: null,
+  state: {
+    batteryLeft: 2,
+    batteryRight: 3,
+    batteryChargingLeft: null,
+    batteryChargingRight: null,
+    batteryCase: null,
+    firmware: null,
+    serial: null,
+    eqPresetId: null,
+    eqBands: null,
+    soundModes: null,
+  },
+  source:
+    'No identity: protocol-universal reads only (01:05, 01:03 presence per PROTOCOL.md). Battery scale unproven — percentages stay unavailable.',
+  verified: false,
+};
 
 export function matchDevice(name: string | undefined | null): DeviceProfile {
-  if (!name) return DEVICES[0];
+  if (!name) return UNKNOWN_PROFILE;
   const n = name.toLowerCase();
   const hit = RANKED_ALIASES.find((a) => n.includes(a.alias));
-  if (hit) return DEVICES.find((d) => d.id === hit.id) ?? DEVICES[0];
-  const alias = RANKED_UNVERIFIED.find((a) => n.includes(a.alias));
-  if (alias) return DEVICES.find((d) => d.id === alias.resolvesTo) ?? DEVICES[0];
-  return DEVICES[0];
+  if (hit) return DEVICES.find((d) => d.id === hit.id) ?? UNKNOWN_PROFILE;
+  // Unverified marketing names and SKUs deliberately DO NOT resolve to a
+  // real profile (Pass 11 §12): "Liberty 4" (A3953) is not "Liberty 4 NC"
+  // (A3947), and Sport X10 (A3961) / Sleep A10 (A6610) are not A3949.
+  // Guessing would assert an unproven battery scale and ANC layout, so the
+  // honest answer is the unknown-model profile; matchNote() explains why.
+  return UNKNOWN_PROFILE;
 }
 
 /** Explanatory note when the match came from an unverified alias. */
@@ -396,5 +473,14 @@ export function matchNote(name: string | undefined | null): string | null {
   if (!name) return null;
   const n = name.toLowerCase();
   if (RANKED_ALIASES.some((a) => n.includes(a.alias))) return null;
-  return RANKED_UNVERIFIED.find((a) => n.includes(a.alias))?.note ?? null;
+  const alias = RANKED_UNVERIFIED.find((a) => n.includes(a.alias));
+  if (alias) return alias.note;
+  // Nothing matched at all: the device runs on the unidentified-model
+  // profile. Tell the user why battery percentages (and model-specific
+  // controls) stay unavailable instead of letting it look broken.
+  return (
+    'This device’s model could not be identified, so SoundControl uses its generic profile: ' +
+    'firmware, serial and earbud presence still come from the device, but battery percentages ' +
+    'and model-specific controls stay unavailable — a raw level is never shown against a guessed scale.'
+  );
 }

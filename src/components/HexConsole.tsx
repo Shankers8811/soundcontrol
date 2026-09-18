@@ -10,18 +10,25 @@ import {
   withChecksum,
   xorChecksum,
 } from '../protocol/codec';
+import { redactSecrets } from '../lib/reporting';
 import { useApp } from '../state/store';
 import type { LogEntry } from '../types';
 
-/** Save the activity log verbatim — the raw material a bug report needs. */
+/**
+ * Save the activity log — the raw material a bug report needs — with
+ * token- and address-shaped strings scrubbed first. Frame bytes are
+ * unaffected (raw hex has no separators); only text fields can carry an
+ * identifier, and an exported diagnostics snapshot must not.
+ */
 function downloadLog(log: LogEntry[], kind: 'json' | 'csv') {
+  const clean = log.map((r) => ({ ...r, hex: redactSecrets(r.hex), note: redactSecrets(r.note ?? '') }));
   const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
   const text =
     kind === 'json'
-      ? JSON.stringify(log, null, 2)
+      ? JSON.stringify(clean, null, 2)
       : [
           'Timestamp,Dir,Hex,Note,ChecksumValid',
-          ...log.map((r) =>
+          ...clean.map((r) =>
             [
               new Date(r.ts).toISOString(),
               r.dir,
@@ -101,67 +108,84 @@ export function HexConsole() {
   const rows = app.log.filter((l) => filter === 'all' || l.dir === filter);
 
   return (
-    <div className="space-y-3 px-4 py-3 pb-6">
-      <p className="text-sm text-mute">
-        Developer log — not part of the consumer soundcore app. TX/RX frames with checksum check. RFCOMM frames
-        use Σ mod 256; short Android BLE captures use an XOR checksum instead.
+    <div className="space-y-3">
+      <p className="text-xs leading-relaxed text-mute">
+        Developer log — TX/RX frames with checksum validation. RFCOMM frames use Σ mod 256; short
+        Android BLE captures use an XOR checksum instead. Injection sends the real frame to the
+        connected device over the bridge.
       </p>
       <div className="flex flex-wrap gap-1">
         {(['all', 'tx', 'rx', 'sys'] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`rounded-full px-3 py-1 font-mono text-[11px] uppercase ${
-              filter === f ? 'bg-blue text-white' : 'bg-wash text-mute'
+            aria-pressed={filter === f}
+            className={`rounded-full px-3 py-1 font-mono text-[11px] uppercase transition-colors ${
+              filter === f
+                ? 'bg-accent-deep text-white'
+                : 'bg-sunken text-mute hover:text-ink border border-edge'
             }`}
           >
             {f}
           </button>
         ))}
-        <button onClick={app.clearLog} className="rounded-full px-3 py-1 font-mono text-[11px] text-mute">
+        <button
+          onClick={app.clearLog}
+          className="rounded-full border border-edge bg-sunken px-3 py-1 font-mono text-[11px] text-mute transition-colors hover:text-ink"
+        >
           Clear
         </button>
         {/* Bug reports: attach exactly what the app saw, nothing retyped. */}
         <button
           onClick={() => downloadLog(app.log, 'json')}
-          className="rounded-full px-3 py-1 font-mono text-[11px] text-mute hover:text-ink"
+          className="rounded-full border border-edge bg-sunken px-3 py-1 font-mono text-[11px] text-mute transition-colors hover:text-accent-soft"
         >
           Export JSON
         </button>
         <button
           onClick={() => downloadLog(app.log, 'csv')}
-          className="rounded-full px-3 py-1 font-mono text-[11px] text-mute hover:text-ink"
+          className="rounded-full border border-edge bg-sunken px-3 py-1 font-mono text-[11px] text-mute transition-colors hover:text-accent-soft"
         >
           Export CSV
         </button>
       </div>
 
-      <div className="rounded-2xl bg-[#111318] p-3 text-white">
-        <label className="text-[10px] uppercase tracking-wider text-[#8b919c]">Payload</label>
+      <div className="console-well rounded-xl border border-edge p-3">
+        <label className="text-[10px] uppercase tracking-wider text-faint" htmlFor="hex-payload">
+          Payload
+        </label>
         <textarea
+          id="hex-payload"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           spellCheck={false}
-          className="mt-2 h-20 w-full resize-y rounded-md bg-[#0b0d12] p-2 font-mono text-xs text-[#7ee0c8] outline-none"
+          className="mt-2 h-20 w-full resize-y rounded-md border border-edge bg-bg p-2 font-mono text-xs text-accent-soft outline-none focus:border-accent/60"
         />
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-2 text-xs text-[#8b919c]">
-            <input type="checkbox" checked={autoCs} onChange={(e) => setAutoCs(e.target.checked)} />
+          <label className="flex items-center gap-2 text-xs text-mute">
+            <input
+              type="checkbox"
+              checked={autoCs}
+              onChange={(e) => setAutoCs(e.target.checked)}
+              className="accent-[#3d7bff]"
+            />
             Append Σ mod 256
           </label>
-          <span className={`font-mono text-[11px] ${parsed.ok ? 'text-[#7ee0c8]' : 'text-[#fb7185]'}`}>{parsed.msg}</span>
+          <span className={`font-mono text-[11px] ${parsed.ok ? 'text-accent-soft' : 'text-danger'}`}>{parsed.msg}</span>
           <button
             disabled={!app.connected || !parsed.ok}
-            onClick={() => parsed.ok && app.inject(parsed.framed)}
-            className="ml-auto rounded-full bg-blue px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
+            onClick={() => {
+              if (parsed.ok) void app.inject(parsed.framed).catch(() => {});
+            }}
+            className="ml-auto rounded-lg bg-accent-deep px-3.5 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
           >
             Send
           </button>
         </div>
-        <p className="mt-1 break-all font-mono text-[10px] text-[#6b7280]">{toHex(parsed.framed)}</p>
+        <p className="mt-1 break-all font-mono text-[10px] text-faint">{toHex(parsed.framed)}</p>
       </div>
 
-      <div className="rounded-2xl border border-line bg-wash p-3">
+      <div className="rounded-xl border border-edge bg-sunken p-3">
         <label className="text-[10px] uppercase tracking-wider text-mute" htmlFor="b64-capture">
           Base64 capture → hex
         </label>
@@ -171,7 +195,7 @@ export function HexConsole() {
           onChange={(e) => setB64(e.target.value)}
           spellCheck={false}
           placeholder="Paste a Base64 blob from an Android capture…"
-          className="mt-2 h-16 w-full resize-y rounded-md border border-line bg-white p-2 font-mono text-xs outline-none"
+          className="mt-2 h-16 w-full resize-y rounded-md border border-edge bg-bg p-2 font-mono text-xs text-ink outline-none placeholder:text-faint focus:border-accent/60"
         />
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <span className={`font-mono text-[11px] ${decodedB64.ok ? 'text-mute' : 'text-danger'}`}>
@@ -180,18 +204,18 @@ export function HexConsole() {
           {decodedB64.ok && decodedB64.hex && (
             <button
               onClick={() => setDraft(decodedB64.hex)}
-              className="ml-auto rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue ring-1 ring-line"
+              className="ml-auto rounded-lg border border-edge bg-panel px-3 py-1 text-xs font-semibold text-accent-soft transition-colors hover:border-accent/50"
             >
               Load into payload
             </button>
           )}
         </div>
         {decodedB64.ok && decodedB64.hex && (
-          <p className="mt-1 break-all font-mono text-[10px] text-mute">{decodedB64.hex}</p>
+          <p className="mt-1 break-all font-mono text-[10px] text-faint">{decodedB64.hex}</p>
         )}
       </div>
 
-      <div className="rounded-2xl border border-line bg-wash p-3">
+      <div className="rounded-xl border border-edge bg-sunken p-3">
         <p className="text-[10px] uppercase tracking-wider text-mute">Android BLE → RFCOMM map</p>
         <ul className="mt-2 space-y-1.5">
           {BLE_COMMAND_MAP.map((c) => (
@@ -203,22 +227,23 @@ export function HexConsole() {
             </li>
           ))}
         </ul>
-        <p className="mt-2 text-[11px] text-mute">
-          GATT ab00 (TX ab01 / RX ab02). Windows sends the RFCOMM column; this table only decodes captures.
+        <p className="mt-2 text-[11px] text-faint">
+          GATT ab00 (TX ab01 / RX ab02). Windows sends the RFCOMM column; this table only decodes
+          captures — SoundControl never transmits BLE.
         </p>
       </div>
 
-      <div className="h-[280px] overflow-auto rounded-2xl bg-[#111318] font-mono text-[11px] text-white">
-        {rows.length === 0 && <p className="p-4 text-[#8b919c]">No frames yet.</p>}
+      <div className="console-well h-[280px] overflow-auto rounded-xl border border-edge font-mono text-[11px] text-ink">
+        {rows.length === 0 && <p className="p-4 text-faint">No frames yet.</p>}
         {rows.map((row) => (
-          <div key={row.id} className="grid grid-cols-[72px_32px_1fr] gap-2 border-b border-white/5 px-3 py-1.5">
-            <span className="text-[#6b7280]">{formatMs(row.ts)}</span>
-            <span className={row.dir === 'tx' ? 'text-[#93c5fd]' : row.dir === 'rx' ? 'text-[#7ee0c8]' : 'text-[#6b7280]'}>
+          <div key={row.id} className="grid grid-cols-[72px_32px_1fr] gap-2 border-b border-edge-soft px-3 py-1.5">
+            <span className="text-faint">{formatMs(row.ts)}</span>
+            <span className={row.dir === 'tx' ? 'text-accent-soft' : row.dir === 'rx' ? 'text-[#7ee0c8]' : 'text-faint'}>
               {row.dir.toUpperCase()}
             </span>
-            <div>
-              <span>{row.hex || row.note}</span>
-              {row.hex && row.note && <span className="ml-2 text-[#6b7280]">{row.note}</span>}
+            <div className="min-w-0">
+              <span className="break-all">{row.hex || row.note}</span>
+              {row.hex && row.note && <span className="ml-2 text-faint">{row.note}</span>}
             </div>
           </div>
         ))}

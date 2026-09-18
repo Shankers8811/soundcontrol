@@ -1,0 +1,46 @@
+name: Tests
+
+# Cross-platform checks that need neither Windows nor Bluetooth hardware:
+# protocol verification, TypeScript, the renderer build, the Python bridge
+# unit tests, the pure UI state-derivation tests (capabilities, earbud
+# presence, battery math, scan machine), and the startup/lifecycle e2e
+# harness (real bridge server + real renderer transport code against an
+# emulated helper with a fake RFCOMM device). Windows-specific packaging
+# and packaged-app launch checks live in build-windows.yml and
+# smoke-windows.yml.
+
+on:
+  push:
+    branches: [main, 'arena/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Compile-check the Python helper and test scripts
+        run: python -m py_compile soundcore_bridge.py scripts/test_bridge_probe.py scripts/emulated_bridge.py
+      - name: Protocol verification + TypeScript + renderer build
+        run: npm run build
+      - name: Bridge channel-probe unit tests
+        run: npm run test:bridge
+      - name: UI state derivation tests (capabilities, earbud states, scan machine)
+        run: npm run test:ui
+      - name: Startup/lifecycle e2e (emulated helper, fake RFCOMM)
+        run: npm run test:e2e
+      - name: Main-process lifecycle (real helper kill/restart races, stubbed Electron)
+        run: npm run test:lifecycle

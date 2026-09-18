@@ -26,6 +26,43 @@ jobs:
       - name: Verify the installer upgrades an existing app
         shell: pwsh
         run: ./scripts/smoke-windows-upgrade.ps1
+      # The artifact a user actually receives: clean install (not an upgrade),
+      # launch the INSTALLED copy twice with a graceful close each time, then
+      # silent uninstall - asserting no directory, registry entry, process,
+      # helper, port 8765 listener or startup registration survives.
+      - name: Clean install, two launches, uninstall leaves nothing behind
+        shell: pwsh
+        run: ./scripts/smoke-windows-install.ps1
+      # Seeds a legacy Run-key entry exactly as an older install would have
+      # written it, then runs the app's own enforcement code (autostart.cjs)
+      # against the packaged exe through Electron's login-item API and asserts
+      # the registration is gone afterwards.
+      - name: Verify Windows autostart is enforced off (legacy entry cleanup)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $PWD 'release\win-unpacked\SoundControl.exe'
+          if (-not (Test-Path $exe)) { throw "Packaged executable was not found at $exe" }
+          $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          # A pristine Windows profile may not have the Run key at all yet.
+          if (-not (Test-Path $runKey)) { New-Item -Path $runKey -Force | Out-Null }
+          # Older SoundControl builds registered through Electron's login-item
+          # API, which stores the Run value under the AppUserModelID with the
+          # quoted executable as data — reproduce that entry byte-for-byte.
+          $legacyName = 'com.soundcontrol.desktop'
+          Set-ItemProperty -Path $runKey -Name $legacyName -Value ('"' + $exe + '"')
+          $env:SOUNDCONTROL_VERIFY_EXE = $exe
+          npx electron scripts/verify-autostart.cjs
+          if ($LASTEXITCODE -ne 0) { throw "verify-autostart.cjs exited with $LASTEXITCODE" }
+          $left = Get-ItemProperty -Path $runKey -Name $legacyName -ErrorAction SilentlyContinue
+          if ($left) { throw "legacy Run-key entry survived enforcement: $($left.$legacyName)" }
+          Write-Host 'AUTOSTART_CLEAN legacy Windows startup registration removed by the new version'
+      # The release acceptance test for "closing the window really closes the
+      # application": graceful WM_CLOSE, then no SoundControl.exe, no Python
+      # helper, no listener on 8765, no delayed restart.
+      - name: Lifecycle - window close exits app and helper completely
+        shell: pwsh
+        run: ./scripts/smoke-windows-lifecycle.ps1
       - name: Launch the packaged desktop application
         shell: pwsh
         run: |
