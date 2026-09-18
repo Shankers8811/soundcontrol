@@ -185,6 +185,21 @@ None of these need Windows, Bluetooth hardware, or an Electron binary; the
 emulated helper (`scripts/emulated_bridge.py`) is test data only and is never
 packaged into the installer.
 
+### App icon (SC monogram)
+Every shipped icon raster — window, taskbar, desktop shortcut, installer,
+system tray and browser-tab favicon — is rendered from one vector source,
+`assets/icon/sc-monogram.svg`:
+
+```bash
+npm i --no-save @resvg/resvg-js   # generation-time tool only
+node scripts/generate-icons.mjs   # rewrites public/icon-*.png + favicon-64.png
+```
+
+The generated PNGs are committed, so builds, CI and packaging never need the
+rasterizer; it is deliberately not a `package.json` dependency. Regenerate
+only when the vector source changes and commit all sizes together so the
+icon set stays pixel-consistent.
+
 ### Build the renderer
 ```bash
 npm run build
