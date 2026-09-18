@@ -1,12 +1,33 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
+const { enforceNoAutostart, migrateLegacySettingsFile } = require('./autostart.cjs');
 
 let bridgeProcess = null;
+// A candidate child that is still inside its readiness window. Tracked
+// separately because `bridgeProcess` is only assigned once the helper
+// actually answers /health — without this, quitting mid-startup (window
+// closed early, fatal error) orphaned the spawned Python process, which then
+// kept holding port 8765 invisibly.
+let pendingBridge = null;
+// Set once the app begins quitting, so the interpreter-candidate loop stops
+// spawning new helpers that would outlive the app.
+let shuttingDown = false;
+// Bounded auto-restart of an *adopted* helper that dies mid-session (crash,
+// antivirus kill, user ending python.exe). Without this the renderer's 15s
+// retry budget finds nothing and the user must restart the whole app even
+// though the failure is recoverable. Deliberately capped — no infinite
+// restart loops: at most BRIDGE_MAX_AUTO_RESTARTS consecutive deaths, and a
+// helper that stayed up for BRIDGE_STABLE_RUN_MS resets the budget.
+const BRIDGE_MAX_AUTO_RESTARTS = 3;
+const BRIDGE_STABLE_RUN_MS = 60000;
+let bridgeAutoRestarts = 0;
+let bridgeAdoptedAt = 0;
+let bridgeRestartTimer = null;
 let mainWindow = null;
 let windowEverShown = false;
 
@@ -16,6 +37,44 @@ let windowEverShown = false;
 // app's window can use the helper's Bluetooth writes.
 const bridgeToken = crypto.randomBytes(32).toString('hex');
 ipcMain.handle('soundcontrol:bridge-token', () => bridgeToken);
+
+// ---------------------------------------------------------------------------
+// Release product policy (see autostart.cjs): SoundControl is a NORMAL
+// desktop application.
+//   - It never starts with Windows: there is no launch-at-login setting, and
+//     every startup actively clears a Run-key entry an older version may have
+//     registered (app.setLoginItemSettings openAtLogin:false).
+//   - Closing the window always quits: no tray, no hide-on-close, no
+//     background mode. window-all-closed -> app.quit() -> before-quit kills
+//     the Python helper and cancels restart timers.
+//   - Obsolete persisted settings (launchAtLogin / minimizeToTray from older
+//     installs) are stripped from settings.json at startup and are read by
+//     nothing, so no stale file can resurrect either behaviour.
+// The settings write IPC surface therefore no longer exists; the renderer
+// keeps only the channels that remain real (version, log folder, token).
+// ---------------------------------------------------------------------------
+
+ipcMain.handle('soundcontrol:open-log-folder', async () => {
+  try {
+    const dir = app.getPath('userData');
+    // shell.openPath resolves '' on success and an error string otherwise.
+    // Only ever the app's own userData directory — no caller-chosen paths.
+    const res = await shell.openPath(dir);
+    if (res) log(`open-log-folder failed: ${res}`);
+    return res === '';
+  } catch (err) {
+    log(`open-log-folder failed: ${err}`);
+    return false;
+  }
+});
+
+ipcMain.handle('soundcontrol:app-version', () => {
+  try {
+    return app.getVersion();
+  } catch {
+    return '';
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Startup diagnostics.
@@ -130,6 +189,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // instance). Uses the fast /health endpoint: /scan enumerates Windows PnP /
 // Bluetooth devices and can take seconds, so probing it here used to report a
 // healthy helper as "not responding" on slow machines.
+//
+// Resolves with the HTTP status code the listener returned, or null when
+// nothing answered at all:
+//   200        → a usable helper (ours, or a tokenless manual run)
+//   401/403    → a token-protected helper from another session owns the port
+//   other/null → port free (or something that is not our bridge)
 function probeBridge(timeoutMs = 1200) {
   return new Promise((resolve) => {
     // Our own spawned bridge requires the token; a manually run (tokenless)
@@ -145,14 +210,14 @@ function probeBridge(timeoutMs = 1200) {
       },
       (res) => {
         res.resume();
-        resolve(res.statusCode === 200);
+        resolve(res.statusCode);
       },
     );
     req.on('timeout', () => {
       req.destroy();
-      resolve(false);
+      resolve(null);
     });
-    req.on('error', () => resolve(false));
+    req.on('error', () => resolve(null));
   });
 }
 
@@ -160,14 +225,63 @@ function probeBridge(timeoutMs = 1200) {
 // signal, and much faster than "the process is still alive after N seconds".
 // The budget covers cold-start antivirus scans of a fresh install; readiness
 // itself is the cheap /health check, never the slow PnP /scan enumeration.
+// NOTE: the renderer's WebSocket startup budget (BRIDGE_STARTUP_TIMEOUT_MS in
+// src/transports/bridge.ts, 15s) is deliberately larger than this 12s
+// budget, so the renderer never declares the helper dead while this loop is
+// still legitimately waiting for it.
 async function waitForBridgeReady(child, budgetMs = 12000) {
   const deadline = Date.now() + budgetMs;
   while (Date.now() < deadline) {
-    if (child.exitCode !== null || child.signalCode !== null) return false;
-    if (await probeBridge(800)) return true;
+    if (child.spawnFailed || child.exitCode !== null || child.signalCode !== null) return false;
+    if ((await probeBridge(800)) === 200) return true;
     await sleep(200);
   }
   return false;
+}
+
+// Kill every helper process this app owns: the ready one and any candidate
+// still starting. Called from every quit path so no Python process outlives
+// SoundControl and squats on port 8765.
+function killBridgeProcesses() {
+  if (bridgeRestartTimer) {
+    clearTimeout(bridgeRestartTimer);
+    bridgeRestartTimer = null;
+  }
+  for (const child of [bridgeProcess, pendingBridge]) {
+    if (child) {
+      try {
+        child.kill();
+      } catch {
+        /* already dead */
+      }
+    }
+  }
+  bridgeProcess = null;
+  pendingBridge = null;
+}
+
+// Re-run the normal startup path (port probe, interpreter fallbacks, readiness
+// wait) after an adopted helper died mid-session. Bounded: see
+// BRIDGE_MAX_AUTO_RESTARTS. The delay grows linearly so a helper that dies on
+// startup in a loop cannot spin the CPU.
+function scheduleBridgeRestart(label) {
+  if (shuttingDown || bridgeProcess || bridgeRestartTimer) return;
+  if (Date.now() - bridgeAdoptedAt >= BRIDGE_STABLE_RUN_MS) {
+    // It had a long healthy run before dying — treat this as a fresh budget.
+    bridgeAutoRestarts = 0;
+  }
+  if (bridgeAutoRestarts >= BRIDGE_MAX_AUTO_RESTARTS) {
+    log(`bridge (${label}) died again; auto-restart budget exhausted — leaving it down`);
+    return;
+  }
+  bridgeAutoRestarts += 1;
+  const delay = 1000 * bridgeAutoRestarts;
+  log(`bridge (${label}) died; auto-restart ${bridgeAutoRestarts}/${BRIDGE_MAX_AUTO_RESTARTS} in ${delay}ms`);
+  bridgeRestartTimer = setTimeout(() => {
+    bridgeRestartTimer = null;
+    if (shuttingDown || bridgeProcess) return;
+    startBridgeIfAvailable().catch((err) => log(`bridge auto-restart failed: ${err}`));
+  }, delay);
 }
 
 async function startBridgeIfAvailable() {
@@ -182,13 +296,26 @@ async function startBridgeIfAvailable() {
     /* proceed optimistically if existsSync misbehaves */
   }
 
-  if (await probeBridge()) {
+  const existing = await probeBridge();
+  if (existing === 200) {
     log('bridge already listening on 127.0.0.1:8765; not spawning another');
+    return;
+  }
+  if (existing !== null) {
+    // Something else owns the port — most often a helper from a previous
+    // session that kept its (now unknown) token. Spawning here used to fail
+    // every interpreter candidate with EADDRINUSE and then blame a broken
+    // installation; say what actually happened instead.
+    log(
+      `port 8765 is owned by another process (HTTP ${existing}); not spawning a helper — ` +
+        'if this is a stale SoundControl bridge, end that process and restart the app',
+    );
     return;
   }
 
   const candidates = pythonCandidates();
   for (const { cmd, args, bundled } of candidates) {
+    if (shuttingDown) return;
     const label = bundled ? 'bundled runtime' : cmd;
     let child;
     try {
@@ -200,18 +327,44 @@ async function startBridgeIfAvailable() {
       log(`spawn ${label} threw: ${err}`);
       continue;
     }
+    pendingBridge = child;
 
     const onOutput = (d) => log(`[bridge] ${String(d).trimEnd()}`);
     child.stderr.on('data', onOutput);
     child.stdout.on('data', onOutput);
-    child.on('error', (err) => log(`bridge ${label} error: ${err.code || err.message}`));
+    child.on('error', (err) => {
+      // Mark the candidate as dead-on-arrival so waitForBridgeReady bails out
+      // immediately instead of probing /health for the full budget against an
+      // interpreter that could never start (missing 'py', bad path, ...).
+      child.spawnFailed = true;
+      log(`bridge ${label} error: ${err.code || err.message}`);
+    });
     child.on('exit', (code) => {
-      if (bridgeProcess === child) bridgeProcess = null;
+      const wasAdopted = bridgeProcess === child;
+      if (wasAdopted) bridgeProcess = null;
+      if (pendingBridge === child) pendingBridge = null;
       log(`bridge (${label}) exited with code ${code}`);
+      // An *adopted* helper dying mid-session is recoverable — restart it so
+      // a renderer that is still open can reconnect without an app restart.
+      // A candidate that never became ready is handled by the startup loop
+      // itself (it moves to the next interpreter), so it must not restart here.
+      if (wasAdopted && !shuttingDown) scheduleBridgeRestart(label);
     });
 
     if (await waitForBridgeReady(child)) {
+      if (shuttingDown) {
+        // The app quit while this candidate was starting; do not adopt it.
+        try {
+          child.kill();
+        } catch {
+          /* already gone */
+        }
+        pendingBridge = null;
+        return;
+      }
+      pendingBridge = null;
       bridgeProcess = child;
+      bridgeAdoptedAt = Date.now();
       log(`bridge started via ${label}`);
       return;
     }
@@ -222,8 +375,11 @@ async function startBridgeIfAvailable() {
     } catch {
       /* already gone */
     }
+    if (pendingBridge === child) pendingBridge = null;
+    if (shuttingDown) return;
   }
 
+  if (shuttingDown) return;
   onBridgeMissing();
 }
 
@@ -273,11 +429,14 @@ function createWindow() {
     }
 
     const win = new BrowserWindow({
-      width: 1200,
-      height: 850,
-      minWidth: 800,
+      // Desktop-first layout: comfortable at 1280×720 and up, and the
+      // minimum keeps the sidebar + content usable without a mobile fallback.
+      width: 1280,
+      height: 820,
+      minWidth: 940,
       minHeight: 640,
-      backgroundColor: '#d8e2ef',
+      // Matches the dark renderer theme so a cold start never flashes white.
+      backgroundColor: '#0a0e17',
       title: 'SoundControl — Desktop Companion for Soundcore',
       icon: path.join(__dirname, 'public', 'icon-512.png'),
       autoHideMenuBar: true,
@@ -311,8 +470,35 @@ function createWindow() {
       }
     }, 4000);
 
+    // No hide-on-close / tray path exists: closing the last window always
+    // reaches window-all-closed, which quits the app and kills the helper.
     win.on('closed', () => {
       mainWindow = null;
+    });
+
+    // External links (About page → GitHub releases) open in the default
+    // browser; everything else is denied, and in-page navigation away from
+    // the app origin is blocked. The renderer keeps no node access either
+    // way (contextIsolation, nodeIntegration:false).
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      try {
+        const parsed = new URL(url);
+        const allowedHost = parsed.hostname === 'github.com' || parsed.hostname.endsWith('.github.com');
+        if (parsed.protocol === 'https:' && allowedHost) {
+          void shell.openExternal(parsed.toString());
+        } else {
+          log(`blocked window.open to ${parsed.protocol}//${parsed.hostname}`);
+        }
+      } catch {
+        log(`blocked window.open with unparseable url`);
+      }
+      return { action: 'deny' };
+    });
+    win.webContents.on('will-navigate', (event, url) => {
+      if (url !== win.webContents.getURL()) {
+        event.preventDefault();
+        log(`blocked in-window navigation to ${url}`);
+      }
     });
 
     win.webContents.on('did-fail-load', (_e, code, desc, url) => {
@@ -358,7 +544,17 @@ if (!gotTheLock) {
     }
     // Proper taskbar grouping / notification attribution on Windows.
     app.setAppUserModelId('com.soundcontrol.desktop');
-    startBridgeIfAvailable();
+    // Release policy, every launch: strip obsolete keys an older install
+    // persisted, and make sure no Windows startup registration survives.
+    try {
+      migrateLegacySettingsFile(app.getPath('userData'), log);
+    } catch (err) {
+      log(`legacy settings migration skipped: ${err}`);
+    }
+    enforceNoAutostart(app, log);
+    // Fire-and-forget by design (the window must not wait for the helper),
+    // but a rejection here must reach the log, not the void.
+    startBridgeIfAvailable().catch((err) => log(`startBridgeIfAvailable failed: ${err}`));
     createWindow();
 
     app.on('activate', () => {
@@ -367,14 +563,18 @@ if (!gotTheLock) {
   });
 }
 
+// Covers every quit path — including a fatal error before any window existed,
+// where `window-all-closed` never fires and a starting helper would be
+// orphaned holding port 8765. The log line lets main.log distinguish a normal
+// shutdown from a crash or a force-kill (which never reaches this handler).
+app.on('before-quit', () => {
+  log('app quitting; stopping the Bluetooth helper');
+  shuttingDown = true;
+  killBridgeProcesses();
+});
+
 app.on('window-all-closed', () => {
-  if (bridgeProcess) {
-    try {
-      bridgeProcess.kill();
-    } catch {
-      /* already dead */
-    }
-    bridgeProcess = null;
-  }
+  shuttingDown = true;
+  killBridgeProcesses();
   if (process.platform !== 'darwin') app.quit();
 });

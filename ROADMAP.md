@@ -4,6 +4,42 @@ Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doi
 
 ## Shipped (v1.0.5 + current branch)
 
+- ✅ **Final navigation IA (Pass 8)** — the sidebar is now exactly five
+  destinations (Home, Devices, Equalizer, Noise Control, Settings); the
+  former About page is a Settings section, the Controls page leads with the
+  real ANC component under the name Noise Control, and Settings consolidates
+  every secondary feature: Device info, Appearance (System/Dark/Light theme,
+  persisted, applied live via `data-theme` + matchMedia), Updates (honest
+  check against the official GitHub Releases API — no background updater),
+  Feedback & rating and Report a problem (no backend exists, so both prepare
+  real local text — token-redacted — for copy/download and link to the
+  project's issue tracker instead of pretending to submit), the fixed
+  Startup & exit policy, and the diagnostics console.
+- ✅ **Release lifecycle policy** — closing the window now always exits
+  SoundControl completely: the minimize-to-tray and launch-at-login settings
+  were removed (tray, hide-on-close and the settings write IPC with them),
+  `window-all-closed`/`before-quit` kill the helper and cancel restart timers,
+  and every startup enforces `openAtLogin: false` through Electron's login-item
+  API so registrations left by older installs are cleaned up. Legacy
+  `settings.json` keys are migrated away at startup. Proven by
+  `scripts/test_main_lifecycle.mjs` (real helper children, stubbed Electron)
+  and, on Windows CI, by `scripts/smoke-windows-lifecycle.ps1` (packaged app,
+  WM_CLOSE, process/port assertions) plus `scripts/verify-autostart.cjs`
+  (seeded legacy Run-key entry removed).
+- ✅ **Release size gate** — Windows CI measures the real NSIS installer and
+  `win-unpacked` tree and fails the build at 500 MB; the package excludes
+  source maps, legacy webp assets, test scripts and runtime node_modules
+  (the renderer is fully bundled by Vite).
+- ✅ **SC monogram app icon** — every shipped raster (window, exe, installer,
+  taskbar, shortcut, tray, favicon) plus the in-app brand mark now render from
+  one vector source, `assets/icon/sc-monogram.svg`: a waveform-S and an open
+  signal-C with its source node on a deep-navy tile, electric-blue strokes,
+  legible from 512 px down to the 16 px tray slot. `scripts/generate-icons.mjs`
+  regenerates the committed PNG set; no runtime dependency added.
+- ✅ **Spoken earbud state** — the earbud panels carry complete accessible
+  names ("Left earbud connected, 80 percent", "Right earbud unknown, awaiting
+  device telemetry", "… disconnected"), so connection state is never conveyed
+  by colour or brightness alone.
 - ✅ **DSP channel discovery** — handshake probe over 4/12/15/10/30/1, adopts
   the first channel answering a valid `09 FF`; silent-channel fallback for
   manual console use.
@@ -14,7 +50,7 @@ Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doi
   checks, runs inside `npm run build`) rebuilds every outbound frame and
   compares against published captures from OpenSCQ30, SoundcoreDesktop,
   Noiseclapper-GNOME, soundcorebridge and soundcore_anker_equalyzer;
-  `scripts/test_bridge_probe.py` (43 checks) covers the probe.
+  `scripts/test_bridge_probe.py` (51 checks) covers the probe.
 - ✅ **Model table by SKU** — A3959 = P30i/R50i NC vs A3949 = R50i, four
   `06:81` sound-mode layouts, 22 preset curves verbatim, custom EQ `FE FE`,
   DRC second channel byte-identical to 22 live P20i captures.
@@ -25,6 +61,33 @@ Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doi
 - ✅ **UX hardening** — error boundary, recent-device one-tap reconnect
   (localStorage), activity log export (JSON/CSV), low-battery nudge, new
   loading art, bridge diagnostics surfaced in-app.
+- ✅ **Desktop UI redesign** — dark-navy/electric-blue desktop layout
+  (sidebar: Dashboard, Devices, Equalizer, Controls, Settings, About),
+  capability-gated everywhere: every control either sends a documented
+  frame or renders disabled with the protocol reason (volume, gestures,
+  HearID EQ, factory reset, Sleep/Find-My claims removed). Per-side earbud
+  status derives from real `0xFF` presence bytes with "unknown" kept
+  distinct from "disconnected". Real persisted desktop settings
+  (launch-at-login, minimize-to-tray) via Electron IPC.
+- ✅ **UI truth test suites** — `npm run test:ui` (pure state-derivation
+  checks + server-side render-smoke checks over the real React tree) and
+  e2e scenario 7 (per-side earbud telemetry through the real
+  helper→WS→transport pipeline; `--earbud-state` on the emulator).
+- ✅ **Live L/R correctness (Pass 4)** — battery telemetry merges through a
+  single pure `mergeBatteryTelemetry`: a side whose current byte is `0xFF`,
+  missing, or untrustworthy (>100) drops to `null` at the source — the old
+  `?? previous` fallback that let a stale 90% survive a removed bud is gone.
+  Explicit four-state side model (`connected` / `disconnected` / `unknown` /
+  `unavailable`) with `supported` flag; unknown renders "Detecting earbuds…"
+  and is never conflated with disconnected; disconnect and unexpected
+  link-down clear ALL device state (name, battery, presence, charging,
+  firmware, serial, ANC intent, feature toggles, EQ); device switch resets
+  feature state to power-on defaults; `onRx` ignores checksum-invalid frames;
+  malformed `06:01` mirrors can no longer move the confirmed ANC state
+  (pure `parseSoundModes`); earbud product art dims per side independently
+  from real telemetry. Emulator gains `--earbud-state unknown` and
+  `--earbud-script both,left,both` live transitions (e2e scenario 8).
+  Suites: 170 state + 69 render + 51 bridge + 96 e2e checks.
 
 ## Next (small, high value)
 

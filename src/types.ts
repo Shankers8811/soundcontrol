@@ -6,43 +6,22 @@ export type AncScene = 'transport' | 'outdoor' | 'indoor';
 
 export type DeviceFamily = 'classic' | 'tws';
 
-export type TabId = 'device' | 'sounds' | 'controls' | 'sleep' | 'settings';
+/**
+ * Desktop sidebar pages. Five top-level destinations (Pass 8 information
+ * architecture): Home, Devices, Equalizer, Noise Control, Settings. Internal
+ * ids keep their original names ('dashboard', 'controls') so routing, store
+ * persistence and tests stay stable — only the user-facing labels changed.
+ * About moved into Settings; it is no longer a page id.
+ */
+export type PageId = 'dashboard' | 'devices' | 'equalizer' | 'controls' | 'settings';
 
-export type StackId =
-  | null
-  | 'ambient'
-  | 'eq-custom'
-  | 'hearid'
-  | 'touch'
-  | 'diagnostics'
-  | 'about'
-  | 'safe-volume'
-  | 'connect'
-  | 'find-device'
-  | 'device-select';
-
-export type GestureAction =
-  | 'play'
-  | 'next'
-  | 'prev'
-  | 'vol-up'
-  | 'vol-down'
-  | 'anc'
-  | 'trans'
-  | 'voice-assistant'
-  | 'game'
-  | 'off';
-
-export interface TouchMap {
-  leftSingle: GestureAction;
-  leftDouble: GestureAction;
-  leftTriple: GestureAction;
-  leftHold: GestureAction;
-  rightSingle: GestureAction;
-  rightDouble: GestureAction;
-  rightTriple: GestureAction;
-  rightHold: GestureAction;
-}
+/**
+ * Appearance preference (Settings → Appearance). 'system' follows the OS
+ * prefers-color-scheme; 'dark'/'light' force the theme. Persisted in
+ * localStorage like every other real setting — resolved to a concrete
+ * 'dark'|'light' on <html data-theme> by the shell.
+ */
+export type ThemePref = 'system' | 'dark' | 'light';
 
 export type EarbudPresence = 'both' | 'left' | 'right' | 'none' | 'unknown';
 
@@ -54,8 +33,14 @@ export interface BatteryState {
   // No case level on purpose: many Soundcore models never report one (the
   // official app hides it too) and over-ears have no case, so displaying a
   // number here would mostly show guesses.
-  /** Null means the values are already percentages (for example Windows PnP). */
-  batteryScale?: number | null;
+  /**
+   * Null means the values are already percentages (for example Windows PnP).
+   * 'unknown' means the device model — and with it the raw-level scale — is
+   * not known: the raw levels may be kept for presence, but NO percentage may
+   * ever be derived from them (a scale-5 level read against scale 10 shows
+   * half the real charge, and vice versa shows double).
+   */
+  batteryScale?: number | null | 'unknown';
   /** Reported only when the Soundcore telemetry identifies each TWS side. */
   presence?: EarbudPresence;
 }
@@ -131,12 +116,25 @@ export interface DeviceProfile {
   wind: boolean;
   /** Model has the `02:86` 3D surround toggle. */
   surround: boolean;
-  /** Raw Soundcore battery levels are often 0..5 or 0..10, not percentages. */
-  batteryMax: number;
+  /**
+   * Raw Soundcore battery levels are often 0..5 or 0..10, not percentages.
+   * Null ONLY for the unidentified-model profile: without a proven scale a
+   * raw level must never be converted to a percentage — the UI shows the
+   * honest "Battery unavailable" state instead of a precise-looking guess.
+   */
+  batteryMax: number | null;
   names: string[];
   ancLayout: AncLayout;
   eqCommand: EqCommand | null;
   state: StateOffsets;
+  /**
+   * True only when the `01:85` factory-reset frame is documented for THIS
+   * model. The only public source (OpenSCQ30) maps it to the Soundcore
+   * Motion+ A3116 speaker, which is not in this table — so no headphone or
+   * earbud profile may claim it. Falsy ⇒ the UI shows an honest unsupported
+   * note instead of firing an undocumented, destructive frame at hardware.
+   */
+  factoryReset?: boolean;
   /**
    * Human-readable provenance for the profile, so a future reader can tell a
    * reverse-engineered layout from a guessed one.
@@ -165,14 +163,3 @@ export interface Transport {
 export const EQ_HZ = [100, 200, 400, 800, 1600, 3200, 6400, 12800] as const;
 
 export const ZERO_BANDS = [0, 0, 0, 0, 0, 0, 0, 0];
-
-export const DEFAULT_TOUCH: TouchMap = {
-  leftSingle: 'vol-down',
-  leftDouble: 'prev',
-  leftTriple: 'voice-assistant',
-  leftHold: 'anc',
-  rightSingle: 'vol-up',
-  rightDouble: 'next',
-  rightTriple: 'game',
-  rightHold: 'play',
-};
