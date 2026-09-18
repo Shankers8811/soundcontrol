@@ -22,6 +22,28 @@ never mirrored (`06:01`).
 
 ---
 
+## Evidence legend — how to read every claim in this repository
+
+Every capability sits at exactly one of five evidence levels. Nothing in this
+repository is currently above level 4: level 5 needs physical Soundcore
+hardware, which no sandbox has.
+
+| Level | Meaning | Where it is proven |
+|-------|---------|--------------------|
+| 1 — implemented | The code exists and its wire formats cite published captures | `PROTOCOL.md`; the per-profile `source:` evidence in `src/protocol/devices.ts` |
+| 2 — auto-tested | Deterministic unit/parser/state tests pass | `npm run test:ui` (state + render), `npm run test:bridge`, `scripts/verify-protocol.mjs` |
+| 3 — emulator-tested | End-to-end runs against the scripted loopback bridge — no radio involved | `npm run test:e2e`, `npm run test:lifecycle`, jsdom UI harness segments |
+| 4 — Windows-CI-tested | A real Windows runner installs, launches and smoke-tests the packaged app | GitHub Actions `tests` / `build-win` / `launch-win` workflows |
+| 5 — physically verified | A real Soundcore device answered over RFCOMM and the UI matched the wire | **Nothing yet — this checklist is how a flow gets promoted to level 5** |
+
+Levels stack (4 implies a healthy launch path; it does not imply any earbud
+ever answered). When you record a result below, cite the step number and keep
+the listed evidence: that is what promotes one specific flow from level 4 to
+level 5. A claim of “works” without level-5 evidence must always be written
+as “implemented and tested without hardware”.
+
+---
+
 ## 1. Pairing
 
 | # | Step | Expected |
