@@ -2,7 +2,7 @@
 
 Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doing.
 
-## Shipped (v1.0.5 + current branch)
+## Shipped (v1.0.6)
 
 - ✅ **Final navigation IA (Pass 8)** — the sidebar is now exactly five
   destinations (Home, Devices, Equalizer, Noise Control, Settings); the
