@@ -37,6 +37,8 @@ jobs:
           $exe = Join-Path $PWD 'release\win-unpacked\SoundControl.exe'
           if (-not (Test-Path $exe)) { throw "Packaged executable was not found at $exe" }
           $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          # A pristine Windows profile may not have the Run key at all yet.
+          if (-not (Test-Path $runKey)) { New-Item -Path $runKey -Force | Out-Null }
           Set-ItemProperty -Path $runKey -Name 'SoundControl' -Value ('"' + $exe + '"')
           $env:SOUNDCONTROL_VERIFY_EXE = $exe
           npx electron scripts/verify-autostart.cjs
