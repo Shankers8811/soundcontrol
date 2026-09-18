@@ -209,6 +209,14 @@ check('real repository links only', about.includes('https://github.com/Shankers8
 check('no fake update/support/privacy buttons', !about.includes('Check for updates') && !about.includes('Contact support') && !about.includes('Privacy policy'));
 check('unofficial-project disclaimer', about.includes('not affiliated with'));
 
+// Pass 11 §6: research-project names must never reach the rendered product —
+// credits stay in the developer-facing provenance record (PROTOCOL.md), and
+// the UI only points at it.
+const THIRD_PARTY_NAMES = /OpenSCQ30|SoundcoreDesktop|Noiseclapper|soundcorebridge|victor-oliveira|DamienStaebler|CoreSound/i;
+const ALL_RENDERED = shell + dash + devices + eq + controls + settings + about;
+check('no third-party project names in any rendered page', !THIRD_PARTY_NAMES.test(ALL_RENDERED), ALL_RENDERED.slice(0, 200));
+check('protocol provenance pointer stays in About (PROTOCOL.md)', about.includes('PROTOCOL.md'));
+
 /* ======================================================================== */
 /* Connected-state L/R rendering (Pass 4 §23)                                */
 /*                                                                           */
