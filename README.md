@@ -193,9 +193,15 @@ None of these need Windows, Bluetooth hardware, or an Electron binary; the
 emulated helper (`scripts/emulated_bridge.py`) is test data only and is never
 packaged into the installer.
 
+Physical Soundcore hardware has **not** been validated in the development
+sandbox — [`HARDWARE-VALIDATION.md`](HARDWARE-VALIDATION.md) is the step-by-step
+checklist (pairing → discovery → connection → battery → ANC → EQ → disconnect →
+reconnect → multi-device → shutdown) for verifying the app against real devices
+on a Windows machine, with the evidence to record at each step.
+
 ### App icon (SC monogram)
-Every shipped icon raster — window, taskbar, desktop shortcut, installer,
-system tray and browser-tab favicon — is rendered from one vector source,
+Every shipped icon raster — window, taskbar, desktop shortcut, installer and
+browser-tab favicon — is rendered from one vector source,
 `assets/icon/sc-monogram.svg`:
 
 ```bash
