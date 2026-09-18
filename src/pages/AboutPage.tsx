@@ -108,9 +108,11 @@ export function AboutSection() {
               the repository for the full text.
             </p>
             <p className="mt-2 text-xs leading-relaxed text-mute">
-              Protocol knowledge is derived from public community research (OpenSCQ30,
-              SoundcoreDesktop, Noiseclapper-GNOME, soundcorebridge and others), credited frame by
-              frame in <span className="font-mono text-[11px] text-ink/80">PROTOCOL.md</span>.
+              Protocol knowledge was reverse-engineered from publicly captured device traffic
+              published by the community, and every frame this app sends is credited back to its
+              capture in{' '}
+              <span className="font-mono text-[11px] text-ink/80">PROTOCOL.md</span> — the full
+              provenance record, source by source, lives there.
             </p>
             <p className="mt-3 rounded-lg border border-edge bg-sunken px-3 py-2.5 text-[11px] leading-relaxed text-faint">
               SoundControl is an independent, unofficial project. It is not affiliated with,
