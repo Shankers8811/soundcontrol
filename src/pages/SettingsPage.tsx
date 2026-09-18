@@ -1,34 +1,29 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../state/store';
-import {
-  getAppVersion,
-  getSettings,
-  isDesktop,
-  openLogFolder,
-  setSetting,
-  type DesktopSettings,
-} from '../lib/appSettings';
+import { getAppVersion, isDesktop, openLogFolder } from '../lib/appSettings';
 import { HexConsole } from '../components/HexConsole';
 import { IconFolder, IconSound, IconTerminal, IconWindows } from '../components/Icons';
-import { Button, Card, InlineError, InlineSuccess, PageHeader, SettingsRow, Toggle } from '../components/ui';
+import { Button, Card, PageHeader, SettingsRow, Toggle } from '../components/ui';
 
 /**
  * Settings page (PART P) — every control really does something:
  *
  *  - Interface sounds: local UI feedback beeps, persisted (localStorage).
- *  - Launch at login: real `app.setLoginItemSettings` in the main process,
- *    persisted to %AppData%\soundcontrol\settings.json, re-applied at every
- *    startup — survives restarts because Windows itself stores it.
- *  - Minimize to tray: real Tray + close interception in the main process,
- *    persisted the same way (default off).
+ *  - Startup & exit: states the fixed release policy (the app never starts
+ *    with Windows and quits completely when the window is closed). It is a
+ *    statement, not a toggle — the behaviour is enforced in the main process
+ *    (autostart.cjs) and deliberately cannot be switched off.
  *  - Open log folder: real `shell.openPath` on the userData directory that
  *    holds main.log.
  *  - Diagnostics console: the real TX/RX/sys log with JSON/CSV export.
  *
- * Nothing here is a decorative switch: rows that need the desktop shell are
- * disabled with an explicit reason in plain browser mode, and there is no
- * theme/accent/updater row because the app has exactly one approved theme
- * and no update channel — a fake one would violate the no-fake-UI rule.
+ * Launch-at-login and minimize-to-tray existed in older versions and were
+ * removed for the release: a desktop utility must not survive its own window
+ * or sneak into Windows startup. Nothing here is a decorative switch: rows
+ * that need the desktop shell are disabled with an explicit reason in plain
+ * browser mode, and there is no theme/accent/updater row because the app has
+ * exactly one approved theme and no update channel — a fake one would
+ * violate the no-fake-UI rule.
  */
 
 const DESKTOP_ONLY_NOTE = 'Available in the SoundControl Windows desktop app.';
@@ -37,10 +32,6 @@ export function SettingsPage() {
   const app = useApp();
   const desktop = isDesktop();
 
-  const [settings, setSettings] = useState<DesktopSettings | null>(null);
-  const [pendingKey, setPendingKey] = useState<keyof DesktopSettings | null>(null);
-  const [settingsError, setSettingsError] = useState<string | null>(null);
-  const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const [folderOpened, setFolderOpened] = useState<boolean | null>(null);
   const [version, setVersion] = useState<string | null>(null);
   const [consoleOpen, setConsoleOpen] = useState(false);
@@ -48,9 +39,6 @@ export function SettingsPage() {
   useEffect(() => {
     let stopped = false;
     if (desktop) {
-      void getSettings().then((s) => {
-        if (!stopped) setSettings(s);
-      });
       void getAppVersion().then((v) => {
         if (!stopped) setVersion(v);
       });
@@ -59,32 +47,6 @@ export function SettingsPage() {
       stopped = true;
     };
   }, [desktop]);
-
-  const apply = useCallback(
-    async (key: keyof DesktopSettings, value: boolean) => {
-      setPendingKey(key);
-      setSettingsError(null);
-      setSavedNotice(null);
-      const confirmed = await setSetting(key, value);
-      setPendingKey(null);
-      if (!confirmed) {
-        setSettingsError(`Could not change "${key}" — the desktop app did not confirm the write.`);
-        return;
-      }
-      // The main process is the source of truth: render what it confirmed.
-      setSettings(confirmed);
-      setSavedNotice(
-        key === 'launchAtLogin'
-          ? confirmed.launchAtLogin
-            ? 'SoundControl will start with Windows.'
-            : 'Launch at login removed from Windows.'
-          : confirmed.minimizeToTray
-            ? 'Closing the window now minimizes to the tray.'
-            : 'Closing the window now quits SoundControl.',
-      );
-    },
-    [],
-  );
 
   return (
     <div>
@@ -99,9 +61,6 @@ export function SettingsPage() {
       />
 
       <div className="max-w-3xl space-y-4">
-        {settingsError && <InlineError message={settingsError} onDismiss={() => setSettingsError(null)} />}
-        {savedNotice && <InlineSuccess message={savedNotice} />}
-
         {/* -------------------------------------------------- application */}
         <Card title="Application">
           <div className="-mx-5 -my-4">
@@ -117,39 +76,12 @@ export function SettingsPage() {
               }
             />
             <SettingsRow
-              title="Launch at login"
-              sub={
-                desktop
-                  ? 'Registers SoundControl in the Windows startup entries (registry, per user). Applies on the next sign-in.'
-                  : 'Start SoundControl automatically when Windows starts'
-              }
-              disabled={!desktop}
-              disabledNote={!desktop ? DESKTOP_ONLY_NOTE : undefined}
+              title="Startup & exit"
+              sub="SoundControl never starts with Windows and quits completely when the window is closed — no tray, no background helper, no startup registration. A startup entry left by an older version is removed automatically at launch."
               control={
-                <Toggle
-                  label="Launch at login"
-                  checked={settings?.launchAtLogin ?? false}
-                  disabled={!desktop || pendingKey !== null}
-                  onChange={(on) => void apply('launchAtLogin', on)}
-                />
-              }
-            />
-            <SettingsRow
-              title="Minimize to tray"
-              sub={
-                desktop
-                  ? 'The close button hides SoundControl to the system tray instead of quitting; the tray menu offers Show and Quit.'
-                  : 'Keep SoundControl running in the system tray when the window is closed'
-              }
-              disabled={!desktop}
-              disabledNote={!desktop ? DESKTOP_ONLY_NOTE : undefined}
-              control={
-                <Toggle
-                  label="Minimize to tray"
-                  checked={settings?.minimizeToTray ?? false}
-                  disabled={!desktop || pendingKey !== null}
-                  onChange={(on) => void apply('minimizeToTray', on)}
-                />
+                <span className="rounded border border-edge bg-sunken px-2 py-1 text-[10px] font-medium text-mute">
+                  manual launch · quits on close
+                </span>
               }
             />
             <SettingsRow

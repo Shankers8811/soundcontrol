@@ -42,3 +42,5 @@ jobs:
         run: npm run test:ui
       - name: Startup/lifecycle e2e (emulated helper, fake RFCOMM)
         run: npm run test:e2e
+      - name: Main-process lifecycle (real helper kill/restart races, stubbed Electron)
+        run: npm run test:lifecycle

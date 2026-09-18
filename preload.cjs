@@ -8,12 +8,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // renderer can ask for it (context isolation), and only over this IPC
   // channel — it never appears in argv, the DOM, or devtools-accessible state.
   getBridgeToken: () => ipcRenderer.invoke('soundcontrol:bridge-token'),
-  // Desktop application surface used by the Settings/About pages. The main
-  // process validates every call (whitelisted setting keys, boolean values,
-  // fixed log-folder path), so the renderer can never steer these IPC
-  // channels anywhere else.
+  // Desktop application surface used by the Settings/About pages. There is
+  // deliberately no settings-write channel: startup/tray behaviour is a fixed
+  // product policy enforced by the main process (autostart.cjs), not a
+  // user-toggleable setting, so nothing in the renderer can alter it.
   getAppVersion: () => ipcRenderer.invoke('soundcontrol:app-version'),
-  getSettings: () => ipcRenderer.invoke('soundcontrol:get-settings'),
-  setSetting: (key, value) => ipcRenderer.invoke('soundcontrol:set-setting', key, value),
   openLogFolder: () => ipcRenderer.invoke('soundcontrol:open-log-folder'),
 });

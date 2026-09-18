@@ -37,6 +37,29 @@ jobs:
           test -f release/win-unpacked/resources/python/python.exe
           ls -la release/win-unpacked/resources/python | head -15
           echo "Bundled runtime present in the CI artifact."
+      # Release-size policy: the COMPLETE Windows package (installer and
+      # unpacked app) must stay under 500 MB with margin. Measured from the
+      # real electron-builder output on this Windows runner — never from
+      # source, node_modules or git sizes.
+      - name: Measure release artifact sizes (500 MB gate)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function MB($bytes) { return [math]::Round($bytes / 1048576, 2) }
+          $installer = Get-ChildItem 'release\*.exe' | Sort-Object Length -Descending | Select-Object -First 1
+          if (-not $installer) { throw 'no NSIS installer found in release/' }
+          $unpacked = (Get-ChildItem 'release\win-unpacked' -Recurse -File | Measure-Object -Property Length -Sum).Sum
+          $pythonDir = 'release\win-unpacked\resources\python'
+          $python = 0
+          if (Test-Path $pythonDir) { $python = (Get-ChildItem $pythonDir -Recurse -File | Measure-Object -Property Length -Sum).Sum }
+          $asar = Get-Item 'release\win-unpacked\resources\app.asar' -ErrorAction SilentlyContinue
+          Write-Host "SIZE installer=$($installer.Name) bytes=$($installer.Length) mb=$(MB $installer.Length)"
+          Write-Host "SIZE win-unpacked bytes=$unpacked mb=$(MB $unpacked)"
+          Write-Host "SIZE bundled-python bytes=$python mb=$(MB $python)"
+          if ($asar) { Write-Host "SIZE app-asar bytes=$($asar.Length) mb=$(MB $asar.Length)" }
+          if ($installer.Length -ge 524288000) { throw "NSIS installer is $(MB $installer.Length) MB - exceeds the 500 MB release limit" }
+          if ($unpacked -ge 524288000) { throw "win-unpacked is $(MB $unpacked) MB - exceeds the 500 MB release limit" }
+          Write-Host 'SIZE_GATE_PASS installer and win-unpacked are both under 500 MB'
       - uses: actions/upload-artifact@v4
         with:
           name: SoundControl-Windows
