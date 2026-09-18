@@ -42,6 +42,15 @@ function Get-SoundControlUninstallEntries {
   }
 }
 
+function Get-UninstallEntriesForDir {
+  param([Parameter(Mandatory = $true)] [string] $Dir)
+  # NSIS records differ between builds in which field carries the path, so any
+  # of them is acceptable evidence that the record belongs to this install.
+  Get-SoundControlUninstallEntries | Where-Object {
+    @($_.InstallLocation, $_.UninstallString, $_.DisplayIcon) -join ' ' -like "*$Dir*"
+  }
+}
+
 function Wait-ForExit {
   param([Parameter(Mandatory = $true)] [System.Diagnostics.Process] $Process, [int] $Seconds = 20)
   $deadline = (Get-Date).AddSeconds($Seconds)
@@ -90,7 +99,8 @@ $legacyName = 'com.soundcontrol.desktop'
 Stop-SoundControl
 Remove-Item -LiteralPath $installDir -Recurse -Force -ErrorAction SilentlyContinue
 # Earlier steps in this job (the upgrade smoke) may leave their own uninstall
-# record behind, so count against that baseline instead of assuming zero.
+# record behind: remember how many exist so the uninstall can be held to "did
+# not leave extra records". Never assume the machine starts at zero.
 $baseline = @(Get-SoundControlUninstallEntries).Count
 
 try {
@@ -101,10 +111,16 @@ try {
   if (-not (Test-Path $exe)) { throw "clean install did not create $exe" }
   $python = Join-Path $installDir 'resources\python\python.exe'
   if (-not (Test-Path $python)) { throw "clean install is missing its bundled runtime at $python" }
+  # electron-builder registers one uninstall record per appId, so installing
+  # the same version again repoints the existing record instead of adding a
+  # second one. Assert on the record that now references this install dir
+  # rather than on a total count.
   $entry = @(Get-SoundControlUninstallEntries)
-  if ($entry.Count -ne ($baseline + 1)) { throw "expected $($baseline + 1) uninstall entries after the clean install, found $($entry.Count)" }
-  $mine = $entry | Where-Object { $_.InstallLocation -like "$installDir*" } | Select-Object -First 1
-  if (-not $mine) { throw "the clean install recorded no uninstall entry pointing at $installDir" }
+  $mine = @(Get-UninstallEntriesForDir -Dir $installDir) | Select-Object -First 1
+  if (-not $mine) {
+    $seen = ($entry | ForEach-Object { "[$($_.PSChildName) -> $($_.InstallLocation)$($_.UninstallString)]" }) -join ' '
+    throw "the clean install recorded no uninstall entry pointing at $installDir (found $($entry.Count) entries: $seen)"
+  }
   Write-Host "INSTALL_OK clean install created $exe (bundled runtime present, uninstall entry recorded, version $($mine.DisplayVersion))"
 
   $leftRunKey = $null
@@ -132,9 +148,11 @@ try {
   }
 
   $deadline = (Get-Date).AddSeconds(30)
-  while ((@(Get-SoundControlUninstallEntries).Count -gt $baseline) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
-  $leftEntries = @(Get-SoundControlUninstallEntries | Where-Object { $_.InstallLocation -like "$installDir*" })
-  if ($leftEntries.Count -ne 0) { throw "uninstall left $($leftEntries.Count) uninstall registry entries behind" }
+  while ((@(Get-UninstallEntriesForDir -Dir $installDir).Count -gt 0) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
+  $leftEntries = @(Get-UninstallEntriesForDir -Dir $installDir)
+  if ($leftEntries.Count -ne 0) { throw "uninstall left $($leftEntries.Count) uninstall registry entries pointing at $installDir" }
+  $after = @(Get-SoundControlUninstallEntries).Count
+  if ($after -gt $baseline) { throw "uninstall left $($after - $baseline) extra uninstall registry entries behind" }
 
   Stop-SoundControl
   if (Get-Helper) { throw 'a Python helper survived the uninstall' }
