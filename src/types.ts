@@ -33,8 +33,14 @@ export interface BatteryState {
   // No case level on purpose: many Soundcore models never report one (the
   // official app hides it too) and over-ears have no case, so displaying a
   // number here would mostly show guesses.
-  /** Null means the values are already percentages (for example Windows PnP). */
-  batteryScale?: number | null;
+  /**
+   * Null means the values are already percentages (for example Windows PnP).
+   * 'unknown' means the device model — and with it the raw-level scale — is
+   * not known: the raw levels may be kept for presence, but NO percentage may
+   * ever be derived from them (a scale-5 level read against scale 10 shows
+   * half the real charge, and vice versa shows double).
+   */
+  batteryScale?: number | null | 'unknown';
   /** Reported only when the Soundcore telemetry identifies each TWS side. */
   presence?: EarbudPresence;
 }
@@ -110,8 +116,13 @@ export interface DeviceProfile {
   wind: boolean;
   /** Model has the `02:86` 3D surround toggle. */
   surround: boolean;
-  /** Raw Soundcore battery levels are often 0..5 or 0..10, not percentages. */
-  batteryMax: number;
+  /**
+   * Raw Soundcore battery levels are often 0..5 or 0..10, not percentages.
+   * Null ONLY for the unidentified-model profile: without a proven scale a
+   * raw level must never be converted to a percentage — the UI shows the
+   * honest "Battery unavailable" state instead of a precise-looking guess.
+   */
+  batteryMax: number | null;
   names: string[];
   ancLayout: AncLayout;
   eqCommand: EqCommand | null;

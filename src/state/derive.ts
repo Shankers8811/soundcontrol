@@ -127,8 +127,13 @@ export function batteryLevel(value: number | undefined): number | null {
  * than rescaled, so firmware that reports percents in a 0..5 slot degrades
  * gracefully instead of showing 1700%.
  */
-export function batteryPercent(level: number | null, scale: number | null | undefined): number | null {
+export function batteryPercent(level: number | null, scale: number | null | undefined | 'unknown'): number | null {
   if (level === null || level === undefined) return null;
+  // 'unknown' scale: the device model is unidentified, so the raw level
+  // cannot be interpreted — neither as scale-5 nor scale-10 nor as a
+  // percent. A precise-looking number here would be a guess; the honest
+  // answer is "unavailable" (raw levels stay visible in diagnostics).
+  if (scale === 'unknown') return null;
   if (scale === null || scale === undefined || level > scale) {
     return Math.max(0, Math.min(100, Math.round(level)));
   }
@@ -213,8 +218,11 @@ export interface BatteryFrame {
   /** Only `01:01`/`01:04` carry charging bits; `01:03` leaves them unset. */
   chargingLeft?: boolean;
   chargingRight?: boolean;
-  /** The model's raw-level maximum (0..5 / 0..10), or null for percents. */
-  scale: number | null;
+  /**
+   * The model's raw-level maximum (0..5 / 0..10), null for percents, or
+   * 'unknown' when the device model — and therefore the scale — is unknown.
+   */
+  scale: number | null | 'unknown';
 }
 
 /**

@@ -59,7 +59,7 @@ try {
         export { Sidebar } from './src/components/Sidebar.tsx';
         export { EarbudStatusCard } from './src/components/EarbudStatusCard.tsx';
         export { deriveCapabilities, deriveEarbudState } from './src/state/derive.ts';
-        export { DEVICES } from './src/protocol/devices.ts';
+        export { DEVICES, UNKNOWN_PROFILE } from './src/protocol/devices.ts';
         export { DashboardPage } from './src/pages/DashboardPage.tsx';
         export { DevicesPage } from './src/pages/DevicesPage.tsx';
         export { EqualizerPage } from './src/pages/EqualizerPage.tsx';
@@ -220,13 +220,15 @@ check('unofficial-project disclaimer', about.includes('not affiliated with'));
 
 console.log('\n[earbud card] connected-state L/R rendering (all six states)');
 
-const { AppContext, EarbudStatusCard, DEVICES: RD, deriveCapabilities: rc, deriveEarbudState: des } = M;
+const { AppContext, EarbudStatusCard, DEVICES: RD, UNKNOWN_PROFILE: UNKP, deriveCapabilities: rc, deriveEarbudState: des } = M;
 const twsCaps = rc(RD.find((d) => d.id === 'liberty-4-nc'));
 const overEarCaps = rc(RD.find((d) => d.id === 'q45'));
 
 function renderCard(battery, caps, connected = true) {
   const earbudState = des(battery, caps);
-  const ctx = { connected, earbudState };
+  // Mirror the real AppState shape: the card reads app.battery (scale
+  // unknown-ness) alongside the derived earbudState.
+  const ctx = { connected, earbudState, battery };
   return renderToStaticMarkup(
     React.createElement(AppContext.Provider, { value: ctx }, React.createElement(EarbudStatusCard)),
   );
@@ -278,6 +280,18 @@ check('unavailable: no side labels or percents leaked', !unavailHtml.includes('L
 // state as the truth (defense in depth).
 const staleHtml = renderCard({ left: 100, right: 90, batteryScale: null, presence: 'left' }, twsCaps);
 check('stale right=90 in state + presence left → right shows no percent', !staleHtml.includes('90%') && staleHtml.includes('>Disconnected<'));
+
+// UNKNOWN MODEL (Pass 10 §1): raw levels exist and presence is known, but the
+// scale is unproven — the card must render the honest "Battery unavailable"
+// and NEVER a percentage (raw 4 would be 80% on scale-5, 40% on scale-10).
+const unkCaps = rc(UNKP);
+const unkHtml = renderCard({ left: 4, right: null, batteryScale: 'unknown', presence: 'left' }, unkCaps);
+check('unknown-scale: connected side shows "Battery unavailable"', unkHtml.includes('Battery unavailable'));
+check('unknown-scale: NO percentage rendered anywhere', !/\d+%/.test(unkHtml), unkHtml.replace(/></g, '> <').slice(0, 300));
+check('unknown-scale: no misleading "pending" promise', !unkHtml.includes('Battery pending'));
+check('unknown-scale: presence still renders (left Connected, right Disconnected)', unkHtml.includes('>Connected<') && unkHtml.includes('>Disconnected<'));
+check('unknown-scale: accessible name says battery unavailable', unkHtml.includes('Left earbud connected, battery unavailable (model unknown)'));
+check('unknown-scale: profile claims per-side presence but no ANC/EQ', unkCaps.supportsEarbudState === true && unkCaps.supportsNoiseControl === false && unkCaps.supportsEqualizer === false);
 
 /* ======================================================================== */
 /* Shipped icon assets (Pass 5) — single vector source, consistent rasters   */
