@@ -316,8 +316,14 @@ From OpenSCQ30's device definitions and i18n names; `verified` in
 SKU traps worth knowing: **A3959 is both the P30i and the R50i NC** while
 **A3949 is the R50i without NC** — matching by name alone attaches the wrong
 sound-mode layout, so the app ranks aliases longest-first. Liberty 4 (A3953),
-Sport X10 (A3961) and Sleep A10 (A6610) have **no** OpenSCQ30 profile; they
-resolve to the nearest verified one and the UI says so.
+Sport X10 (A3961) and Sleep A10 (A6610) have **no** OpenSCQ30 profile, and an
+approximate marketing name is not evidence — Liberty 4 (A3953) is a different
+product from Liberty 4 NC (A3947). These names therefore resolve to the
+unknown-model profile (protocol-universal reads only: firmware/serial and
+earbud presence, never battery percentages or model-specific controls) and
+the UI explains why. If a capture ever verifies one of these layouts, it gets
+promoted to a full profile row with its own evidence — not a resolves-to
+fallback.
 
 ## Appendix A — Android BLE captures (decode-only reference)
 
