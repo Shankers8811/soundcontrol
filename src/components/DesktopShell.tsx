@@ -1,5 +1,5 @@
+import { useEffect } from 'react';
 import { useApp } from '../state/store';
-import { AboutPage } from '../pages/AboutPage';
 import { ControlsPage } from '../pages/ControlsPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { DevicesPage } from '../pages/DevicesPage';
@@ -13,9 +13,31 @@ import { InlineError } from './ui';
  * Page switches are pure React state changes (no window reload); the keyed
  * wrapper replays a 180ms fade/slide, and all application state lives in the
  * provider above this component, so it survives navigation.
+ *
+ * Pass 8 IA: five pages — About is a Settings section, not a route. The
+ * theme preference (Settings → Appearance) resolves here to a concrete
+ * `data-theme="dark|light"` on <html>; 'system' follows the OS preference
+ * live via matchMedia, so the CSS only ever sees the two real themes.
  */
 export function DesktopShell() {
   const app = useApp();
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const mq =
+      typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-color-scheme: light)')
+        : null;
+    const apply = () => {
+      const effective =
+        app.theme === 'system' ? (mq?.matches ? 'light' : 'dark') : app.theme;
+      root.dataset.theme = effective;
+    };
+    apply();
+    if (app.theme !== 'system' || !mq) return;
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, [app.theme]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg text-ink">
@@ -38,7 +60,6 @@ export function DesktopShell() {
             {app.page === 'equalizer' && <EqualizerPage />}
             {app.page === 'controls' && <ControlsPage />}
             {app.page === 'settings' && <SettingsPage />}
-            {app.page === 'about' && <AboutPage />}
           </div>
         </main>
       </div>

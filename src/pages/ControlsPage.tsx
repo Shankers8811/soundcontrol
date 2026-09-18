@@ -11,17 +11,22 @@ import {
   IconSurround,
 } from '../components/Icons';
 import { Button, Card, Modal, PageHeader, StatusBadge, Toggle, UnavailableNote } from '../components/ui';
+import { NoiseControl } from '../components/NoiseControl';
 import type { ReactNode } from 'react';
 
 /**
- * Controls page (PART O) — only real device operations.
+ * Noise Control page (PART O, Pass 8 IA — formerly "Controls") — only real
+ * device operations.
  *
- * Every toggle here sends a documented, captured frame (01:87/10:85 gaming,
- * 02:86 surround, 0B:84 dual, 01:7F/01:FF LDAC) and rolls back if the write
- * fails. Gesture remapping is NOT offered: no public capture or OpenSCQ30
- * command documents a button-mapping write, so the page says exactly that
- * instead of rendering decorative controls. The earbud illustration is
- * purely visual (aria-hidden, no handlers).
+ * The page leads with the existing NoiseControl component (ANC modes, level
+ * and scenes — the same component Home renders, single implementation), then
+ * the model's real feature switches. Every toggle here sends a documented,
+ * captured frame (01:87/10:85 gaming, 02:86 surround, 0B:84 dual,
+ * 01:7F/01:FF LDAC) and rolls back if the write fails. Gesture remapping is
+ * NOT offered: no public capture or OpenSCQ30 command documents a
+ * button-mapping write, so the page says exactly that instead of rendering
+ * decorative controls. The earbud illustration is purely visual (aria-hidden,
+ * no handlers).
  */
 
 function FeatureToggle({
@@ -85,7 +90,7 @@ export function ControlsPage() {
   return (
     <div>
       <PageHeader
-        title="Controls"
+        title="Noise Control"
         sub={
           <>
             <StatusBadge phase={app.connectionPhase} />
@@ -96,6 +101,12 @@ export function ControlsPage() {
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <div className="space-y-4 xl:col-span-7">
+          {/* --------------------------------------------- noise control */}
+          {/* The same real ANC component Home shows — modes, level, scenes,
+              capability gating and rollback are all inherited, nothing is
+              duplicated or re-implemented here. */}
+          <NoiseControl />
+
           {/* ---------------------------------------------------- features */}
           <Card
             title="Device features"
