@@ -197,7 +197,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         typeof d === 'object' &&
         d !== null &&
         typeof (d as { mac?: unknown }).mac === 'string' &&
-        typeof (d as { name?: unknown }).name === 'string',
+        (d as { mac: string }).mac.length > 0 &&
+        typeof (d as { name?: unknown }).name === 'string' &&
+        (d as { name: string }).name.length > 0,
     );
   });
   // The low-battery nudge should fire once per connection, not every poll.
@@ -404,16 +406,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
           rawRight,
           chargingLeft,
           chargingRight,
-          scale: profileRef.current.batteryMax,
+          // An unidentified model has no proven scale: levels stay raw and
+          // every percent readout degrades to the honest "unavailable".
+          scale: profileRef.current.batteryMax ?? 'unknown',
         }),
       );
 
       // One quiet nudge per connection when any reported side drops under 20%.
-      const scale = profileRef.current.batteryMax || 5;
-      const low = [batteryLevel(rawLeft), batteryLevel(rawRight)]
-        .filter((v): v is number => v !== null)
-        .map((v) => (v / scale) * 100)
-        .filter((p) => p < 20);
+      // Never for an unidentified model: without a proven scale the "20%"
+      // threshold itself would be a guess (raw 4 is 80% on scale-5, 40% on
+      // scale-10) — the nudge stays silent instead of warning with a
+      // fabricated percentage.
+      const scale = profileRef.current.batteryMax;
+      const low =
+        scale === null
+          ? []
+          : [batteryLevel(rawLeft), batteryLevel(rawRight)]
+              .filter((v): v is number => v !== null)
+              .map((v) => (v / scale) * 100)
+              .filter((p) => p < 20);
       if (!lowBatteryWarned.current && low.length > 0) {
         lowBatteryWarned.current = true;
         pushLog(
@@ -517,7 +528,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         pushLog(
           'sys',
           '',
-          `${nextProfile.name} takes its equalizer over the model-specific 03:87 HearID frame, which SoundControl does not send — EQ is disabled for this model.`,
+          nextProfile.id === 'unknown'
+            ? 'The device model could not be identified, so SoundControl sends no equalizer frames — EQ stays disabled until the model is known. No payload is ever guessed.'
+            : `${nextProfile.name} takes its equalizer over the model-specific 03:87 HearID frame, which SoundControl does not send — EQ is disabled for this model.`,
         );
       }
       try {
@@ -936,7 +949,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         pushLog(
           'sys',
           '',
-          `${profile.name} takes its equalizer over the model-specific 03:87 HearID frame; SoundControl does not guess that payload, so nothing was sent.`,
+          profile.id === 'unknown'
+            ? 'The device model is unknown, so SoundControl does not guess an equalizer payload — nothing was sent.'
+            : `${profile.name} takes its equalizer over the model-specific 03:87 HearID frame; SoundControl does not guess that payload, so nothing was sent.`,
         );
         return;
       }

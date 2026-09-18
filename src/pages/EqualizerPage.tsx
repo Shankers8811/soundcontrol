@@ -54,14 +54,24 @@ export function EqualizerPage() {
         supported={caps.supportsEqualizer}
         noteTitle="The equalizer is not available on this model"
         note={
-          <>
-            {app.profile.name} ({app.profile.sku}) receives its equalizer through the
-            model-specific <code className="font-mono text-ink/80">03:87</code> HearID frame, which
-            embeds a personalised per-device curve. No public, labelled capture of that frame
-            exists for the supported models, and a guessed payload could overwrite the hearing
-            profile the Soundcore phone app measured — so SoundControl does not send it and shows
-            no EQ controls for this model. Use the Soundcore mobile app for its equalizer.
-          </>
+          app.profile.id === 'unknown' ? (
+            <>
+              This device’s model could not be identified. Equalizer commands and byte layouts
+              differ per model, and SoundControl never guesses a payload for unknown firmware — a
+              wrong frame could overwrite a personalised hearing profile. EQ stays disabled until
+              the model is known (a Windows-readable device name, a previous connection, or a
+              manual profile override on the Devices page).
+            </>
+          ) : (
+            <>
+              {app.profile.name} ({app.profile.sku}) receives its equalizer through the
+              model-specific <code className="font-mono text-ink/80">03:87</code> HearID frame, which
+              embeds a personalised per-device curve. No public, labelled capture of that frame
+              exists for the supported models, and a guessed payload could overwrite the hearing
+              profile the Soundcore phone app measured — so SoundControl does not send it and shows
+              no EQ controls for this model. Use the Soundcore mobile app for its equalizer.
+            </>
+          )
         }
       >
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">

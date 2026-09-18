@@ -381,14 +381,76 @@ const RANKED_UNVERIFIED: Array<{ alias: string; resolvesTo: string; note: string
     a.names.map((n) => ({ alias: n.toLowerCase(), resolvesTo: a.resolvesTo, note: a.note })),
   ).sort((a, b) => b.alias.length - a.alias.length);
 
+/**
+ * The unidentified-model profile (Pass 10 §1/§2/§5).
+ *
+ * A device whose name matched nothing in the table is NOT a P30i, NOT an
+ * R50i and NOT any other row: borrowing a real model's profile would guess
+ * its battery scale (a scale-5 level shown against scale 10 reads as half
+ * the real charge), its ANC byte layout and its capabilities. This profile
+ * therefore claims only what the protocol documents for EVERY device:
+ *
+ *  - `01:05` firmware/serial (implemented by all supported models),
+ *  - the `01:03` battery-query presence layout — byte0 left, byte1 right
+ *    (TWS) or one level (over-ear), `0xFF` = side absent (PROTOCOL.md,
+ *    OpenSCQ30 `request_battery_level.rs`) — presence only, never percent:
+ *    `batteryMax: null` keeps the raw-level scale unproven, so the UI shows
+ *    "Battery unavailable" instead of a precise-looking guess,
+ *  - the shared TWS state-blob head (battery at 2/3) for spontaneous
+ *    `01:01` updates — again presence-level information only; charging,
+ *    EQ and sound-mode offsets stay null because no layout is proven.
+ *
+ * Everything model-specific is disabled: no ANC controls (layout unknown —
+ * sending a guessed `06:81` would silently set the wrong state), no EQ, no
+ * gaming/surround/dual/LDAC toggles. Identity can still arrive later (scan
+ * name, persisted recents, manual profile override); until then the model
+ * stays unknown rather than inferred. Deliberately NOT part of `DEVICES`,
+ * so the preview picker and the model-table tests keep enumerating only
+ * real, documented devices.
+ */
+export const UNKNOWN_PROFILE: DeviceProfile = {
+  id: 'unknown',
+  name: 'Unknown model',
+  sku: '—',
+  kind: 'earbuds',
+  family: 'tws',
+  gaming: false,
+  ancLevels: false,
+  scenes: false,
+  ldac: false,
+  dual: false,
+  surround: false,
+  wind: false,
+  transparency: false,
+  batteryMax: null,
+  names: [],
+  ancLayout: 'none',
+  eqCommand: null,
+  state: {
+    batteryLeft: 2,
+    batteryRight: 3,
+    batteryChargingLeft: null,
+    batteryChargingRight: null,
+    batteryCase: null,
+    firmware: null,
+    serial: null,
+    eqPresetId: null,
+    eqBands: null,
+    soundModes: null,
+  },
+  source:
+    'No identity: protocol-universal reads only (01:05, 01:03 presence per PROTOCOL.md). Battery scale unproven — percentages stay unavailable.',
+  verified: false,
+};
+
 export function matchDevice(name: string | undefined | null): DeviceProfile {
-  if (!name) return DEVICES[0];
+  if (!name) return UNKNOWN_PROFILE;
   const n = name.toLowerCase();
   const hit = RANKED_ALIASES.find((a) => n.includes(a.alias));
-  if (hit) return DEVICES.find((d) => d.id === hit.id) ?? DEVICES[0];
+  if (hit) return DEVICES.find((d) => d.id === hit.id) ?? UNKNOWN_PROFILE;
   const alias = RANKED_UNVERIFIED.find((a) => n.includes(a.alias));
-  if (alias) return DEVICES.find((d) => d.id === alias.resolvesTo) ?? DEVICES[0];
-  return DEVICES[0];
+  if (alias) return DEVICES.find((d) => d.id === alias.resolvesTo) ?? UNKNOWN_PROFILE;
+  return UNKNOWN_PROFILE;
 }
 
 /** Explanatory note when the match came from an unverified alias. */
@@ -396,5 +458,14 @@ export function matchNote(name: string | undefined | null): string | null {
   if (!name) return null;
   const n = name.toLowerCase();
   if (RANKED_ALIASES.some((a) => n.includes(a.alias))) return null;
-  return RANKED_UNVERIFIED.find((a) => n.includes(a.alias))?.note ?? null;
+  const alias = RANKED_UNVERIFIED.find((a) => n.includes(a.alias));
+  if (alias) return alias.note;
+  // Nothing matched at all: the device runs on the unidentified-model
+  // profile. Tell the user why battery percentages (and model-specific
+  // controls) stay unavailable instead of letting it look broken.
+  return (
+    'This device’s model could not be identified, so SoundControl uses its generic profile: ' +
+    'firmware, serial and earbud presence still come from the device, but battery percentages ' +
+    'and model-specific controls stay unavailable — a raw level is never shown against a guessed scale.'
+  );
 }

@@ -90,6 +90,9 @@ const {
   nextScanState,
   INITIAL_SCAN_STATE,
   EMPTY_SCAN_MESSAGE,
+  matchDevice,
+  matchNote,
+  UNKNOWN_PROFILE,
 } = M;
 
 const byId = (id) => DEVICES.find((d) => d.id === id);
@@ -381,6 +384,68 @@ eq('background health probe flips helper online without touching scan status', [
 const s7 = nextScanState(s6, { type: 'helper', online: false });
 eq('health probe can also report offline', s7.helper, 'offline');
 
+/* ------------------------------- unknown model: ambiguous battery rule */
+
+console.log('\n[13] unknown-model identity + battery ambiguity (Pass 10 §1-§5)');
+
+// The unidentified-model profile: no scale, no model-specific capability.
+eq('unknown profile has an unproven battery scale', [UNKNOWN_PROFILE.id, UNKNOWN_PROFILE.batteryMax, UNKNOWN_PROFILE.verified], ['unknown', null, false]);
+
+// Identity resolution: fallbacks must land on UNKNOWN, never on a real model.
+eq('empty name → unknown profile (no guessed identity)', matchDevice('').id, 'unknown');
+eq('null name → unknown profile', matchDevice(null).id, 'unknown');
+eq('raw MAC → unknown profile (no MAC→model inference)', matchDevice('AA:BB:CC:DD:EE:01').id, 'unknown');
+eq('generic "soundcore" → unknown profile', matchDevice('soundcore').id, 'unknown');
+eq('real name still resolves to its documented model', matchDevice('Soundcore Liberty 4 NC').id, 'liberty-4-nc');
+check('unknown identity carries an explanatory note', /could not be identified/.test(matchNote('AA:BB:CC:DD:EE:01') ?? ''), String(matchNote('AA:BB:CC:DD:EE:01')).slice(0, 120));
+eq('verified model match produces no note', matchNote('Soundcore Liberty 4 NC'), null);
+
+// §3 percent matrix: known scales interpret, unknown NEVER converts.
+eq('known scale-5 model: raw 4 → 80%', batteryPercent(4, 5), 80);
+eq('known scale-10 model: raw 4 → 40%', batteryPercent(4, 10), 40);
+eq('unknown model: raw 4 → unavailable (neither 40 nor 80)', batteryPercent(4, 'unknown'), null);
+eq('unknown model: raw 0 → unavailable (no invented 0%)', batteryPercent(0, 'unknown'), null);
+eq('unknown model: raw 5 → unavailable', batteryPercent(5, 'unknown'), null);
+eq('Windows PnP percent passthrough preserved (scale null)', batteryPercent(73, null), 73);
+
+// Wire-level rules are scale-independent and stay exactly as documented.
+eq('0xFF remains "side absent", never 0%', batteryLevel(0xff), null);
+eq('level above 100 remains invalid noise', batteryLevel(173), null);
+eq('presence: 0xFF right → left-only under any scale', presenceFromRaw(4, 0xff), 'left');
+eq('presence: noise bytes → unknown, not disconnected', presenceFromRaw(173, 200), 'unknown');
+
+// Transition: known (scale-5, 80/80) → unknown model telemetry. No stale
+// percentage may survive; presence truth from the wire is kept.
+const prevKnown = mergeBatteryTelemetry(emptyBattery(), { rawLeft: 4, rawRight: 4, scale: 5 });
+eq('known device reads 80/80 before the transition', [batteryPercent(prevKnown.left, prevKnown.batteryScale), batteryPercent(prevKnown.right, prevKnown.batteryScale)], [80, 80]);
+const afterUnknown = mergeBatteryTelemetry(prevKnown, { rawLeft: 4, rawRight: 0xff, scale: 'unknown' });
+eq('known→unknown drops every percentage', [batteryPercent(afterUnknown.left, afterUnknown.batteryScale), batteryPercent(afterUnknown.right, afterUnknown.batteryScale)], [null, null]);
+eq('known→unknown keeps wire presence (left present, right absent)', afterUnknown.presence, 'left');
+eq('absent side keeps no stale level', afterUnknown.right, null);
+
+// Per-side UI state for the unknown model: presence renders, percent does not.
+const capsU = deriveCapabilities(UNKNOWN_PROFILE);
+const esU = deriveEarbudState(afterUnknown, capsU);
+eq('unknown model: left connected with NO percentage', [esU.left.state, esU.left.battery], ['connected', null]);
+eq('unknown model: right disconnected per the 0xFF rule', [esU.right.state, esU.right.battery], ['disconnected', null]);
+eq('unknown model still exposes per-side presence (documented 01:03 layout)', [capsU.supportsEarbudState, capsU.supportsPerEarbudBattery], [true, true]);
+
+// §2.4/§7: only genuinely universal operations remain for unknown models.
+eq('unknown model claims no ANC/EQ/gaming/surround/dual/LDAC', [capsU.supportsNoiseControl, capsU.supportsEqualizer, capsU.supportsGaming, capsU.supportsSurround, capsU.supportsDual, capsU.supportsLdac], [false, false, false, false, false, false]);
+eq('unknown model keeps the universal 01:05 firmware read', capsU.supportsFirmwareInfo, true);
+eq('unknown profile sends no sound-mode layout', parseSoundModes(new Uint8Array([0, 0x50]), UNKNOWN_PROFILE.ancLayout), null);
+
+// Unknown model + garbage bytes: presence degrades to unknown, no levels.
+const garbage = mergeBatteryTelemetry(emptyBattery(), { rawLeft: 173, rawRight: 200, scale: 'unknown' });
+eq('unknown model + noise → unknown presence, no levels', [garbage.presence, garbage.left, garbage.right], ['unknown', null, null]);
+
+// Identity becomes known (override/reconnect with a real name): the profile
+// — and only then the percentage interpretation — becomes available.
+const promoted = matchDevice('soundcore Liberty 4 NC');
+eq('identity resolution promotes to the real model', [promoted.id, promoted.batteryMax], ['liberty-4-nc', 5]);
+const afterKnown = mergeBatteryTelemetry(afterUnknown, { rawLeft: 4, rawRight: 4, scale: promoted.batteryMax });
+eq('fresh telemetry under the known scale reads 80/80 again', [batteryPercent(afterKnown.left, afterKnown.batteryScale), batteryPercent(afterKnown.right, afterKnown.batteryScale)], [80, 80]);
+
 /* ------------------------------------------- update checker (Settings → Updates) */
 
 // Bundle src/lib/reporting.ts twice — once with the real build-time repo URL,
@@ -429,10 +494,13 @@ eq('compareVersions is numeric, v-prefix and length tolerant', [
 // Every check runs through a scripted fetch; the real one is restored after.
 const realFetch = globalThis.fetch;
 let fetchCalls = [];
+let fetchOpts = [];
 function stubFetch(handler) {
   fetchCalls = [];
-  globalThis.fetch = async (url) => {
+  fetchOpts = [];
+  globalThis.fetch = async (url, opts) => {
     fetchCalls.push(String(url));
+    fetchOpts.push(opts);
     return handler(String(url));
   };
 }
@@ -470,6 +538,17 @@ try {
   });
   r = await R.checkForUpdates('1.0.5');
   check('network failure → honest reachability error', r.kind === 'error' && /Could not reach GitHub/.test(r.message), JSON.stringify(r));
+
+  // The request is time-bounded: a hung GitHub connection must abort into
+  // the same honest error path instead of pinning the UI on "Checking…".
+  stubFetch(() => okJson({ tag_name: 'v1.0.0' }));
+  await R.checkForUpdates('1.0.5');
+  check('every update request carries an abort signal', fetchOpts.length === 1 && fetchOpts[0]?.signal instanceof AbortSignal, JSON.stringify(fetchOpts.map((o) => typeof o?.signal)));
+  stubFetch(() => {
+    throw new DOMException('The operation timed out.', 'TimeoutError');
+  });
+  r = await R.checkForUpdates('1.0.5');
+  check('request timeout → honest error, no fabricated state', r.kind === 'error' && /Could not reach GitHub/.test(r.message), JSON.stringify(r));
 
   stubFetch(() => okJson({}));
   r = await R.checkForUpdates('1.0.5');
