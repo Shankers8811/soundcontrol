@@ -14,6 +14,7 @@
     "fetch:python-embed": "node scripts/fetch-python-embed.mjs",
     "prebuild:win": "npm run fetch:python-embed",
     "verify:protocol": "node scripts/verify-protocol.mjs",
+    "verify:signing": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify-windows-signing.ps1",
     "test:bridge": "python3 scripts/test_bridge_probe.py",
     "test:ui": "node scripts/test_ui_state.mjs && node scripts/test_ui_render.mjs",
     "test:e2e": "node scripts/test_startup_e2e.mjs",
@@ -53,7 +54,13 @@
       "target": [
         "nsis"
       ],
-      "icon": "public/icon-512.png"
+      "icon": "public/icon-512.png",
+      "signtoolOptions": {
+        "signingHashAlgorithms": [
+          "sha256"
+        ],
+        "rfc3161TimeStampServer": "http://timestamp.digicert.com"
+      }
     },
     "nsis": {
       "oneClick": false,

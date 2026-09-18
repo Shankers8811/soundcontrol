@@ -8,11 +8,28 @@ name: Release Windows
 # SoundControl-Setup.exe. The in-app download button deep-links to this name
 # via "/releases/latest/download/..." so every client gets the newest build.
 #
-# Authenticode code signing (which removes the SmartScreen "unknown
-# publisher" warning) is automatic when these repository secrets exist:
-#   WINDOWS_CERTIFICATE_BASE64    base64 of the .p12/.pfx certificate
-#   WINDOWS_CERTIFICATE_PASSWORD  the certificate's password
-# Without them the installer is built unsigned, exactly as before.
+# Authenticode code signing is REQUIRED for every release this workflow
+# publishes. The build signs through electron-builder's env-based mechanism
+# (WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD — see docs/WINDOWS-CODE-SIGNING.md)
+# and is gated three ways, so an unsigned installer can never be released:
+#   1. "Require Authenticode signing credentials" fails the job before the
+#      build if the certificate secrets are missing;
+#   2. `--config.win.forceCodeSigning=true` makes electron-builder itself
+#      hard-fail if any signable executable would ship unsigned;
+#   3. "Verify Authenticode signatures (release gate)" checks the real
+#      generated EXEs with Get-AuthenticodeSignature + `signtool verify /pa`
+#      (valid signature, trusted chain, publisher identity, SHA-256 recorded,
+#      every shipped executable signed) — the GitHub Release is only
+#      published after that gate passes.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   WIN_CSC_LINK          base64 of the .pfx/.p12 certificate
+#                         (legacy alias still honored: WINDOWS_CERTIFICATE_BASE64)
+#   WIN_CSC_KEY_PASSWORD  the certificate's password
+#                         (legacy alias still honored: WINDOWS_CERTIFICATE_PASSWORD)
+# Optional repository variable:
+#   WINDOWS_EXPECTED_PUBLISHER  signer identity the gate must see (e.g. the
+#                               publisher's name in the certificate subject)
 on:
   push:
     tags:
@@ -43,12 +60,6 @@ jobs:
     # ordinary work on an arena branch never publishes.
     if: ${{ github.event_name != 'push' || startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '[publish-windows]') }}
     runs-on: windows-latest
-    # The `secrets` context is not available inside a step's `if:` expression,
-    # so mirror the certificate secrets into job env for the gating check.
-    # Unset secrets evaluate to '' and the signing step simply skips.
-    env:
-      WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
-      WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,30 +70,82 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Set up Authenticode signing (skipped without certificate secrets)
-        if: ${{ env.WINDOWS_CERT_BASE64 != '' }}
+      # Release gate 1 — fail fast, before spending a build on it. Production
+      # Windows releases must never fall back to an unsigned installer, so a
+      # missing certificate secret is a build failure, not a warning. Normal
+      # CI builds (build-windows.yml) remain allowed to be unsigned because
+      # their artifacts are not distributed.
+      - name: Require Authenticode signing credentials
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK || secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD || secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s' "$WINDOWS_CERT_BASE64" | tr -d '\r\n' | base64 --decode > cert.p12
-          test -s cert.p12
-          # electron-builder signs app + installer automatically via CSC_LINK.
-          echo "CSC_LINK=$(cygpath -w "$PWD/cert.p12")" >> "$GITHUB_ENV"
-          echo "CSC_KEY_PASSWORD=$WINDOWS_CERT_PASSWORD" >> "$GITHUB_ENV"
-          echo "Certificate staged — electron-builder will Authenticode-sign the build."
-      # Build the Windows installer; the Release itself is published by the
-      # steps below rather than by electron-builder's built-in publisher.
+          if [ -z "$WIN_CSC_LINK" ] || [ -z "$WIN_CSC_KEY_PASSWORD" ]; then
+            echo "::error::Production Windows releases must be Authenticode-signed, but no signing credentials are configured."
+            echo "::error::Add the repository secrets WIN_CSC_LINK (base64 of the .pfx/.p12) and WIN_CSC_KEY_PASSWORD (certificate password)."
+            echo "::error::See docs/WINDOWS-CODE-SIGNING.md for certificate options and the exact setup steps."
+            exit 1
+          fi
+          echo "Signing credentials are configured — the release build will be signed and verified."
+      # Decode the certificate from the secret into cert.p12 and hand it to
+      # electron-builder through its supported env vars. Nothing is printed:
+      # no secret values, no certificate contents. cert.p12 is deleted by the
+      # cleanup step below before any artifact is uploaded.
+      - name: Stage the Authenticode certificate from secrets
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK || secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD || secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          material="$WIN_CSC_LINK"
+          case "$material" in
+            data:*)
+              # data: URI, e.g. data:application/x-pkcs12;base64,AAAA...
+              material="${material#data:}"
+              material="${material#*;base64,}"
+              printf '%s' "$material" | tr -d '\r\n' | base64 --decode > cert.p12
+              ;;
+            *)
+              if [ -f "$material" ]; then
+                # A path to an existing certificate file.
+                cp "$material" cert.p12
+              else
+                # Plain base64 of the .pfx/.p12 (the documented form).
+                printf '%s' "$material" | tr -d '\r\n' | base64 --decode > cert.p12
+              fi
+              ;;
+          esac
+          if [ ! -s cert.p12 ]; then
+            echo "::error::WIN_CSC_LINK decoded to an empty file — check that the secret contains the base64 of a .pfx/.p12 certificate."
+            exit 1
+          fi
+          # Sanity check without printing contents: a PKCS#12 file is a DER
+          # SEQUENCE, so its first byte is 0x30.
+          first_byte="$(head -c 1 cert.p12 | od -An -tx1 | tr -d ' \n')"
+          if [ "$first_byte" != "30" ]; then
+            echo "::error::WIN_CSC_LINK does not look like a .pfx/.p12 certificate (expected DER/PKCS#12). Store the base64 of the certificate file itself."
+            exit 1
+          fi
+          # electron-builder signs the app exe, the bundled Python executables,
+          # the NSIS uninstaller and the installer from these two variables.
+          echo "WIN_CSC_LINK=$(cygpath -w "$PWD/cert.p12")" >> "$GITHUB_ENV"
+          echo "WIN_CSC_KEY_PASSWORD=$WIN_CSC_KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "Certificate staged ($(wc -c < cert.p12) bytes) — electron-builder will Authenticode-sign the build with SHA-256."
+      # Release gate 2 — build the Windows installer with signing forced:
+      # `forceCodeSigning` makes electron-builder fail the build itself if any
+      # signable executable would end up unsigned (bad password, unreadable
+      # certificate, signtool failure), instead of quietly shipping unsigned.
       # SOUNDCONTROL_PYTHON_REQUIRED makes the `prebuild:win` hook hard-fail if
       # the bundled Python runtime could not be staged, so a release can never
       # ship without it (that runtime is what makes earbud detection work with
       # zero user setup).
-      - name: Build Windows installer (with bundled Python runtime)
+      - name: Build signed Windows installer (with bundled Python runtime)
         env:
           SOUNDCONTROL_PYTHON_REQUIRED: '1'
-        run: npm run build:win -- --publish never
-      - name: Verify the installer upgrades an existing app
-        shell: pwsh
-        run: ./scripts/smoke-windows-upgrade.ps1
+        run: npm run build:win -- --publish never --config.win.forceCodeSigning=true
       - name: Verify the bundled Python runtime shipped
         shell: bash
         run: |
@@ -90,36 +153,6 @@ jobs:
           test -f release/win-unpacked/resources/python/python.exe
           ls -la release/win-unpacked/resources/python | head -15
           echo "Bundled runtime present — desktop users install nothing extra."
-      # This is the guard against silently shipping an unsigned installer.
-      # Without the certificate secrets the build is allowed to be unsigned
-      # (that is the documented default) and the step only reports it. Once
-      # WINDOWS_CERTIFICATE_BASE64/WINDOWS_CERTIFICATE_PASSWORD exist, a build
-      # whose installer is NOT Authenticode-valid fails here, so a
-      # misconfigured certificate can never publish another "Unknown
-      # publisher" release without someone explicitly seeing the failure.
-      - name: Report Authenticode signature status
-        shell: pwsh
-        env:
-          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
-        run: |
-          $installer = Get-ChildItem -Path release -Filter '*.exe' | Select-Object -First 1
-          if (-not $installer) { throw "no installer found under release/" }
-          $sig = Get-AuthenticodeSignature -FilePath $installer.FullName
-          Write-Host "Installer:  $($installer.Name)"
-          Write-Host "Signature:  $($sig.Status)"
-          if ($env:WINDOWS_CERT_BASE64) {
-            if ($sig.Status -ne 'Valid') {
-              throw "Certificate secrets are configured but the installer is $($sig.Status) — refusing to publish an unsigned release. Status message: $($sig.StatusMessage)"
-            }
-            Write-Host "Signer:     $($sig.SignerCertificate.Subject)"
-            Write-Host "Signed build verified — SmartScreen will not show 'Unknown publisher' for this installer."
-          } else {
-            Write-Host "No certificate secrets configured — installer ships unsigned (expected; see README 'Code signing & SmartScreen')."
-          }
-      - name: Remove certificate material
-        if: always()
-        shell: bash
-        run: rm -f cert.p12
       - name: Stage the single installer asset
         shell: bash
         run: |
@@ -136,6 +169,31 @@ jobs:
           echo "Staged release asset:"
           ls -la release-assets/
           test "$(find release-assets -maxdepth 1 -name '*.exe' | wc -l)" -eq 1
+      # Release gate 3 — verify the ACTUAL generated EXE (never a certificate
+      # file): valid Authenticode signature, trusted chain (signtool verify
+      # /pa), publisher identity (matching WINDOWS_EXPECTED_PUBLISHER when
+      # that variable is set), unmodified-after-signing, SHA-256 recorded to
+      # the step summary and SIGNING-SUMMARY.txt, and every executable in the
+      # shipped package signed. The release is published only if this passes.
+      - name: Verify Authenticode signatures (release gate)
+        shell: pwsh
+        env:
+          EXPECTED_PUBLISHER: ${{ vars.WINDOWS_EXPECTED_PUBLISHER }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:EXPECTED_PUBLISHER) {
+            ./scripts/verify-windows-signing.ps1 -ReleaseDir release -InstallerPath release-assets/SoundControl-Setup.exe -RequireSigned -ExpectedPublisher $env:EXPECTED_PUBLISHER
+          } else {
+            ./scripts/verify-windows-signing.ps1 -ReleaseDir release -InstallerPath release-assets/SoundControl-Setup.exe -RequireSigned
+          }
+          if ($LASTEXITCODE -ne 0) { throw "release signing gate failed (exit $LASTEXITCODE)" }
+      - name: Verify the installer upgrades an existing app
+        shell: pwsh
+        run: ./scripts/smoke-windows-upgrade.ps1
+      - name: Remove certificate material
+        if: always()
+        shell: bash
+        run: rm -f cert.p12
       - name: Resolve release tag
         id: release-tag
         shell: bash
@@ -150,6 +208,7 @@ jobs:
             echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
           fi
           echo "Resolved tag: $(grep '^tag=' "$GITHUB_OUTPUT" | cut -d= -f2)"
+      # Published only after every signing gate above has passed.
       - name: Publish GitHub Release with the installer
         shell: bash
         env:
