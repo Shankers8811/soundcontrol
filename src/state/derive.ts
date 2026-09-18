@@ -117,7 +117,12 @@ export function deriveCapabilities(profile: DeviceProfile): Capabilities {
  * layout noise, never a percentage.
  */
 export function batteryLevel(value: number | undefined): number | null {
-  return value === undefined || value === 0xff || value > 100 ? null : value;
+  if (value === undefined || value === 0xff || value > 100) return null;
+  // NaN, ±Infinity and negative raws are not wire bytes — they arrive only
+  // from corrupted persisted state or a parsing bug upstream (§13). Reject
+  // them here so no caller can build a percentage on garbage.
+  if (!Number.isFinite(value) || value < 0) return null;
+  return value;
 }
 
 /**
@@ -129,11 +134,19 @@ export function batteryLevel(value: number | undefined): number | null {
  */
 export function batteryPercent(level: number | null, scale: number | null | undefined | 'unknown'): number | null {
   if (level === null || level === undefined) return null;
+  // A non-finite or negative level is corrupt telemetry, not a charge
+  // state: clamping or rescaling it would invent a plausible-looking
+  // number (§13). Unavailable is the honest answer.
+  if (!Number.isFinite(level) || level < 0) return null;
   // 'unknown' scale: the device model is unidentified, so the raw level
   // cannot be interpreted — neither as scale-5 nor scale-10 nor as a
   // percent. A precise-looking number here would be a guess; the honest
   // answer is "unavailable" (raw levels stay visible in diagnostics).
   if (scale === 'unknown') return null;
+  // A zero, negative or non-finite scale cannot interpret a raw level and
+  // is not a percent passthrough either — it is corrupt profile data.
+  // Refuse to guess intent; report unavailable.
+  if (scale !== null && scale !== undefined && (!Number.isFinite(scale) || scale <= 0)) return null;
   if (scale === null || scale === undefined || level > scale) {
     return Math.max(0, Math.min(100, Math.round(level)));
   }
@@ -155,7 +168,10 @@ export function presenceFromRaw(rawLeft: number | undefined, rawRight: number | 
   const side = (raw: number | undefined): 'present' | 'absent' | 'unknown' => {
     if (raw === undefined) return 'unknown';
     if (raw === 0xff) return 'absent';
-    return raw > 100 ? 'unknown' : 'present';
+    // Anything that cannot be a wire byte (NaN, negatives, out-of-range)
+    // is untrustworthy telemetry — never promote it to a confirmed side.
+    if (!Number.isFinite(raw) || raw < 0 || raw > 100) return 'unknown';
+    return 'present';
   };
   const left = side(rawLeft);
   const right = side(rawRight);
