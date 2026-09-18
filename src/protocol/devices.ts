@@ -345,25 +345,38 @@ export const DEVICES: DeviceProfile[] = [
 ];
 
 /**
- * Profiles kept for name matching only. These SKUs are **not** in OpenSCQ30's
- * device table, so nothing about their protocol is confirmed; they resolve to
- * the closest verified profile and the UI says so.
+ * Names kept for EXPLANATION only — never for resolution (Pass 11 §12).
+ *
+ * These SKUs are not in OpenSCQ30's device table and no capture proves
+ * their protocol layout, so `matchDevice` returns the unknown-model
+ * profile for them and this table only supplies the explanatory note:
+ *
+ *  - Liberty 4 (A3953) is a DIFFERENT product from Liberty 4 NC (A3947);
+ *    an approximate marketing name is not evidence, and borrowing the NC
+ *    profile would assert its battery scale, ANC layout and capabilities
+ *    without proof.
+ *  - Sport X10 (A3961) and Sleep A10 (A6610) are likewise not A3949
+ *    (P20i); their wiring is unproven, so nothing is assumed.
+ *
+ * If a future capture verifies one of these layouts, promote it to a real
+ * `DEVICES` entry with its own `source:` evidence instead of re-adding a
+ * resolves-to fallback here.
  */
-export const UNVERIFIED_ALIASES: Array<{ names: string[]; resolvesTo: string; note: string }> = [
+export const UNVERIFIED_ALIASES: Array<{ names: string[]; note: string }> = [
   {
     names: ['Liberty 4', 'A3953'],
-    resolvesTo: 'liberty-4-nc',
-    note: 'Liberty 4 (A3953) has no published protocol; using the Liberty 4 NC profile',
+    note:
+      'Liberty 4 (A3953) is a distinct product from Liberty 4 NC (A3947) and no capture proves its protocol layout, so SoundControl treats it as an unknown model: firmware, serial and earbud presence still work, but battery percentages and model-specific controls stay unavailable.',
   },
   {
     names: ['Sport X10', 'A3961'],
-    resolvesTo: 'p20i',
-    note: 'Sport X10 (A3961) has no published protocol; using the A3949 profile',
+    note:
+      'Sport X10 (A3961) has no published protocol capture, so SoundControl treats it as an unknown model rather than borrowing another device’s battery scale or ANC layout: firmware, serial and earbud presence still work, but battery percentages and model-specific controls stay unavailable.',
   },
   {
     names: ['Sleep A10', 'A6610'],
-    resolvesTo: 'p20i',
-    note: 'Sleep A10 (A6610) has no published protocol; using the A3949 profile',
+    note:
+      'Sleep A10 (A6610) has no published protocol capture, so SoundControl treats it as an unknown model rather than borrowing another device’s battery scale or ANC layout: firmware, serial and earbud presence still work, but battery percentages and model-specific controls stay unavailable.',
   },
 ];
 
@@ -376,10 +389,9 @@ const RANKED_ALIASES: Array<{ alias: string; id: string }> = DEVICES.flatMap((d)
   [...d.names, d.sku].map((alias) => ({ alias: alias.toLowerCase(), id: d.id })),
 ).sort((a, b) => b.alias.length - a.alias.length);
 
-const RANKED_UNVERIFIED: Array<{ alias: string; resolvesTo: string; note: string }> =
-  UNVERIFIED_ALIASES.flatMap((a) =>
-    a.names.map((n) => ({ alias: n.toLowerCase(), resolvesTo: a.resolvesTo, note: a.note })),
-  ).sort((a, b) => b.alias.length - a.alias.length);
+const RANKED_UNVERIFIED: Array<{ alias: string; note: string }> = UNVERIFIED_ALIASES.flatMap(
+  (a) => a.names.map((n) => ({ alias: n.toLowerCase(), note: a.note })),
+).sort((a, b) => b.alias.length - a.alias.length);
 
 /**
  * The unidentified-model profile (Pass 10 §1/§2/§5).
@@ -448,8 +460,11 @@ export function matchDevice(name: string | undefined | null): DeviceProfile {
   const n = name.toLowerCase();
   const hit = RANKED_ALIASES.find((a) => n.includes(a.alias));
   if (hit) return DEVICES.find((d) => d.id === hit.id) ?? UNKNOWN_PROFILE;
-  const alias = RANKED_UNVERIFIED.find((a) => n.includes(a.alias));
-  if (alias) return DEVICES.find((d) => d.id === alias.resolvesTo) ?? UNKNOWN_PROFILE;
+  // Unverified marketing names and SKUs deliberately DO NOT resolve to a
+  // real profile (Pass 11 §12): "Liberty 4" (A3953) is not "Liberty 4 NC"
+  // (A3947), and Sport X10 (A3961) / Sleep A10 (A6610) are not A3949.
+  // Guessing would assert an unproven battery scale and ANC layout, so the
+  // honest answer is the unknown-model profile; matchNote() explains why.
   return UNKNOWN_PROFILE;
 }
 
