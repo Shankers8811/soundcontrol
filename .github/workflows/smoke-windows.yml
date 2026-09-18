@@ -26,6 +26,13 @@ jobs:
       - name: Verify the installer upgrades an existing app
         shell: pwsh
         run: ./scripts/smoke-windows-upgrade.ps1
+      # The artifact a user actually receives: clean install (not an upgrade),
+      # launch the INSTALLED copy twice with a graceful close each time, then
+      # silent uninstall - asserting no directory, registry entry, process,
+      # helper, port 8765 listener or startup registration survives.
+      - name: Clean install, two launches, uninstall leaves nothing behind
+        shell: pwsh
+        run: ./scripts/smoke-windows-install.ps1
       # Seeds a legacy Run-key entry exactly as an older install would have
       # written it, then runs the app's own enforcement code (autostart.cjs)
       # against the packaged exe through Electron's login-item API and asserts
