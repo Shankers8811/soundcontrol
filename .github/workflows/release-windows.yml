@@ -36,7 +36,12 @@ permissions:
 
 jobs:
   release-win:
-    if: ${{ github.event_name != 'push' || contains(github.event.head_commit.message, '[publish-windows]') }}
+    # Tag pushes are the documented release path (see the header comment), and
+    # a tag push payload has no head_commit, so the marker check can never
+    # satisfy it: without the refs/tags clause every `git push origin vX.Y.Z`
+    # silently skipped this job. Branch pushes keep requiring the marker so
+    # ordinary work on an arena branch never publishes.
+    if: ${{ github.event_name != 'push' || startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '[publish-windows]') }}
     runs-on: windows-latest
     # The `secrets` context is not available inside a step's `if:` expression,
     # so mirror the certificate secrets into job env for the gating check.
