@@ -29,21 +29,27 @@ import {
 import { presetById, type EqPreset } from '../protocol/presets';
 import { isTransportBusyError } from '../lib/transportErrors';
 import { connectBridge } from '../transports/bridge';
-import { connectSimulator } from '../transports/simulator';
+import {
+  batteryLevel,
+  deriveCapabilities,
+  deriveConnectionPhase,
+  deriveEarbudState,
+  presenceFromRaw,
+  type Capabilities,
+  type ConnectionPhase,
+  type EarbudState,
+} from './derive';
 import type {
   AncMode,
   AncScene,
   BatteryState,
   DeviceProfile,
   EarbudPresence,
-  GestureAction,
   LogEntry,
-  StackId,
-  TabId,
-  TouchMap,
+  PageId,
   Transport,
 } from '../types';
-import { DEFAULT_TOUCH, ZERO_BANDS } from '../types';
+import { ZERO_BANDS } from '../types';
 
 function load<T>(key: string, fallback: T): T {
   try {
@@ -80,16 +86,30 @@ function ascii(payload: Uint8Array, at: number, length: number): string | null {
   return trimmed.length >= 3 ? trimmed : null;
 }
 
+/**
+ * Which device operation is in flight (`null` = idle). Components disable
+ * their controls while their own key is busy, so a slow RFCOMM write can
+ * never be double-fired or look dead (loading state per operation).
+ */
+export type BusyKey = 'anc' | 'eq' | 'gaming' | 'ldac' | 'dual' | 'surround' | 'reset' | null;
+
 interface AppState {
-  tab: TabId;
-  setTab: (t: TabId) => void;
-  stack: StackId;
-  push: (s: Exclude<StackId, null>) => void;
-  back: () => void;
+  page: PageId;
+  setPage: (p: PageId) => void;
   connected: boolean;
   connecting: boolean;
+  /** Derived single-source-of-truth phase for badges across the UI. */
+  connectionPhase: ConnectionPhase;
+  /** Per-model, protocol-derived feature matrix — see src/state/derive.ts. */
+  capabilities: Capabilities;
+  /** Per-side earbud state for TWS; null when the device has no L/R sides. */
+  earbudState: EarbudState | null;
+  /** Operation currently in flight, for loading/disabled states. */
+  busy: BusyKey;
   transportLabel: string;
   deviceName: string;
+  /** Bluetooth address of the active bridge session (null for simulator/none). */
+  connectedMac: string | null;
   profile: DeviceProfile;
   setProfileId: (id: string) => void;
   battery: BatteryState;
@@ -101,22 +121,20 @@ interface AppState {
   gaming: boolean;
   ldac: boolean;
   dual: boolean;
-  wearDetect: boolean;
+  /** Local interface sounds (real app behavior, persisted). */
   prompts: boolean;
-  safeVolume: number;
-  autoOff: number;
   firmware: string;
   serial: string | null;
   linkInfo: string | null;
   profileNote: string | null;
-  touch: TouchMap;
   eqId: string;
   bands: number[];
   surround: boolean;
-  hearId: boolean;
   log: LogEntry[];
   /** Last few bridge devices, most recent first — one-tap reconnect. */
   recentDevices: Array<{ mac: string; name: string }>;
+  /** Drop one entry from the local reconnect list (real, local-only action). */
+  forgetRecentDevice: (mac: string) => void;
   error: string | null;
   clearError: () => void;
   connectBridge: (mac: string, name?: string, windowsBattery?: number | null) => Promise<void>;
@@ -129,19 +147,13 @@ interface AppState {
   setLdac: (on: boolean) => Promise<void>;
   setDual: (on: boolean) => Promise<void>;
   setSurroundSound: (on: boolean) => Promise<void>;
-  setWearDetect: (on: boolean) => void;
   setPrompts: (on: boolean) => void;
-  setSafeVolume: (n: number) => void;
-  setAutoOff: (n: number) => void;
-  setTouch: (side: keyof TouchMap, action: GestureAction) => void;
   applyPreset: (preset: EqPreset) => Promise<void>;
   setBand: (index: number, db: number) => void;
   commitEq: () => Promise<void>;
   applyBands: (bands: number[]) => Promise<void>;
-  setHearId: (on: boolean) => void;
   inject: (bytes: Uint8Array, note?: string) => Promise<void>;
   clearLog: () => void;
-  findDevice: () => Promise<void>;
   resetDevice: () => Promise<void>;
 }
 
@@ -151,12 +163,13 @@ let seq = 1;
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const transportRef = useRef<Transport | null>(null);
-  const [tab, setTab] = useState<TabId>('device');
-  const [stack, setStack] = useState<StackId>(null);
+  const [page, setPage] = useState<PageId>('dashboard');
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [busy, setBusy] = useState<BusyKey>(null);
   const [transportLabel, setTransportLabel] = useState('Not connected');
   const [deviceName, setDeviceName] = useState('No device');
+  const [connectedMac, setConnectedMac] = useState<string | null>(null);
   const [profile, setProfile] = useState<DeviceProfile>(matchDevice('R50i'));
   const profileRef = useRef(profile);
   const [battery, setBattery] = useState<BatteryState>({ left: null, right: null });
@@ -173,28 +186,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [gaming, setGamingState] = useState(false);
   const [ldac, setLdacState] = useState(false);
   const [dual, setDualState] = useState(false);
-  const [wearDetect, setWearDetectState] = useState(() => load('sc.wear', true));
   const [prompts, setPromptsState] = useState(() => load('sc.prompts', true));
-  const [safeVolume, setSafeVolumeState] = useState(() => load('sc.safe', 85));
-  const [autoOff, setAutoOffState] = useState(() => load('sc.autoOff', 60));
   // Read from the device over `01:05` (or the state blob where the layout is
   // known). "Unknown" until the hardware answers — never a made-up version.
   const [firmware, setFirmware] = useState('Unknown');
   const [serial, setSerial] = useState<string | null>(null);
   const [linkInfo, setLinkInfo] = useState<string | null>(null);
-  const [touch, setTouchState] = useState<TouchMap>(() => load('sc.touch', DEFAULT_TOUCH));
   const [eqId, setEqId] = useState('signature');
   const [bands, setBands] = useState<number[]>([...ZERO_BANDS]);
   const [surround, setSurroundState] = useState(false);
-  const [hearId, setHearIdState] = useState(false);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   /** Set when the Bluetooth name matched an unverified alias, not a real profile. */
   const profileNote = useMemo(() => matchNote(deviceName), [deviceName]);
 
-  const push = useCallback((s: Exclude<StackId, null>) => setStack(s), []);
-  const back = useCallback(() => setStack(null), []);
+  /** Protocol-derived capability matrix for the connected (or previewed) model. */
+  const capabilities = useMemo(() => deriveCapabilities(profile), [profile]);
+
+  /** Per-side earbud state; null for hardware without independent L/R sides. */
+  const earbudState = useMemo(() => deriveEarbudState(battery, capabilities), [battery, capabilities]);
+
+  /** The one connection phase every badge in the UI renders from. */
+  const connectionPhase = useMemo(
+    () => deriveConnectionPhase({ connected, connecting, error }),
+    [connected, connecting, error],
+  );
 
   /**
    * Mirror a `06:01` sound-mode report back into the UI. Layouts differ per
@@ -254,9 +271,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const offsets = profileRef.current.state;
 
       // `0xFF` means "that side is not connected to the host"; it is not a
-      // zero-percent battery. Over-ears report one level, not a pair.
-      const level = (value: number | undefined): number | null =>
-        value === undefined || value === 0xff || value > 100 ? null : value;
+      // zero-percent battery. Over-ears report one level, not a pair. The
+      // byte rules live in derive.batteryLevel so tests cover them.
 
       if (cat === 0x01 && typ === 0x05) {
         // Serial number + firmware: 10 bytes of ASCII "XX.XX" + "XX.XX",
@@ -312,7 +328,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         rawRight = offsets.batteryRight === null ? undefined : payload[offsets.batteryRight];
         // The case byte stays a wire fact (see PROTOCOL.md) but is never
         // surfaced: many models do not report it and over-ears have no case.
-        levels = [level(rawLeft), level(rawRight)];
+        levels = [batteryLevel(rawLeft), batteryLevel(rawRight)];
         if (offsets.batteryChargingLeft !== null) {
           chargingLeft = (payload[offsets.batteryChargingLeft] & 0x01) !== 0;
         }
@@ -331,25 +347,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // The explicit battery query returns left/right in the first bytes.
         rawLeft = payload[0];
         rawRight = offsets.batteryRight === null ? undefined : payload[1];
-        levels = [level(rawLeft), level(rawRight)];
+        levels = [batteryLevel(rawLeft), batteryLevel(rawRight)];
       }
       if (!levels) return;
       if (
         levels.every((value) => value === null) &&
         !(rawLeft === 0xff || rawRight === 0xff)
       ) return;
-      if (rawLeft !== undefined && rawRight !== undefined) {
-        const leftPresent = rawLeft !== 0xff;
-        const rightPresent = rawRight !== 0xff;
-        presence = leftPresent && rightPresent ? 'both' : leftPresent ? 'left' : rightPresent ? 'right' : 'none';
-      }
+      // Both side bytes present → presence is known; a single byte (over-ears,
+      // truncated frames) leaves it 'unknown' — never guessed 'disconnected'.
+      presence = presenceFromRaw(rawLeft, rawRight);
 
       setBattery((previous) => ({
         left: levels![0] ?? previous.left,
         right: levels![1] ?? previous.right,
         leftCharging: chargingLeft ?? previous.leftCharging,
         rightCharging: chargingRight ?? previous.rightCharging,
-        batteryScale: profileRef.current.kind === 'earbuds' ? profileRef.current.batteryMax : null,
+        // Device-reported levels are always in the model's raw steps (0..5 or
+        // 0..10 — PROTOCOL.md), over-ears included; the old null here rendered
+        // a 4/5 over-ear level as "4%". batteryPercent() still passes values
+        // above the scale through, so percent-reporting firmware degrades safely.
+        batteryScale: profileRef.current.batteryMax,
         presence: presence === 'unknown' ? previous.presence : presence,
       }));
 
@@ -430,8 +448,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
       }
       setConnected(true);
-      setStack(null);
-      setTab('device');
+      setPage('dashboard');
       pushLog(
         'sys',
         '',
@@ -553,6 +570,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             if (!linked.transport || transportRef.current !== linked.transport) return;
             transportRef.current = null;
             setConnected(false);
+            setConnectedMac(null);
             setTransportLabel('Not connected');
             setError(reason);
             pushLog('sys', '', reason);
@@ -561,6 +579,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         );
         linked.transport = transport;
         await attach(transport, name, b, dspChannel);
+        setConnectedMac(mac || null);
         // Settings persistence: remember the last few devices for one-tap
         // reconnect on the next launch.
         if (mac) {
@@ -580,6 +599,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const connectSim = useCallback(
     (customProfileId?: string) =>
       wrapConnect(async () => {
+        // TEST DATA ONLY — dev builds. `import.meta.env.DEV` folds to a
+        // literal at build time, so production bundles constant-fold this
+        // whole branch away and Rollup never emits the simulator module:
+        // emulated device state cannot leak into the packaged app.
+        if (!import.meta.env.DEV) {
+          throw new Error('The developer simulator is only available in development builds.');
+        }
+        const { connectSimulator } = await import('../transports/simulator');
         // Leave any real bridge session before starting the simulator (and
         // release its RFCOMM link in the helper) — see releaseTransport.
         await releaseTransport();
@@ -589,25 +616,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const simProfile = targetProfile ?? profileRef.current;
         const { transport, name, battery: b } = connectSimulator(onRx, simProfile);
         await attach(transport, name, b);
+        setConnectedMac(null);
       }),
     [attach, onRx, releaseTransport, wrapConnect],
   );
 
   const setSurroundSound = useCallback(
     async (on: boolean) => {
+      const prev = surround;
       setSurroundState(on);
-      await write(buildSurroundSound(on), `3D Surround ${on ? 'on' : 'off'}`);
+      setBusy('surround');
+      try {
+        await write(buildSurroundSound(on), `3D Surround ${on ? 'on' : 'off'}`);
+      } catch (err) {
+        // The command never reached the device: restore the real state so the
+        // toggle cannot claim something the hardware did not do.
+        setSurroundState(prev);
+        throw err;
+      } finally {
+        setBusy(null);
+      }
       if (prompts) await beep('ok');
     },
-    [prompts, write],
+    [prompts, surround, write],
   );
 
   const resetDevice = useCallback(async () => {
-    await write(buildResetDevice(), 'Factory Reset');
+    setBusy('reset');
+    try {
+      await write(buildResetDevice(), 'Factory Reset');
+    } catch (err) {
+      // Reset did not reach the device — keep the UI state as it is.
+      throw err;
+    } finally {
+      setBusy(null);
+    }
+    // The device confirmed the reset frame; mirror the factory defaults it
+    // now holds instead of keeping pre-reset values on screen.
     setBands([...ZERO_BANDS]);
     setEqId('signature');
     setSurroundState(false);
-    setHearIdState(false);
     setAncMode('anc');
     setAncLevel(5);
     setGamingState(false);
@@ -618,6 +666,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const t = transportRef.current;
     transportRef.current = null;
     setConnected(false);
+    setConnectedMac(null);
     setTransportLabel('Not connected');
     // Clear the old device's identity and telemetry: a stale name/battery in
     // the disconnected UI is misleading, and attach() only overwrites the
@@ -668,64 +717,123 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setAnc = useCallback(
     async (mode: AncMode, level?: number, scene = ancScene) => {
       const appliedLevel = level ?? ancLevel;
+      const prev = { mode: ancMode, level: ancLevel, scene: ancScene };
       setAncMode(mode);
       setAncLevel(appliedLevel);
       setAncScene(scene);
-      const intent = ancIntent({ mode, level: appliedLevel, scene });
-      await sendAnc(
-        intent,
-        `ANC ${mode}${mode === 'anc' || mode === 'adaptive' ? ` L${appliedLevel}` : ''}${
-          profile.scenes ? ` ${scene}` : ''
-        }`,
-      );
+      setBusy('anc');
+      try {
+        const intent = ancIntent({ mode, level: appliedLevel, scene });
+        await sendAnc(
+          intent,
+          `ANC ${mode}${mode === 'anc' || mode === 'adaptive' ? ` L${appliedLevel}` : ''}${
+            profile.scenes ? ` ${scene}` : ''
+          }`,
+        );
+      } catch (err) {
+        // The 06:81 frame never reached the device: restore the previous real
+        // mode instead of leaving the new one selected (PART G contract).
+        setAncMode(prev.mode);
+        setAncLevel(prev.level);
+        setAncScene(prev.scene);
+        throw err;
+      } finally {
+        setBusy(null);
+      }
       if (prompts) await beep('mode');
     },
-    [ancIntent, ancLevel, ancScene, profile.scenes, prompts, sendAnc],
+    [ancIntent, ancLevel, ancMode, ancScene, profile.scenes, prompts, sendAnc],
   );
 
   const setTransVocal = useCallback(
     async (on: boolean) => {
+      const prev = { vocal: transVocal, mode: ancMode };
       setTransVocalState(on);
-      const intent = ancIntent({ mode: 'transparency', transVocal: on });
       setAncMode('transparency');
-      await sendAnc(intent, on ? 'Talk mode' : 'Full transparency');
+      setBusy('anc');
+      try {
+        const intent = ancIntent({ mode: 'transparency', transVocal: on });
+        await sendAnc(intent, on ? 'Talk mode' : 'Full transparency');
+      } catch (err) {
+        setTransVocalState(prev.vocal);
+        setAncMode(prev.mode);
+        throw err;
+      } finally {
+        setBusy(null);
+      }
       if (prompts) await beep('ok');
     },
-    [ancIntent, prompts, sendAnc],
+    [ancIntent, ancMode, prompts, sendAnc, transVocal],
   );
 
   const setWindNoise = useCallback(
     async (on: boolean) => {
+      const prev = windNoise;
       setWindNoiseState(on);
-      await sendAnc(ancIntent({ wind: on }), `Wind noise ${on ? 'on' : 'off'}`);
+      setBusy('anc');
+      try {
+        await sendAnc(ancIntent({ wind: on }), `Wind noise ${on ? 'on' : 'off'}`);
+      } catch (err) {
+        setWindNoiseState(prev);
+        throw err;
+      } finally {
+        setBusy(null);
+      }
       if (prompts) await beep('ok');
     },
-    [ancIntent, prompts, sendAnc],
+    [ancIntent, prompts, sendAnc, windNoise],
   );
 
   const setGaming = useCallback(
     async (on: boolean) => {
+      const prev = gaming;
       setGamingState(on);
-      await write(buildGameMode(profile, on), `Gaming ${on ? 'on' : 'off'}`);
+      setBusy('gaming');
+      try {
+        await write(buildGameMode(profile, on), `Gaming ${on ? 'on' : 'off'}`);
+      } catch (err) {
+        setGamingState(prev);
+        throw err;
+      } finally {
+        setBusy(null);
+      }
       if (prompts) await beep('mode');
     },
-    [profile, prompts, write],
+    [gaming, profile, prompts, write],
   );
 
   const setLdac = useCallback(
     async (on: boolean) => {
+      const prev = ldac;
       setLdacState(on);
-      await write(on ? LDAC.enable : LDAC.disable, `LDAC ${on ? 'on' : 'off'}`);
+      setBusy('ldac');
+      try {
+        await write(on ? LDAC.enable : LDAC.disable, `LDAC ${on ? 'on' : 'off'}`);
+      } catch (err) {
+        setLdacState(prev);
+        throw err;
+      } finally {
+        setBusy(null);
+      }
     },
-    [write],
+    [ldac, write],
   );
 
   const setDual = useCallback(
     async (on: boolean) => {
+      const prev = dual;
       setDualState(on);
-      await write(on ? DUAL.enable : DUAL.disable, `Dual ${on ? 'on' : 'off'}`);
+      setBusy('dual');
+      try {
+        await write(on ? DUAL.enable : DUAL.disable, `Dual ${on ? 'on' : 'off'}`);
+      } catch (err) {
+        setDualState(prev);
+        throw err;
+      } finally {
+        setBusy(null);
+      }
     },
-    [write],
+    [dual, write],
   );
 
   const applyPreset = useCallback(
@@ -739,13 +847,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         );
         return;
       }
+      const prev = { eqId, bands };
       setEqId(preset.id);
-      setHearIdState(false);
       setBands([...preset.bands]);
-      await write(pkt, `EQ ${preset.name}`);
+      setBusy('eq');
+      try {
+        await write(pkt, `EQ ${preset.name}`);
+      } catch (err) {
+        setEqId(prev.eqId);
+        setBands(prev.bands);
+        throw err;
+      } finally {
+        setBusy(null);
+      }
       if (prompts) await beep('ok');
     },
-    [profile, prompts, pushLog, write],
+    [bands, eqId, profile, prompts, pushLog, write],
   );
 
   const setBand = useCallback((index: number, db: number) => {
@@ -760,18 +877,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const commitEq = useCallback(async () => {
     const pkt = buildCustomEq(profile, bands);
     if (!pkt) return;
-    await write(pkt, 'EQ custom');
+    setBusy('eq');
+    try {
+      await write(pkt, 'EQ custom');
+    } finally {
+      setBusy(null);
+    }
   }, [bands, profile, write]);
 
   const applyBands = useCallback(
     async (next: number[]) => {
       const pkt = buildCustomEq(profile, next);
       if (!pkt) return;
+      const prev = { eqId, bands };
       setEqId('custom');
       setBands(next);
-      await write(pkt, 'EQ custom');
+      setBusy('eq');
+      try {
+        await write(pkt, 'EQ custom');
+      } catch (err) {
+        setEqId(prev.eqId);
+        setBands(prev.bands);
+        throw err;
+      } finally {
+        setBusy(null);
+      }
     },
-    [profile, write],
+    [bands, eqId, profile, write],
   );
 
   const inject = useCallback(
@@ -786,13 +918,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (hit) {
       profileRef.current = hit;
       setProfile(hit);
-    }
-  }, []);
-
-  const findDevice = useCallback(async () => {
-    for (let i = 0; i < 6; i++) {
-      await beep(i % 2 ? 'ok' : 'mode');
-      await new Promise((r) => setTimeout(r, 280));
     }
   }, []);
 
@@ -822,18 +947,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppState>(
     () => ({
-      tab,
-      setTab: (t) => {
-        setTab(t);
-        setStack(null);
-      },
-      stack,
-      push,
-      back,
+      page,
+      setPage,
       connected,
       connecting,
+      connectionPhase,
+      capabilities,
+      earbudState,
+      busy,
       transportLabel,
       deviceName,
+      connectedMac,
       profile,
       setProfileId,
       battery,
@@ -845,21 +969,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       gaming,
       ldac,
       dual,
-      wearDetect,
+      surround,
       prompts,
-      safeVolume,
-      autoOff,
       firmware,
       serial,
       linkInfo,
       profileNote,
-      touch,
       eqId,
       bands,
-      surround,
-      hearId,
       log,
       recentDevices,
+      forgetRecentDevice: (mac: string) => {
+        setRecentDevices((prev) => {
+          const next = prev.filter((d) => d.mac !== mac);
+          save('soundcontrol_recent_devices', next);
+          return next;
+        });
+      },
       error,
       clearError: () => setError(null),
       connectBridge: connectBridgePort,
@@ -872,48 +998,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLdac,
       setDual,
       setSurroundSound,
-      setWearDetect: (on) => {
-        setWearDetectState(on);
-        save('sc.wear', on);
-      },
       setPrompts: (on) => {
         setPromptsState(on);
         save('sc.prompts', on);
-      },
-      setSafeVolume: (n) => {
-        setSafeVolumeState(n);
-        save('sc.safe', n);
-      },
-      setAutoOff: (n) => {
-        setAutoOffState(n);
-        save('sc.autoOff', n);
-      },
-      setTouch: (side, action) => {
-        setTouchState((prev) => {
-          const next = { ...prev, [side]: action };
-          save('sc.touch', next);
-          return next;
-        });
       },
       applyPreset,
       setBand,
       commitEq,
       applyBands,
-      setHearId: setHearIdState,
       inject,
       clearLog: () => setLog([]),
-      findDevice,
       resetDevice,
     }),
     [
-      tab,
-      stack,
-      push,
-      back,
+      page,
       connected,
       connecting,
+      connectionPhase,
+      capabilities,
+      earbudState,
+      busy,
       transportLabel,
       deviceName,
+      connectedMac,
       profile,
       setProfileId,
       battery,
@@ -926,18 +1033,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ldac,
       dual,
       surround,
-      wearDetect,
       prompts,
-      safeVolume,
-      autoOff,
       firmware,
       serial,
       linkInfo,
       profileNote,
-      touch,
       eqId,
       bands,
-      hearId,
       log,
       recentDevices,
       error,
@@ -956,7 +1058,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       commitEq,
       applyBands,
       inject,
-      findDevice,
       resetDevice,
     ],
   );

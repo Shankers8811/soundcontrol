@@ -14,7 +14,7 @@ Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doi
   checks, runs inside `npm run build`) rebuilds every outbound frame and
   compares against published captures from OpenSCQ30, SoundcoreDesktop,
   Noiseclapper-GNOME, soundcorebridge and soundcore_anker_equalyzer;
-  `scripts/test_bridge_probe.py` (43 checks) covers the probe.
+  `scripts/test_bridge_probe.py` (51 checks) covers the probe.
 - ✅ **Model table by SKU** — A3959 = P30i/R50i NC vs A3949 = R50i, four
   `06:81` sound-mode layouts, 22 preset curves verbatim, custom EQ `FE FE`,
   DRC second channel byte-identical to 22 live P20i captures.
@@ -25,6 +25,18 @@ Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doi
 - ✅ **UX hardening** — error boundary, recent-device one-tap reconnect
   (localStorage), activity log export (JSON/CSV), low-battery nudge, new
   loading art, bridge diagnostics surfaced in-app.
+- ✅ **Desktop UI redesign** — dark-navy/electric-blue desktop layout
+  (sidebar: Dashboard, Devices, Equalizer, Controls, Settings, About),
+  capability-gated everywhere: every control either sends a documented
+  frame or renders disabled with the protocol reason (volume, gestures,
+  HearID EQ, factory reset, Sleep/Find-My claims removed). Per-side earbud
+  status derives from real `0xFF` presence bytes with "unknown" kept
+  distinct from "disconnected". Real persisted desktop settings
+  (launch-at-login, minimize-to-tray) via Electron IPC.
+- ✅ **UI truth test suites** — `npm run test:ui` (121 pure state-derivation
+  checks + 47 server-side render-smoke checks over the real React tree) and
+  e2e scenario 7 (per-side earbud telemetry both/left/right/none through the
+  real helper→WS→transport pipeline; `--earbud-state` on the emulator).
 
 ## Next (small, high value)
 

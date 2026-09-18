@@ -47,6 +47,19 @@ EMULATED_BATTERY = 80
 EMULATED_CHANNEL = 4
 # Seconds each emulated device reply is delayed by (--rfcomm-delay); 0 = instant.
 RFCOMM_DELAY = 0.0
+# Which TWS sides the emulated device reports as connected (--earbud-state).
+# Battery replies carry one byte per side; 0xFF means "that side is not
+# connected to the host" — the exact wire contract the UI earbud-state
+# derivation consumes (PROTOCOL.md, OpenSCQ30 request_battery_level).
+# TEST DATA ONLY: this emulator never ships; the packaged app talks to the
+# real soundcore_bridge.py and real hardware.
+EMULATED_EARBUD_STATE = "both"
+_EARBUD_STATE_BYTES = {
+    "both": (4, 4),
+    "left": (4, 0xFF),
+    "right": (0xFF, 4),
+    "none": (0xFF, 0xFF),
+}
 
 
 def _device_frame(cat: int, typ: int, payload: bytes) -> bytes:
@@ -64,7 +77,8 @@ def _ack_payload(cat: int, typ: int) -> bytes:
         # Serial + firmware: 10 bytes ASCII firmware, then 16 bytes serial.
         return b"04.88" + b"04.88" + b"EMU0000000000001"
     if (cat, typ) in ((0x01, 0x01), (0x01, 0x03)):
-        return bytes([4, 4])  # left/right battery levels
+        left, right = _EARBUD_STATE_BYTES[EMULATED_EARBUD_STATE]
+        return bytes([left, right])  # per-side battery levels (0xFF = absent)
     return b""
 
 
@@ -185,10 +199,18 @@ def main() -> None:
         help="Seconds to delay every emulated device reply — widens the "
         "channel-probe window so tests can kill the helper mid-connect.",
     )
+    p.add_argument(
+        "--earbud-state",
+        choices=sorted(_EARBUD_STATE_BYTES),
+        default="both",
+        help="Which earbud sides the fake device reports as connected "
+        "(battery replies use 0xFF for an absent side).",
+    )
     args = p.parse_args()
 
-    global RFCOMM_DELAY
+    global RFCOMM_DELAY, EMULATED_EARBUD_STATE
     RFCOMM_DELAY = max(0.0, args.rfcomm_delay)
+    EMULATED_EARBUD_STATE = args.earbud_state
 
     token = args.token.strip() or os.environ.get("SOUNDCONTROL_BRIDGE_TOKEN", "").strip()
     if token:
