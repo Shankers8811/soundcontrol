@@ -620,6 +620,51 @@ try {
 
   const R3 = await bundleReporting('https://github.com.evil.com/foo/bar');
   eq('lookalike-host REPO_URL → unconfigured', [R3.latestReleaseApiUrl()], [null]);
+
+  /* --------------------------------- diagnostics redaction (Pass 11 §21) */
+
+  console.log('\n[14] problem-report / feedback / console-export redaction');
+
+  const MAC = 'AA:BB:CC:DD:EE:FF';
+  const MAC_DASH = 'aa-bb-cc-dd-ee-ff';
+  const reportText = R.buildReportText({
+    description: 'Audio drops when switching to the phone',
+    device: { name: MAC, model: 'Unknown model', firmware: '02.31', serial: 'SN-123456' },
+    version: '1.0.5',
+    platform: 'win32',
+    diagnostics: [
+      { id: 1, ts: Date.now(), dir: 'sys', hex: `Invalid Bluetooth address ${MAC_DASH}`, note: `retrying ${MAC_DASH}`, valid: null },
+      { id: 2, ts: Date.now(), dir: 'tx', hex: '08EE000000010101', note: 'State request', valid: true },
+    ],
+    attachmentNames: ['soundcontrol-log.csv'],
+  });
+  check('report drops the colon-separated MAC (device name field)', !reportText.includes(MAC), reportText.slice(0, 160));
+  check('report drops case-insensitive dash MACs from text fields and notes', !new RegExp(MAC_DASH, 'i').test(reportText), reportText.slice(0, 300));
+  check(
+    'report keeps the write-up and the real device facts',
+    reportText.includes('Audio drops when switching to the phone') &&
+      reportText.includes('SN-123456') &&
+      reportText.includes('02.31') &&
+      reportText.includes('State request'),
+  );
+  const named = R.buildReportText({
+    description: '',
+    device: { name: 'Soundcore Liberty 4 NC', model: 'Liberty 4 NC', firmware: '02.31', serial: null },
+    version: '1.0.5',
+    platform: 'win32',
+    diagnostics: [],
+    attachmentNames: [],
+  });
+  check('human-readable device names are never touched', named.includes('Soundcore Liberty 4 NC'), named.slice(0, 120));
+  const fb = R.buildFeedbackText({ rating: 4, text: `Latency on ${MAC} is fine`, version: '1.0.5', platform: 'win32' });
+  check('feedback text drops MACs too', !fb.includes(MAC), fb);
+  eq('token redaction still applies', R.redactSecrets('ws://127.0.0.1:8765/?token=SUPERSECRET'), 'ws://127.0.0.1:8765/?token=[redacted]');
+  check('bearer redaction still applies', /Bearer \[redacted\]/.test(R.redactSecrets('Authorization: Bearer abc.def-123')));
+  eq(
+    'frame bytes (no separators) are never mistaken for a MAC',
+    R.redactSecrets('08EE000000010101 0A0B0C0D0E0F'),
+    '08EE000000010101 0A0B0C0D0E0F',
+  );
 } finally {
   globalThis.fetch = realFetch;
   rmSync(repDir, { recursive: true, force: true });
