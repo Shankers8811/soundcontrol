@@ -17,6 +17,10 @@ const { enforceNoAutostart } = require(path.join(__dirname, '..', 'autostart.cjs
 const target = path.resolve(process.env.SOUNDCONTROL_VERIFY_EXE || process.execPath);
 
 app.whenReady().then(() => {
+  // Electron keys the Windows Run entry by AppUserModelID; older builds
+  // registered under this exact AUMID, so the verification must run under
+  // the same identity as the packaged app for the removal to match.
+  app.setAppUserModelId('com.soundcontrol.desktop');
   const openAtLogin = enforceNoAutostart(app, (m) => console.log(`[verify-autostart] ${m}`), target);
   console.log(`VERIFY_AUTOSTART target=${target} openAtLoginAfter=${openAtLogin}`);
   if (openAtLogin === true) {
