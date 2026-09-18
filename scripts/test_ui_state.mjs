@@ -317,6 +317,21 @@ eq('missing side byte clears level AND charging (untrusted telemetry)', [c4.righ
 const c5 = merge(emptyBattery(), 245, 90);
 eq('untrustworthy byte (>100) never becomes a battery', [c5.left, c5.presence], [null, 'unknown']);
 
+// Pass 11 §11 telemetry freshness: rapid repeats are idempotent, single-side
+// frames never resurrect the other side, and the newest valid frame wins.
+const r1 = merge(emptyBattery(), 80, 60, { chargingLeft: true });
+const r2 = merge(r1, 80, 60, { chargingLeft: true });
+eq('repeated identical frames are idempotent', r2, r1);
+const r3 = merge(r2, 80, undefined);
+eq('a single-side frame clears the other side instead of remembering it', [r3.right, r3.rightCharging, r3.presence], [null, undefined, 'unknown']);
+const r4 = merge(r3, 80, 60);
+eq('the next valid frame restores both sides (newest valid wins)', [r4.left, r4.right, r4.presence], [80, 60, 'both']);
+const r5 = merge(r4, 20, 20);
+eq('a newer lower reading replaces the older one (no keep-the-max heuristic)', [r5.left, r5.right], [20, 20]);
+const sc5 = merge(emptyBattery(), 4, 4, { scale: 5 });
+const sc6 = merge(sc5, 4, 4, { scale: 'unknown' });
+eq('a scale change is taken from the frame, never remembered', [batteryPercent(sc5.left, sc5.batteryScale), batteryPercent(sc6.left, sc6.batteryScale)], [80, null]);
+
 // Scale conversion still applies to raw-step devices through the merge.
 const sc = mergeBatteryTelemetry(emptyBattery(), { rawLeft: 4, rawRight: 0xff, scale: 5 });
 const scd = deriveEarbudState(sc, twsCaps);
