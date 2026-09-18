@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell, Tray, Menu, nativeImage } = require('electron');
 const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
@@ -36,6 +36,157 @@ let windowEverShown = false;
 // app's window can use the helper's Bluetooth writes.
 const bridgeToken = crypto.randomBytes(32).toString('hex');
 ipcMain.handle('soundcontrol:bridge-token', () => bridgeToken);
+
+// ---------------------------------------------------------------------------
+// User settings (real, persisted, behaviour-changing — exposed in Settings).
+//
+// Stored next to main.log in %AppData%\soundcontrol\settings.json. Only a
+// whitelist of boolean keys can be written over IPC; anything else is
+// rejected and logged. launchAtLogin maps to app.setLoginItemSettings (the
+// Windows registry run key), minimizeToTray creates/destroys a real Tray and
+// intercepts the window close event. Both re-apply at every startup, so the
+// setting genuinely survives a restart.
+// ---------------------------------------------------------------------------
+const SETTINGS_KEYS = ['launchAtLogin', 'minimizeToTray'];
+const DEFAULT_SETTINGS = { launchAtLogin: false, minimizeToTray: false };
+let settings = { ...DEFAULT_SETTINGS };
+let tray = null;
+
+function settingsFilePath() {
+  try {
+    return path.join(app.getPath('userData'), 'settings.json');
+  } catch {
+    return null;
+  }
+}
+
+function loadSettings() {
+  try {
+    const p = settingsFilePath();
+    if (!p || !fs.existsSync(p)) return;
+    const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+    for (const key of SETTINGS_KEYS) {
+      if (typeof raw[key] === 'boolean') settings[key] = raw[key];
+    }
+    log(`settings loaded (launchAtLogin=${settings.launchAtLogin}, minimizeToTray=${settings.minimizeToTray})`);
+  } catch (err) {
+    log(`settings load failed, using defaults: ${err}`);
+  }
+}
+
+function saveSettings() {
+  try {
+    const p = settingsFilePath();
+    if (!p) return;
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, `${JSON.stringify(settings, null, 2)}\n`);
+  } catch (err) {
+    log(`settings save failed: ${err}`);
+  }
+}
+
+function applyLaunchAtLogin() {
+  try {
+    app.setLoginItemSettings({ openAtLogin: settings.launchAtLogin, path: process.execPath });
+  } catch (err) {
+    log(`setLoginItemSettings failed: ${err}`);
+  }
+}
+
+function trayIconImage() {
+  try {
+    const img = nativeImage.createFromPath(path.join(__dirname, 'public', 'icon-512.png'));
+    return img.isEmpty() ? null : img.resize({ width: 16, height: 16 });
+  } catch {
+    return null;
+  }
+}
+
+function ensureTray() {
+  if (!settings.minimizeToTray) {
+    destroyTray();
+    return;
+  }
+  if (tray) return;
+  try {
+    const icon = trayIconImage();
+    if (!icon) {
+      log('tray icon unavailable; minimize-to-tray stays inactive');
+      return;
+    }
+    tray = new Tray(icon);
+    tray.setToolTip('SoundControl');
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: 'Show SoundControl', click: () => { if (!focusWindow()) createWindow(); } },
+        { type: 'separator' },
+        {
+          label: 'Quit SoundControl',
+          click: () => {
+            shuttingDown = true;
+            app.quit();
+          },
+        },
+      ]),
+    );
+    tray.on('click', () => {
+      if (!focusWindow()) createWindow();
+    });
+    log('tray icon created (minimize-to-tray enabled)');
+  } catch (err) {
+    tray = null;
+    log(`tray creation failed: ${err}`);
+  }
+}
+
+function destroyTray() {
+  if (!tray) return;
+  try {
+    tray.destroy();
+  } catch {
+    /* best-effort */
+  }
+  tray = null;
+}
+
+ipcMain.handle('soundcontrol:get-settings', () => ({ ...settings }));
+
+ipcMain.handle('soundcontrol:set-setting', (_event, key, value) => {
+  if (!SETTINGS_KEYS.includes(key) || typeof value !== 'boolean') {
+    // Never write unknown keys or non-boolean values: the renderer is trusted
+    // enough to ask, not trusted enough to define the schema.
+    log(`rejected invalid settings write: key=${String(key)} type=${typeof value}`);
+    return { ...settings };
+  }
+  settings[key] = value;
+  saveSettings();
+  if (key === 'launchAtLogin') applyLaunchAtLogin();
+  if (key === 'minimizeToTray') ensureTray();
+  log(`setting ${key} = ${value}`);
+  return { ...settings };
+});
+
+ipcMain.handle('soundcontrol:open-log-folder', async () => {
+  try {
+    const dir = app.getPath('userData');
+    // shell.openPath resolves '' on success and an error string otherwise.
+    // Only ever the app's own userData directory — no caller-chosen paths.
+    const res = await shell.openPath(dir);
+    if (res) log(`open-log-folder failed: ${res}`);
+    return res === '';
+  } catch (err) {
+    log(`open-log-folder failed: ${err}`);
+    return false;
+  }
+});
+
+ipcMain.handle('soundcontrol:app-version', () => {
+  try {
+    return app.getVersion();
+  } catch {
+    return '';
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Startup diagnostics.
@@ -384,11 +535,14 @@ function createWindow() {
     }
 
     const win = new BrowserWindow({
-      width: 1200,
-      height: 850,
-      minWidth: 800,
+      // Desktop-first layout: comfortable at 1280×720 and up, and the
+      // minimum keeps the sidebar + content usable without a mobile fallback.
+      width: 1280,
+      height: 820,
+      minWidth: 940,
       minHeight: 640,
-      backgroundColor: '#d8e2ef',
+      // Matches the dark renderer theme so a cold start never flashes white.
+      backgroundColor: '#0a0e17',
       title: 'SoundControl — Desktop Companion for Soundcore',
       icon: path.join(__dirname, 'public', 'icon-512.png'),
       autoHideMenuBar: true,
@@ -422,8 +576,44 @@ function createWindow() {
       }
     }, 4000);
 
+    // Minimize-to-tray: only when the user enabled it AND the tray icon
+    // really exists; a normal quit (before-quit sets shuttingDown) always
+    // closes for real, so shutdown can never deadlock behind a hidden window.
+    win.on('close', (event) => {
+      if (!shuttingDown && settings.minimizeToTray && tray && !win.isDestroyed()) {
+        event.preventDefault();
+        win.hide();
+        log('window hidden to tray (minimize-to-tray enabled)');
+      }
+    });
+
     win.on('closed', () => {
       mainWindow = null;
+    });
+
+    // External links (About page → GitHub releases) open in the default
+    // browser; everything else is denied, and in-page navigation away from
+    // the app origin is blocked. The renderer keeps no node access either
+    // way (contextIsolation, nodeIntegration:false).
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      try {
+        const parsed = new URL(url);
+        const allowedHost = parsed.hostname === 'github.com' || parsed.hostname.endsWith('.github.com');
+        if (parsed.protocol === 'https:' && allowedHost) {
+          void shell.openExternal(parsed.toString());
+        } else {
+          log(`blocked window.open to ${parsed.protocol}//${parsed.hostname}`);
+        }
+      } catch {
+        log(`blocked window.open with unparseable url`);
+      }
+      return { action: 'deny' };
+    });
+    win.webContents.on('will-navigate', (event, url) => {
+      if (url !== win.webContents.getURL()) {
+        event.preventDefault();
+        log(`blocked in-window navigation to ${url}`);
+      }
     });
 
     win.webContents.on('did-fail-load', (_e, code, desc, url) => {
@@ -469,6 +659,11 @@ if (!gotTheLock) {
     }
     // Proper taskbar grouping / notification attribution on Windows.
     app.setAppUserModelId('com.soundcontrol.desktop');
+    // Persisted user settings (launch-at-login, tray) — loaded and applied
+    // before the window so a restart restores the chosen behavior exactly.
+    loadSettings();
+    applyLaunchAtLogin();
+    ensureTray();
     // Fire-and-forget by design (the window must not wait for the helper),
     // but a rejection here must reach the log, not the void.
     startBridgeIfAvailable().catch((err) => log(`startBridgeIfAvailable failed: ${err}`));
@@ -487,6 +682,7 @@ if (!gotTheLock) {
 app.on('before-quit', () => {
   log('app quitting; stopping the Bluetooth helper');
   shuttingDown = true;
+  destroyTray();
   killBridgeProcesses();
 });
 

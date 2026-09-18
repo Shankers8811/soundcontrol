@@ -6,26 +6,44 @@
 @import "@fontsource/ibm-plex-mono/400.css";
 @import "@fontsource/ibm-plex-mono/500.css";
 
+/*
+ * SoundControl desktop theme — dark navy / almost-black surfaces with an
+ * electric-blue accent (PART B/V). Cards are slightly lighter navy with
+ * subtle borders; gradients and shadows stay minimal.
+ */
 @theme {
   --font-sans: "Outfit", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --color-blue: #2f6bff;
-  --color-blue-2: #1f56e0;
-  --color-ink: #1c1e24;
-  --color-mute: #8b919c;
-  --color-line: #eceff3;
-  --color-wash: #f4f6f9;
-  --color-sky: #e7f0ff;
-  --color-paper: #ffffff;
-  --color-danger: #e11d48;
+
+  /* Surfaces */
+  --color-bg: #0a0e17;        /* app background — very dark navy */
+  --color-sunken: #0d1320;    /* sidebar / recessed wells */
+  --color-panel: #121a2b;     /* cards */
+  --color-raised: #182238;    /* hover / raised insets */
+  --color-edge: #223049;      /* subtle borders */
+  --color-edge-soft: #1a2438; /* fainter inner borders */
+
+  /* Text */
+  --color-ink: #e9eef7;
+  --color-mute: #93a0b4;
+  --color-faint: #64718a;
+
+  /* Accent — Soundcore-inspired electric blue (the only accent; no green) */
+  --color-accent: #3d7bff;
+  --color-accent-deep: #2f6bff;
+  --color-accent-soft: #6ea1ff;
+
+  /* Semantic */
+  --color-danger: #fb5a76;
+  --color-warn: #f5a524;
 }
 
 html,
 body,
 #root {
   min-height: 100%;
-  background: #d7e2f0;
-  color: #1c1e24;
+  background: #0a0e17;
+  color: #e9eef7;
 }
 
 body {
@@ -46,30 +64,276 @@ textarea {
   font: inherit;
 }
 
+::selection {
+  background: rgb(61 123 255 / 0.35);
+}
+
+/* ---------------------------------------------------------------- */
+/* Scrollbars — dark, unobtrusive                                    */
+/* ---------------------------------------------------------------- */
+
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c9d0db;
+  background: #223049;
   border-radius: 99px;
+  border: 2px solid #0a0e17;
 }
 
+::-webkit-scrollbar-thumb:hover {
+  background: #2e405f;
+}
+
+/* ---------------------------------------------------------------- */
+/* Animation system (PART W)                                         */
+/*   navigation / page change : 180ms                                */
+/*   hover / focus            : 150ms (utility transitions)          */
+/*   cards / state changes    : 200–300ms (utility transitions)      */
+/*   noise-control icon       : ~750ms total (PART G)                */
+/* ---------------------------------------------------------------- */
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.page-enter {
+  animation: page-in 180ms ease-out;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes soft-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.blink {
+  animation: soft-blink 1.4s ease-in-out infinite;
+}
+
+/* ---------------------------------------------------------------- */
+/* Noise-control icon transition (PART G)                            */
+/*                                                                    */
+/* Sequence (~750ms, ONLY around the icon — the card never glows):   */
+/*   0–200ms   ring illuminates (border + tight glow)                */
+/*   80–750ms  a conic highlight travels around the ring             */
+/*   120/260ms two ripple rings expand outward and fade              */
+/*   end       icon settles into the restrained active ring          */
+/* ---------------------------------------------------------------- */
+
+.nc-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+}
+
+/* The settled ring. Idle = faint; active = restrained blue. */
+.nc-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid rgb(147 160 180 / 0.18);
+  transition:
+    border-color 200ms ease,
+    box-shadow 250ms ease,
+    background-color 200ms ease;
+  pointer-events: none;
+}
+
+.nc-active .nc-ring {
+  border-color: rgb(61 123 255 / 0.55);
+  box-shadow: 0 0 10px rgb(61 123 255 / 0.16);
+}
+
+/* Illumination sweep at the start of a real mode change. */
+@keyframes nc-illuminate {
+  0% {
+    border-color: rgb(61 123 255 / 0.25);
+    box-shadow: 0 0 0 0 rgb(61 123 255 / 0);
+  }
+  28% {
+    border-color: rgb(110 161 255 / 0.95);
+    box-shadow:
+      0 0 16px 2px rgb(61 123 255 / 0.4),
+      inset 0 0 8px rgb(61 123 255 / 0.18);
+  }
+  100% {
+    border-color: rgb(61 123 255 / 0.55);
+    box-shadow: 0 0 10px rgb(61 123 255 / 0.16);
+  }
+}
+
+/* Conic highlight travelling around the icon border, masked to a ring. */
+.nc-glow {
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0 62%,
+    rgb(61 123 255 / 0.55) 76%,
+    rgb(110 161 255 / 0.95) 86%,
+    rgb(160 200 255 / 1) 90%,
+    transparent 97%
+  );
+  --nc-ring-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 3.5px),
+    #000 calc(100% - 3px)
+  );
+  -webkit-mask-image: var(--nc-ring-mask);
+  mask-image: var(--nc-ring-mask);
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes nc-travel {
+  0% {
+    transform: rotate(-30deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  78% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: rotate(330deg);
+    opacity: 0;
+  }
+}
+
+/* Two subtle wave rings expanding outward, then fading. */
+.nc-ripple {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1.5px solid rgb(61 123 255 / 0.6);
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes nc-ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.85);
+    opacity: 0;
+  }
+}
+
+/*
+ * The pulse elements are mounted (with a fresh React key) only while a real
+ * transition is in flight; each animation runs once and the component keeps
+ * only the settled `.nc-active` ring afterwards.
+ */
+.nc-pulse .nc-ring {
+  animation: nc-illuminate 720ms ease-out forwards;
+}
+
+.nc-pulse .nc-glow {
+  animation: nc-travel 720ms cubic-bezier(0.3, 0.1, 0.2, 1) forwards;
+}
+
+.nc-pulse .nc-ripple-1 {
+  animation: nc-ripple 620ms ease-out 100ms forwards;
+}
+
+.nc-pulse .nc-ripple-2 {
+  animation: nc-ripple 620ms ease-out 240ms forwards;
+}
+
+/* ---------------------------------------------------------------- */
+/* Reduced motion (PART D/G/W): state changes stay fully visible,    */
+/* movement is removed.                                              */
+/* ---------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter,
+  .spin,
+  .blink,
+  .nc-pulse .nc-ring,
+  .nc-pulse .nc-glow,
+  .nc-pulse .nc-ripple-1,
+  .nc-pulse .nc-ripple-2 {
+    animation: none !important;
+  }
+
+  /* The travelled glow would otherwise stay invisible mid-keyframe. */
+  .nc-pulse .nc-glow {
+    opacity: 0 !important;
+  }
+
+  /* Keep the illumination's end state so the change is still perceivable. */
+  .nc-pulse .nc-ring {
+    border-color: rgb(110 161 255 / 0.95);
+    box-shadow: 0 0 14px 1px rgb(61 123 255 / 0.35);
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* Controls                                                          */
+/* ---------------------------------------------------------------- */
+
+/* 8-band graphic-EQ fader (Equalizer page). */
 .eq-fader {
   writing-mode: vertical-lr;
   direction: rtl;
   appearance: none;
   width: 22px;
-  height: 168px;
+  height: 170px;
   background: transparent;
   cursor: pointer;
 }
 
+.eq-fader:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 .eq-fader::-webkit-slider-runnable-track {
   width: 6px;
-  background: #d9dee8;
+  background: #1c2740;
   border-radius: 99px;
+  border: 1px solid #223049;
 }
 
 .eq-fader::-webkit-slider-thumb {
@@ -78,89 +342,117 @@ textarea {
   height: 18px;
   margin-left: -6px;
   border-radius: 99px;
-  background: #2f6bff;
-  box-shadow: 0 2px 6px rgb(47 107 255 / 0.35);
+  background: #3d7bff;
+  border: 2px solid #0a0e17;
+  box-shadow: 0 0 8px rgb(61 123 255 / 0.45);
 }
 
 .eq-fader::-moz-range-track {
   width: 6px;
-  background: #d9dee8;
+  background: #1c2740;
   border-radius: 99px;
+  border: 1px solid #223049;
 }
 
 .eq-fader::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border: 0;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #0a0e17;
   border-radius: 99px;
-  background: #2f6bff;
+  background: #3d7bff;
+  box-shadow: 0 0 8px rgb(61 123 255 / 0.45);
 }
 
+/* Accessible switch (role="switch" buttons). */
 .toggle {
   position: relative;
-  width: 48px;
-  height: 28px;
+  width: 44px;
+  height: 24px;
+  flex: none;
   border-radius: 99px;
-  background: #d5dbe4;
-  transition: background 0.2s;
-}
-
-.toggle.on {
-  background: #2f6bff;
+  background: #1c2740;
+  border: 1px solid #223049;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  cursor: pointer;
 }
 
 .toggle::after {
   content: "";
   position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 22px;
-  height: 22px;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
   border-radius: 99px;
-  background: #fff;
-  box-shadow: 0 1px 4px rgb(0 0 0 / 0.15);
-  transition: transform 0.2s;
+  background: #93a0b4;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.toggle.on {
+  background: rgb(61 123 255 / 0.28);
+  border-color: rgb(61 123 255 / 0.65);
 }
 
 .toggle.on::after {
   transform: translateX(20px);
+  background: #3d7bff;
+  box-shadow: 0 0 8px rgb(61 123 255 / 0.55);
 }
 
-.radar {
-  position: relative;
-  display: flex;
-  height: 120px;
-  width: 120px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: #e7f0ff;
+.toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
 }
 
-.radar::before,
-.radar::after {
-  content: "";
-  position: absolute;
-  inset: 8px;
-  border-radius: 999px;
-  border: 2px solid rgb(47 107 255 / 0.25);
+/* Horizontal range inputs (ANC level etc.). */
+.h-range {
+  appearance: none;
+  height: 22px;
+  background: transparent;
+  cursor: pointer;
 }
 
-.radar.on::before {
-  animation: ping 1.6s ease-out infinite;
+.h-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
 }
 
-.radar.on::after {
-  animation: ping 1.6s ease-out 0.4s infinite;
+.h-range::-webkit-slider-runnable-track {
+  height: 6px;
+  background: #1c2740;
+  border-radius: 99px;
+  border: 1px solid #223049;
 }
 
-@keyframes ping {
-  0% {
-    transform: scale(0.7);
-    opacity: 0.7;
-  }
-  100% {
-    transform: scale(1.35);
-    opacity: 0;
-  }
+.h-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 99px;
+  background: #3d7bff;
+  border: 2px solid #0a0e17;
+  box-shadow: 0 0 8px rgb(61 123 255 / 0.45);
+}
+
+.h-range::-moz-range-track {
+  height: 6px;
+  background: #1c2740;
+  border-radius: 99px;
+  border: 1px solid #223049;
+}
+
+.h-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #0a0e17;
+  border-radius: 99px;
+  background: #3d7bff;
+}
+
+/* Keyboard focus — visible everywhere (PART D/X). */
+:focus-visible {
+  outline: 2px solid rgb(110 161 255 / 0.8);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
