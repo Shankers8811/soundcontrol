@@ -15,7 +15,9 @@ import { IconBolt } from './Icons';
  * "Status unavailable", never a guessed "Not connected".
  *
  * Battery is shown for a side only while the device reports that side as
- * connected; a disconnected side never displays a stale level.
+ * connected; a disconnected side never displays a stale level (the store's
+ * mergeBatteryTelemetry clears absent sides at the source, and this card
+ * renders `side.state` — never battery — as the connection truth).
  *
  * The card is rendered only for profiles with independent left/right
  * hardware (`capabilities.supportsEarbudState`); over-ears get the single
@@ -23,8 +25,8 @@ import { IconBolt } from './Icons';
  */
 
 function SidePanel({ side, label }: { side: EarbudSide; label: 'Left' | 'Right' }) {
-  const connected = side.connection === 'connected';
-  const unknown = side.connection === 'unknown';
+  const connected = side.state === 'connected';
+  const unknown = side.state === 'unknown';
 
   return (
     <div
@@ -37,7 +39,7 @@ function SidePanel({ side, label }: { side: EarbudSide; label: 'Left' | 'Right' 
               'border-edge/60 bg-sunken/45'
       }`}
       aria-label={`${label} earbud: ${
-        connected ? 'connected' : unknown ? 'status unavailable' : 'not connected'
+        connected ? 'connected' : unknown ? 'unknown, awaiting device telemetry' : 'disconnected'
       }`}
     >
       {/* Earbud glyph — darker/saturated when live, washed out when not. */}
@@ -92,7 +94,7 @@ function SidePanel({ side, label }: { side: EarbudSide; label: 'Left' | 'Right' 
             connected ? 'text-ink' : unknown ? 'text-mute' : 'text-faint'
           }`}
         >
-          {connected ? 'Connected' : unknown ? 'Status unavailable' : 'Not connected'}
+          {connected ? 'Connected' : unknown ? 'Unknown' : 'Disconnected'}
         </span>
       </span>
 
@@ -117,10 +119,11 @@ export function EarbudStatusCard() {
   const app = useApp();
   const state = app.earbudState;
 
-  // Over-ears and single-body devices: no per-side hardware, no L/R card.
-  if (!state) return null;
+  // Over-ears and single-body devices (`unavailable`): no per-side hardware,
+  // no L/R card — never render fake sides.
+  if (!state.supported) return null;
 
-  const known = state.left.connection !== 'unknown' || state.right.connection !== 'unknown';
+  const known = state.left.state !== 'unknown' || state.right.state !== 'unknown';
 
   return (
     <Card
@@ -129,7 +132,7 @@ export function EarbudStatusCard() {
         app.connected
           ? known
             ? 'Live per-side status from the device battery telemetry (0xFF = side not connected)'
-            : 'Waiting for the device to report per-side telemetry…'
+            : 'Detecting earbuds…'
           : 'Per-side status appears once a device is connected'
       }
     >

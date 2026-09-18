@@ -34,7 +34,9 @@ import {
   deriveCapabilities,
   deriveConnectionPhase,
   deriveEarbudState,
-  presenceFromRaw,
+  emptyBattery,
+  mergeBatteryTelemetry,
+  parseSoundModes,
   type Capabilities,
   type ConnectionPhase,
   type EarbudState,
@@ -44,7 +46,6 @@ import type {
   AncScene,
   BatteryState,
   DeviceProfile,
-  EarbudPresence,
   LogEntry,
   PageId,
   Transport,
@@ -102,8 +103,8 @@ interface AppState {
   connectionPhase: ConnectionPhase;
   /** Per-model, protocol-derived feature matrix — see src/state/derive.ts. */
   capabilities: Capabilities;
-  /** Per-side earbud state for TWS; null when the device has no L/R sides. */
-  earbudState: EarbudState | null;
+  /** Per-side earbud state; `supported` is false without L/R hardware. */
+  earbudState: EarbudState;
   /** Operation currently in flight, for loading/disabled states. */
   busy: BusyKey;
   transportLabel: string;
@@ -158,6 +159,13 @@ interface AppState {
 }
 
 const Ctx = createContext<AppState | null>(null);
+
+/**
+ * Exported only as a seam for the deterministic render tests
+ * (scripts/test_ui_render.mjs), which render cards against fixed states
+ * without a browser. AppProvider remains the only production writer.
+ */
+export const AppContext = Ctx;
 
 let seq = 1;
 
@@ -220,25 +228,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * the manual ANC level everywhere.
    */
   const syncSoundModes = useCallback((payload: Uint8Array) => {
-    if (payload.length < 2) return;
-    const layout = profileRef.current.ancLayout;
-    if (layout === 'none') return;
-    const mode: AncMode =
-      payload[0] === 0x00 ? 'anc' : payload[0] === 0x01 ? 'transparency' : 'normal';
-    setAncMode(mode);
-    const manual = (payload[1] >> 4) & 0x0f;
-    if (manual >= 1 && manual <= 5) setAncLevel(manual);
-    if (layout === 'tws-l4nc' && payload.length >= 5) {
-      setTransVocalState((payload[2] & 0x01) !== 0);
-      setWindNoiseState((payload[4] & 0x01) !== 0);
-    } else if ((layout === 'tws-p30i' || layout === 'tws-l3pro') && payload.length >= 5) {
-      setWindNoiseState((payload[4] & 0x01) !== 0);
-    }
-    if (layout === 'classic' && payload.length >= 4) {
-      setTransVocalState((payload[2] & 0x01) !== 0);
-      const scene = payload[1];
-      setAncScene(scene === 0x00 ? 'transport' : scene === 0x02 ? 'indoor' : 'outdoor');
-    }
+    // The device's own sound-mode report is the ONLY input that moves the
+    // confirmed ANC state; parseSoundModes (pure, unit-tested) rejects
+    // malformed mirrors so garbage can never overwrite a confirmed mode.
+    const report = parseSoundModes(payload, profileRef.current.ancLayout);
+    if (!report) return;
+    setAncMode(report.mode);
+    if (report.level !== undefined) setAncLevel(report.level);
+    if (report.transVocal !== undefined) setTransVocalState(report.transVocal);
+    if (report.wind !== undefined) setWindNoiseState(report.wind);
+    if (report.scene !== undefined) setAncScene(report.scene);
   }, []);
 
   const pushLog = useCallback((dir: LogEntry['dir'], data: ArrayLike<number> | string, note?: string) => {
@@ -264,6 +263,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (data: Uint8Array) => {
       pushLog('rx', data);
       if (data[0] !== 0x09 || data[1] !== 0xff || data.length < 10) return;
+      // A frame that fails the additive checksum is malformed wire data, not
+      // telemetry: it is already logged (marked invalid) and must never move
+      // parsed state — absence of valid data keeps the previous confirmed
+      // values, while valid data with an absent side clears it (see
+      // mergeBatteryTelemetry).
+      if (!verifyFrame(data)) return;
 
       const cat = data[5];
       const typ = data[6];
@@ -286,8 +291,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       if (cat === 0x01 && typ === 0x04 && payload.length >= 1) {
-        // Charging flag for the single reported side.
-        setBattery((p) => ({ ...p, leftCharging: (payload[0] & 0x01) !== 0 }));
+        // Charging flag for the first reported side (PROTOCOL.md documents
+        // "charging flag(s)" without byte-confirmed multi-side semantics, so
+        // only byte0 is consumed). A flag can never attach to a side the
+        // device has explicitly reported absent — a charging bud is present
+        // by definition, so this frame contradicts a confirmed 'right'/'none'
+        // presence and is ignored rather than allowed to dirty the state.
+        setBattery((p) =>
+          p.presence === 'right' || p.presence === 'none'
+            ? p
+            : { ...p, leftCharging: (payload[0] & 0x01) !== 0 },
+        );
         return;
       }
 
@@ -313,8 +327,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      let levels: [number | null, number | null] | null = null;
-      let presence: EarbudPresence = 'unknown';
+      let sawBatteryFrame = false;
       let rawLeft: number | undefined;
       let rawRight: number | undefined;
       let chargingLeft: boolean | undefined;
@@ -324,11 +337,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Full state update. Field offsets are model-specific — see
         // src/protocol/devices.ts, where each row cites the OpenSCQ30 packet
         // definition it came from.
+        sawBatteryFrame = true;
         rawLeft = payload[offsets.batteryLeft];
         rawRight = offsets.batteryRight === null ? undefined : payload[offsets.batteryRight];
         // The case byte stays a wire fact (see PROTOCOL.md) but is never
         // surfaced: many models do not report it and over-ears have no case.
-        levels = [batteryLevel(rawLeft), batteryLevel(rawRight)];
         if (offsets.batteryChargingLeft !== null) {
           chargingLeft = (payload[offsets.batteryChargingLeft] & 0x01) !== 0;
         }
@@ -345,35 +358,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       } else if (cat === 0x01 && typ === 0x03 && payload.length >= 1) {
         // The explicit battery query returns left/right in the first bytes.
+        sawBatteryFrame = true;
         rawLeft = payload[0];
         rawRight = offsets.batteryRight === null ? undefined : payload[1];
-        levels = [batteryLevel(rawLeft), batteryLevel(rawRight)];
       }
-      if (!levels) return;
-      if (
-        levels.every((value) => value === null) &&
-        !(rawLeft === 0xff || rawRight === 0xff)
-      ) return;
-      // Both side bytes present → presence is known; a single byte (over-ears,
-      // truncated frames) leaves it 'unknown' — never guessed 'disconnected'.
-      presence = presenceFromRaw(rawLeft, rawRight);
+      if (!sawBatteryFrame) return;
 
-      setBattery((previous) => ({
-        left: levels![0] ?? previous.left,
-        right: levels![1] ?? previous.right,
-        leftCharging: chargingLeft ?? previous.leftCharging,
-        rightCharging: chargingRight ?? previous.rightCharging,
-        // Device-reported levels are always in the model's raw steps (0..5 or
-        // 0..10 — PROTOCOL.md), over-ears included; the old null here rendered
-        // a 4/5 over-ear level as "4%". batteryPercent() still passes values
-        // above the scale through, so percent-reporting firmware degrades safely.
-        batteryScale: profileRef.current.batteryMax,
-        presence: presence === 'unknown' ? previous.presence : presence,
-      }));
+      // Single source-of-truth merge (derive.mergeBatteryTelemetry, covered
+      // by the stale-battery regression tests): a side whose CURRENT byte is
+      // 0xFF (explicitly absent), missing, or untrustworthy (> 100) becomes
+      // null — a previous level can never survive telemetry that says the
+      // side is gone. Device-reported levels are the model's raw steps
+      // (0..5 / 0..10 — PROTOCOL.md); batteryPercent() passes values above
+      // the scale through, so percent-reporting firmware degrades safely.
+      setBattery((previous) =>
+        mergeBatteryTelemetry(previous, {
+          rawLeft,
+          rawRight,
+          chargingLeft,
+          chargingRight,
+          scale: profileRef.current.batteryMax,
+        }),
+      );
 
       // One quiet nudge per connection when any reported side drops under 20%.
       const scale = profileRef.current.batteryMax || 5;
-      const low = (levels as Array<number | null>)
+      const low = [batteryLevel(rawLeft), batteryLevel(rawRight)]
         .filter((v): v is number => v !== null)
         .map((v) => (v / scale) * 100)
         .filter((p) => p < 20);
@@ -437,16 +447,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : null,
       );
       const note = matchNote(name);
+      // A fresh connection ALWAYS starts from the cleared battery state —
+      // even when no seed is supplied (manual-MAC connects have none). Both
+      // sides stay `unknown` until the device's own telemetry confirms them;
+      // a Bluetooth link is never treated as "both earbuds connected".
+      const seed = emptyBattery();
       if (typeof bat === 'number') {
-        setBattery({ left: bat, right: bat, batteryScale: null, presence: 'unknown' });
+        // Windows PnP aggregate percent (scale null = already a percentage).
+        // It goes to `left` only — copying it to `right` would fabricate a
+        // per-side value Windows never reported.
+        seed.left = bat;
       } else if (bat && typeof bat === 'object') {
-        setBattery({
-          left: bat.left ?? null,
-          right: bat.right ?? null,
-          batteryScale: bat.batteryScale ?? null,
-          presence: bat.presence ?? 'unknown',
-        });
+        if (bat.left != null) seed.left = bat.left;
+        if (bat.right != null) seed.right = bat.right;
+        seed.batteryScale = bat.batteryScale ?? null;
+        seed.presence = bat.presence ?? 'unknown';
       }
+      setBattery(seed);
+      // Feature state is per-device as well: back to power-on defaults until
+      // the new device confirms its own (06:01 sound-mode / 02:81 EQ mirrors).
+      setAncMode('anc');
+      setAncLevel(5);
+      setAncScene('outdoor');
+      setTransVocalState(false);
+      setWindNoiseState(false);
+      setGamingState(false);
+      setLdacState(false);
+      setDualState(false);
+      setSurroundState(false);
+      setEqId('signature');
+      setBands([...ZERO_BANDS]);
       setConnected(true);
       setPage('dashboard');
       pushLog(
@@ -543,6 +573,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  /**
+   * Clear EVERY piece of device-specific state: identity, battery (levels,
+   * per-side presence, charging, scale), link info, firmware/serial, ANC
+   * intent, feature toggles and EQ. Used by both the explicit disconnect and
+   * the unexpected link-down path — no stale value may survive the control
+   * link, and capabilities fall back to the same default profile a fresh
+   * launch shows.
+   */
+  const clearDeviceState = useCallback(() => {
+    setConnected(false);
+    setConnectedMac(null);
+    setTransportLabel('Not connected');
+    setDeviceName('No device');
+    setBattery(emptyBattery());
+    setLinkInfo(null);
+    setFirmware('Unknown');
+    setSerial(null);
+    const fresh = matchDevice('R50i');
+    profileRef.current = fresh;
+    setProfile(fresh);
+    setAncMode('anc');
+    setAncLevel(5);
+    setAncScene('outdoor');
+    setTransVocalState(false);
+    setWindNoiseState(false);
+    setGamingState(false);
+    setLdacState(false);
+    setDualState(false);
+    setSurroundState(false);
+    setEqId('signature');
+    setBands([...ZERO_BANDS]);
+  }, []);
+
   const connectBridgePort = useCallback(
     (mac: string, label?: string, windowsBattery?: number | null) =>
       wrapConnect(async () => {
@@ -569,9 +632,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           (reason) => {
             if (!linked.transport || transportRef.current !== linked.transport) return;
             transportRef.current = null;
-            setConnected(false);
-            setConnectedMac(null);
-            setTransportLabel('Not connected');
+            // The whole control link died: every piece of device state goes
+            // with it — a stale name/battery/L-R panel next to a dead link is
+            // exactly the misleading UI the state model forbids.
+            clearDeviceState();
             setError(reason);
             pushLog('sys', '', reason);
             if (prompts) void beep('warn');
@@ -593,7 +657,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           });
         }
       }),
-    [attach, onRx, prompts, pushLog, releaseTransport, wrapConnect],
+    [attach, clearDeviceState, onRx, prompts, pushLog, releaseTransport, wrapConnect],
   );
 
   const connectSim = useCallback(
@@ -665,22 +729,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const disconnect = useCallback(async () => {
     const t = transportRef.current;
     transportRef.current = null;
-    setConnected(false);
-    setConnectedMac(null);
-    setTransportLabel('Not connected');
-    // Clear the old device's identity and telemetry: a stale name/battery in
-    // the disconnected UI is misleading, and attach() only overwrites the
-    // battery when the next device actually reports one.
-    setDeviceName('No device');
-    setBattery({ left: null, right: null });
-    setLinkInfo(null);
+    clearDeviceState();
     try {
       await t?.close();
     } catch {
       /* */
     }
     pushLog('sys', '', 'Disconnected');
-  }, [pushLog]);
+  }, [clearDeviceState, pushLog]);
 
   /**
    * Every sound-mode change re-sends the whole `06:81` payload, so all four

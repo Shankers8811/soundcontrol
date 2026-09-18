@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../state/store';
-import { EarbudsArt, OverEarArt } from '../components/DeviceArt';
+import { EarbudsArt, OverEarArt, type ArtSideState } from '../components/DeviceArt';
+import type { EarbudSideState } from '../state/derive';
 import {
   IconAlert,
   IconCodec,
@@ -67,6 +68,11 @@ function FeatureToggle({
       {busy && <span className="text-[10px] font-semibold text-warn blink">sending…</span>}
     </div>
   );
+}
+
+/** Telemetry side state → illustration state (unavailable stays decorative). */
+function artSide(state: EarbudSideState): ArtSideState | undefined {
+  return state === 'unavailable' ? undefined : state;
 }
 
 export function ControlsPage() {
@@ -183,10 +189,17 @@ export function ControlsPage() {
         {/* ------------------------------------------------ right column */}
         <div className="space-y-4 xl:col-span-5">
           <Card title={app.profile.kind === 'earbuds' ? 'Your earbuds' : 'Your headset'}>
-            {/* Purely decorative, clearly non-interactive (PART O). */}
+            {/* Non-interactive illustration (PART O). For TWS models with
+                live telemetry the two buds dim/brighten INDEPENDENTLY from
+                the device-reported per-side state — the image mirrors real
+                presence, never a guessed one. */}
             <div className="pointer-events-none select-none" aria-hidden>
               {app.profile.kind === 'earbuds' ? (
-                <EarbudsArt live={app.connected} />
+                <EarbudsArt
+                  live={app.connected}
+                  leftState={artSide(app.earbudState.left.state)}
+                  rightState={artSide(app.earbudState.right.state)}
+                />
               ) : (
                 <OverEarArt live={app.connected} />
               )}

@@ -54,9 +54,12 @@ try {
       contents: `
         export { default as React } from 'react';
         export { renderToStaticMarkup } from 'react-dom/server';
-        export { AppProvider } from './src/state/store.tsx';
+        export { AppProvider, AppContext } from './src/state/store.tsx';
         export { DesktopShell } from './src/components/DesktopShell.tsx';
         export { Sidebar } from './src/components/Sidebar.tsx';
+        export { EarbudStatusCard } from './src/components/EarbudStatusCard.tsx';
+        export { deriveCapabilities, deriveEarbudState } from './src/state/derive.ts';
+        export { DEVICES } from './src/protocol/devices.ts';
         export { DashboardPage } from './src/pages/DashboardPage.tsx';
         export { DevicesPage } from './src/pages/DevicesPage.tsx';
         export { EqualizerPage } from './src/pages/EqualizerPage.tsx';
@@ -129,7 +132,11 @@ check('no-ANC default profile gets the unsupported note, not fake buttons', dash
 check('volume card explains the protocol gap instead of a live slider', dash.includes('Volume') && dash.includes('no volume command in any published capture'));
 check('volume slider is rendered disabled', /aria-label="Device volume \(not supported by the protocol\)"[^>]*disabled/.test(dash) || dash.includes('disabled'));
 check('earbud card present for TWS profile', dash.includes('Earbud Connection'));
-check('unknown presence renders "Status unavailable", not "Not connected"', dash.includes('Status unavailable') && !dash.includes('>Not connected<'));
+// Sides render "Unknown" — never the old "Status unavailable" copy and never
+// "Not connected". (The page-level connection-phase badge legitimately reads
+// "Disconnected" for the dead CONTROL LINK; that is a different concept from
+// per-side earbud presence and is asserted in the connected-state section.)
+check('unknown presence renders per-side "Unknown", never "Not connected"', dash.includes('>Unknown<') && !dash.includes('Status unavailable') && !dash.includes('>Not connected<'));
 check('connect CTA points at the real Devices page', dash.includes('Open Devices'));
 check('quick actions render real presets for this EQ-capable profile', dash.includes('Bass Booster') && dash.includes('Spoken Word'));
 
@@ -180,6 +187,74 @@ check('MIT license statement', about.includes('MIT License'));
 check('real repository links only', about.includes('https://github.com/Shankers8811/soundcontrol'));
 check('no fake update/support/privacy buttons', !about.includes('Check for updates') && !about.includes('Contact support') && !about.includes('Privacy policy'));
 check('unofficial-project disclaimer', about.includes('not affiliated with'));
+
+/* ======================================================================== */
+/* Connected-state L/R rendering (Pass 4 §23)                                */
+/*                                                                           */
+/* EarbudStatusCard is rendered through the REAL React tree with the store's */
+/* exported context seam, for every earbud state, with earbudState produced  */
+/* by the REAL deriveEarbudState from raw battery objects — the same chain   */
+/* production uses (wire bytes → store merge → derive → card).               */
+/* ======================================================================== */
+
+console.log('\n[earbud card] connected-state L/R rendering (all six states)');
+
+const { AppContext, EarbudStatusCard, DEVICES: RD, deriveCapabilities: rc, deriveEarbudState: des } = M;
+const twsCaps = rc(RD.find((d) => d.id === 'liberty-4-nc'));
+const overEarCaps = rc(RD.find((d) => d.id === 'q45'));
+
+function renderCard(battery, caps, connected = true) {
+  const earbudState = des(battery, caps);
+  const ctx = { connected, earbudState };
+  return renderToStaticMarkup(
+    React.createElement(AppContext.Provider, { value: ctx }, React.createElement(EarbudStatusCard)),
+  );
+}
+
+// BOTH — L=100 R=90 (scale null = percents, matching the spec cases).
+const bothHtml = renderCard({ left: 100, right: 90, batteryScale: null, presence: 'both' }, twsCaps);
+check('both: two "Connected" labels', (bothHtml.match(/>Connected</g) ?? []).length === 2);
+check('both: real percents rendered', bothHtml.includes('100%') && bothHtml.includes('90%'));
+check('both: both visuals at full brightness', !bothHtml.includes('opacity="0.38"') && !bothHtml.includes('opacity="0.65"'));
+check('both: live-status subtitle', bothHtml.includes('Live per-side status'));
+check('both: no dimmed side text', !bothHtml.includes('>Disconnected<') && !bothHtml.includes('>Unknown<'));
+
+// LEFT ONLY — L=100, R=0xFF decoded upstream to presence 'left', right null.
+const leftHtml = renderCard({ left: 100, right: null, batteryScale: null, presence: 'left' }, twsCaps);
+check('left-only: left Connected + 100%', leftHtml.includes('>Connected<') && leftHtml.includes('100%'));
+check('left-only: right Disconnected with em-dash, NO stale 90%', leftHtml.includes('>Disconnected<') && !leftHtml.includes('90%'));
+check('left-only: right visual dimmed (0.38), left full', leftHtml.includes('opacity="0.38"') && !leftHtml.includes('opacity="0.65"'));
+
+// RIGHT ONLY — mirror image.
+const rightHtml = renderCard({ left: null, right: 90, batteryScale: null, presence: 'right' }, twsCaps);
+check('right-only: right Connected + 90%', rightHtml.includes('>Connected<') && rightHtml.includes('90%'));
+check('right-only: left Disconnected with em-dash, NO stale 100%', rightHtml.includes('>Disconnected<') && !rightHtml.includes('100%'));
+check('right-only: left visual dimmed', rightHtml.includes('opacity="0.38"'));
+
+// NONE — both sides 0xFF.
+const noneHtml = renderCard({ left: null, right: null, batteryScale: null, presence: 'none' }, twsCaps);
+check('none: two "Disconnected" labels', (noneHtml.match(/>Disconnected</g) ?? []).length === 2);
+check('none: no battery percents anywhere', !/\d+%/.test(noneHtml));
+check('none: both visuals dimmed', (noneHtml.match(/opacity="0\.38"/g) ?? []).length === 2);
+
+// UNKNOWN — telemetry not arrived yet (TEST 14: never rendered as disconnected).
+const unknownHtml = renderCard({ left: null, right: null, batteryScale: null, presence: 'unknown' }, twsCaps);
+check('unknown: two "Unknown" labels', (unknownHtml.match(/>Unknown</g) ?? []).length === 2);
+check('unknown: "Detecting earbuds…" hint shown', unknownHtml.includes('Detecting earbuds…'));
+check('unknown: NEVER rendered as Disconnected (TEST 14)', !unknownHtml.includes('>Disconnected<') && !unknownHtml.includes('Not connected'));
+check('unknown: neutral visuals (0.65), no batteries', (unknownHtml.match(/opacity="0\.65"/g) ?? []).length === 2 && !/\d+%/.test(unknownHtml));
+check('unknown: accessible names say awaiting telemetry', (unknownHtml.match(/unknown, awaiting device telemetry/g) ?? []).length === 2);
+
+// UNAVAILABLE — over-ear model (TEST 15: no L/R surface at all).
+const unavailHtml = renderCard({ left: 80, right: null, batteryScale: null }, overEarCaps);
+check('unavailable: card renders nothing (TEST 15)', unavailHtml === '', `got ${unavailHtml.length} chars`);
+check('unavailable: no side labels or percents leaked', !unavailHtml.includes('Left') && !unavailHtml.includes('%'));
+
+// A stale battery value inside the state object must NEVER render next to a
+// disconnected side, even if the store were buggy — the card renders side
+// state as the truth (defense in depth).
+const staleHtml = renderCard({ left: 100, right: 90, batteryScale: null, presence: 'left' }, twsCaps);
+check('stale right=90 in state + presence left → right shows no percent', !staleHtml.includes('90%') && staleHtml.includes('>Disconnected<'));
 
 /* ------------------------------------------------------------- verdict */
 
