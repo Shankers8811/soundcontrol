@@ -17,6 +17,31 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # Phase 15 credential probe: reports whether production signing
+      # credentials are configured. Names and booleans only — secret VALUES
+      # are never read into logs (and GitHub masks them regardless). This
+      # only says whether the secrets exist; the release workflow's
+      # certificate-validation and signing steps are what actually prove a
+      # credential works. Emitted as annotations so the answer is visible
+      # without downloading run logs.
+      - name: Report signing credential availability (names only, never values)
+        shell: bash
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK || secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD || secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "CI build: signing is optional (artifacts are not distributed)."
+          if [ -n "$WIN_CSC_LINK" ] && [ -n "$WIN_CSC_KEY_PASSWORD" ]; then
+            echo "::notice::SIGNING_CREDENTIALS=configured — production releases can be Authenticode-signed (release workflow will validate the certificate before use)."
+          else
+            if [ -z "$WIN_CSC_LINK" ]; then
+              echo "::warning::SIGNING_CREDENTIALS not configured — WIN_CSC_LINK secret is not set. Release builds remain blocked at the credentials gate."
+            else
+              echo "::warning::SIGNING_CREDENTIALS incomplete — WIN_CSC_LINK is set but WIN_CSC_KEY_PASSWORD is not. Release builds remain blocked at the credentials gate."
+            fi
+            echo "See docs/WINDOWS-CODE-SIGNING.md for the required certificate and secret setup."
+          fi
       - run: npm ci
       # --publish never: electron-builder auto-detects CI and would
       # otherwise try to publish a GitHub Release on every push.
