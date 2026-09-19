@@ -126,7 +126,7 @@ export function NoiseControl() {
   );
 
   const disabled = !app.connected || app.busy === 'anc';
-  const isAnc = !app.ancStatus?.includes('unknown') && (app.ancMode === 'anc' || app.ancMode === 'adaptive');
+  const isAnc = app.ancHasReport && (app.ancMode === 'anc' || app.ancMode === 'adaptive');
 
   const changeMode = (mode: 'anc' | 'normal' | 'transparency') => {
     if (disabled) return;
@@ -186,17 +186,17 @@ export function NoiseControl() {
             </div>
             <p className="mt-3">Record your observation for this transition (not an automated PASS):</p>
             <div className="mt-2 flex flex-wrap gap-3">
-              <button disabled={!app.connected} onClick={() => app.recordAncObservation('PHYSICAL ACOUSTIC EFFECT CONFIRMED BY USER')}>I felt a change</button>
-              <button disabled={!app.connected} onClick={() => app.recordAncObservation('NO PHYSICAL EFFECT OBSERVED')}>No physical change</button>
-              <button disabled={!app.connected} onClick={() => app.recordAncObservation('PHYSICAL EFFECT UNCERTAIN')}>Unsure</button>
+              <button disabled={disabled} onClick={() => app.recordAncObservation('PHYSICAL ACOUSTIC EFFECT CONFIRMED BY USER')}>I felt a change</button>
+              <button disabled={disabled} onClick={() => app.recordAncObservation('NO PHYSICAL EFFECT OBSERVED')}>No physical change</button>
+              <button disabled={disabled} onClick={() => app.recordAncObservation('PHYSICAL EFFECT UNCERTAIN')}>Unsure</button>
             </div>
           </section>
         )}
-        <div className="flex items-start justify-center gap-8 py-2 sm:gap-12">
+        <div className="flex items-start justify-center gap-8 py-2 sm:gap-12" aria-label="Noise cancellation mode">
           {MODES.map((m) => (
             <ModeIcon
               key={m.id}
-              active={!app.ancStatus?.includes('unknown') && m.matches(app.ancMode)}
+              active={app.ancHasReport && m.matches(app.ancMode)}
               pulsing={pulsing}
               label={m.label}
               icon={m.icon}
