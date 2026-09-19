@@ -162,6 +162,62 @@ the signing certificate/publisher identity. Rotating certificates discards
 accumulated reputation, so renew with the same publisher (and ideally the same
 CA) rather than switching.
 
+## Maintainer setup — from zero to a signed v1.0.7
+
+The exact procedure. Nothing below involves real secret values; every
+credential lives only in GitHub Actions secrets.
+
+1. **Obtain the certificate.** A legitimate production Authenticode
+   code-signing certificate from a CA trusted by Windows: SignPath Foundation
+   (free for qualifying open-source projects), an OV certificate
+   (~$75–200/yr), an EV certificate (~$200–400/yr), or another trusted
+   signing provider. Never a self-signed or development certificate — the
+   release gates reject untrusted chains, and Windows would not trust them
+   anyway.
+2. **Provide it in the format the build expects.** The configured
+   electron-builder mechanism consumes a PKCS#12 file via the `WIN_CSC_LINK`
+   secret as base64:
+   ```bash
+   openssl base64 -in soundcontrol.p12 -out soundcontrol.b64 -A
+   ```
+   (the `.p12` must include the private key; a `data:…;base64,…` URI also
+   works).
+3. **Configure the secrets** — repository → Settings → Secrets and variables
+   → Actions → New repository secret:
+   | Secret | Value |
+   |---|---|
+   | `WIN_CSC_LINK` | the contents of `soundcontrol.b64` |
+   | `WIN_CSC_KEY_PASSWORD` | the `.p12` password |
+4. **Optionally pin the publisher identity** — same settings page, the
+   *Variables* tab: `WINDOWS_EXPECTED_PUBLISHER` = text that must appear in
+   the certificate subject (e.g. the publisher name). With it set, the gates
+   fail if a different identity ever signs a release.
+5. **Never commit the certificate or private key.** No `.pfx`/`.p12`, no key
+   material, no base64 of either, in this repository, forks, tickets or
+   reports. CI reads credentials only from the secrets above.
+6. **Never expose the password.** Do not paste it into issues, logs, or
+   chat. GitHub masks secret values in workflow logs automatically, and the
+   workflows print only public certificate metadata (subject, thumbprint,
+   EKU, validity dates) — never the password or certificate bytes.
+7. **Verify GitHub Actions can access the secrets.** Push any commit (or
+   watch the next CI run) and open the *Windows Build* workflow: its first
+   step, "Report signing credential availability", prints an annotation —
+   `SIGNING_CREDENTIALS=configured` confirms access; a warning means the
+   secrets are still missing.
+8. **Run the signing validation.** The same *Windows Build* run then
+   executes "Validate the signing certificate (when configured)" — the exact
+   validation the release workflow performs (private key, Code Signing EKU,
+   validity window, trusted code-signing chain, publisher match). Green
+   means the certificate is proven usable, without signing or publishing
+   anything.
+9. **Only after validation passes, prepare the release.** Merge the signing
+   PR, bump `package.json` to the next version (v1.0.7), commit on `main`,
+   tag `vX.Y.Z` and push the tag. The Release workflow then runs the full
+   chain — Test → credentials gate → certificate validation → SHA-256 +
+   RFC 3161 signing → Authenticode verification → Windows smoke — and
+   publishes the signed `SoundControl-Setup.exe` only if every gate passes.
+   If any step fails, the release is blocked and nothing is published.
+
 ## Local development behavior
 
 `npm run build:win` on a developer machine is a **development build**: no

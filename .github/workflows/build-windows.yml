@@ -42,6 +42,50 @@ jobs:
             fi
             echo "See docs/WINDOWS-CODE-SIGNING.md for the required certificate and secret setup."
           fi
+          if [ -n "$WIN_CSC_LINK" ] && [ -n "$WIN_CSC_KEY_PASSWORD" ]; then
+            echo "SOUNDCONTROL_CERT_CONFIGURED=1" >> "$GITHUB_ENV"
+          fi
+      # Signing validation without publishing (Phase 16, Task 4 step 8): when
+      # credentials are configured, stage the certificate and run the same
+      # validation the release workflow runs (private key, Code Signing EKU,
+      # validity window, trusted code-signing chain, publisher identity) — on a
+      # plain CI build. Nothing is signed and nothing is published here; a
+      # maintainer uses this to confirm the certificate BEFORE preparing a
+      # release. Skipped (harmlessly) while credentials are unconfigured.
+      - name: Validate the signing certificate (when configured)
+        if: env.SOUNDCONTROL_CERT_CONFIGURED == '1'
+        shell: bash
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK || secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD || secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          EXPECTED_PUBLISHER: ${{ vars.WINDOWS_EXPECTED_PUBLISHER }}
+        run: |
+          set -euo pipefail
+          material="$WIN_CSC_LINK"
+          case "$material" in
+            data:*)
+              material="${material#data:}"
+              material="${material#*;base64,}"
+              printf '%s' "$material" | tr -d '\r\n' | base64 --decode > cert.p12
+              ;;
+            *)
+              if [ -f "$material" ]; then cp "$material" cert.p12
+              else printf '%s' "$material" | tr -d '\r\n' | base64 --decode > cert.p12; fi
+              ;;
+          esac
+          first_byte="$(head -c 1 cert.p12 | od -An -tx1 | tr -d ' \n')"
+          if [ ! -s cert.p12 ] || [ "$first_byte" != "30" ]; then
+            echo "::error::WIN_CSC_LINK does not decode to a .pfx/.p12 certificate — check the secret."
+            exit 1
+          fi
+          args=(-CertPath cert.p12)
+          if [ -n "$EXPECTED_PUBLISHER" ]; then args+=(-ExpectedPublisher "$EXPECTED_PUBLISHER"); fi
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-signing-certificate.ps1 "${args[@]}"
+          echo "Signing certificate validated — a signed release can be prepared (see docs/WINDOWS-CODE-SIGNING.md)."
+      - name: Remove staged certificate material
+        if: always()
+        shell: bash
+        run: rm -f cert.p12
       - run: npm ci
       # --publish never: electron-builder auto-detects CI and would
       # otherwise try to publish a GitHub Release on every push.
