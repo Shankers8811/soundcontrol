@@ -766,8 +766,29 @@ async function scenarioProtocolAbuse() {
     check('invalid hex tx → error reply', badHex?.type === 'error', JSON.stringify(badHex));
 
     send({ type: 'tx', hex: '' });
+    const emptyTx = await nextMessage(ws);
+    check(
+      'empty tx → rejected by the earbud-only frame validator',
+      emptyTx?.type === 'error' && /rejected/i.test(emptyTx.error ?? ''),
+      JSON.stringify(emptyTx),
+    );
+
+    // A VALID earbud command with no RFCOMM link still fails on the link, not
+    // the validator — the two gates are independently observable.
+    send({ type: 'tx', hex: '08EE00000001010A0002' }); // INIT (01:01)
     const noLink = await nextMessage(ws);
     check('tx with no RFCOMM link → "Not connected" error', noLink?.type === 'error' && /not connected/i.test(noLink.error ?? ''), JSON.stringify(noLink));
+
+    // A checksum-valid but UNRECOGNIZED command frame must be refused before
+    // the Bluetooth socket, even with a link up (Phase 17 earbud-only gate).
+    // 08 EE 00 00 00 07 81 0A 00 88 = cat 07:type 81, coherent length+checksum.
+    send({ type: 'tx', hex: '08EE00000007810A00' + '88' });
+    const unknownCmd = await nextMessage(ws);
+    check(
+      'unrecognized command frame → rejected before transmission',
+      unknownCmd?.type === 'error' && /rejected.*not a recognized/i.test(unknownCmd.error ?? ''),
+      JSON.stringify(unknownCmd),
+    );
 
     send({ type: 'tx', hex: '41'.repeat(5000) }); // 5000 bytes > TX_MAX_BYTES
     const tooBig = await nextMessage(ws);

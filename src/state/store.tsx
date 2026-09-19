@@ -27,6 +27,7 @@ import {
   type AncIntent,
 } from '../protocol/packets';
 import { presetById, type EqPreset } from '../protocol/presets';
+import { withEarbudOnlyBoundary } from '../protocol/targets';
 import { isTransportBusyError } from '../lib/transportErrors';
 import { connectBridge } from '../transports/bridge';
 import {
@@ -478,6 +479,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       bat?: Partial<BatteryState> | number | null,
       dspChannel?: number | null,
     ) => {
+      // Phase 17 earbud-only boundary: EVERY transport (real bridge, demo
+      // simulator, anything future) is wrapped before installation, so each
+      // and every write — UI command, connect handshake, background battery
+      // poll, diagnostics-console frame — is validated against the earbud
+      // command registry before it can reach the wire. Unrecognized frames
+      // are rejected here, whatever the UI layer asked for.
+      t = withEarbudOnlyBoundary(t, (reason) => {
+        pushLog('sys', '', `Earbud-only boundary: frame NOT sent — ${reason}`);
+      });
       transportRef.current = t;
       setTransportLabel(t.label);
       setDeviceName(name);
