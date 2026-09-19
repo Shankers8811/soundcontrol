@@ -27,7 +27,8 @@ import {
   type AncIntent,
 } from '../protocol/packets';
 import { presetById, type EqPreset } from '../protocol/presets';
-import { withEarbudOnlyBoundary } from '../protocol/targets';
+import { requiredStateLength, targetModelForProfile, withDeviceBoundary } from '../protocol/modelRegistry';
+import { createSessionGuard, parseDeviceToggles } from '../protocol/responses';
 import { isTransportBusyError } from '../lib/transportErrors';
 import { connectBridge } from '../transports/bridge';
 import {
@@ -176,6 +177,10 @@ let seq = 1;
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const transportRef = useRef<Transport | null>(null);
+  // Phase 18 session isolation: exactly one connection may update parsed
+  // device state. begin() on every connect attempt, end() on disconnect —
+  // a late frame from a previous device/session is dropped before parsing.
+  const sessionGuardRef = useRef(createSessionGuard());
   const [page, setPage] = useState<PageId>('dashboard');
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -377,6 +382,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Full state update. Field offsets are model-specific — see
         // src/protocol/devices.ts, where each row cites the OpenSCQ30 packet
         // definition it came from.
+        // Phase 18 malformed-response guard: a state payload too short to
+        // hold the fields THIS profile documents is not telemetry — it is
+        // ignored whole, never partially parsed into a half-updated UI.
+        if (payload.length < requiredStateLength(offsets)) {
+          pushLog(
+            'sys',
+            '',
+            `State frame ignored — payload ${payload.length} bytes is shorter than the ${requiredStateLength(offsets)}-byte layout documented for ${profileRef.current.name} (${profileRef.current.sku})`,
+          );
+          return;
+        }
         sawBatteryFrame = true;
         rawLeft = payload[offsets.batteryLeft];
         rawRight = offsets.batteryRight === null ? undefined : payload[offsets.batteryRight];
@@ -396,6 +412,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const sn = ascii(payload, offsets.serial.at, offsets.serial.length);
           if (sn) setSerial(sn);
         }
+        // Phase 18 device-confirmed toggles (Task 19): where the model
+        // mirrors gaming/surround/dual flags in its state update, the
+        // device's own report is the truth — the optimistic UI state is
+        // corrected to what the hardware actually reports (A3959 firmware
+        // gate for the gaming byte is applied inside the parser).
+        const mirror = parseDeviceToggles(payload, offsets);
+        if (mirror.gaming !== null) setGamingState(mirror.gaming);
+        if (mirror.surround !== null) setSurroundState(mirror.surround);
+        if (mirror.dual !== null) setDualState(mirror.dual);
       } else if (cat === 0x01 && typ === 0x03 && payload.length >= 1) {
         // The explicit battery query returns left/right in the first bytes.
         sawBatteryFrame = true;
@@ -479,13 +504,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       bat?: Partial<BatteryState> | number | null,
       dspChannel?: number | null,
     ) => {
-      // Phase 17 earbud-only boundary: EVERY transport (real bridge, demo
+      // Phase 17+18 transport boundary: EVERY transport (real bridge, demo
       // simulator, anything future) is wrapped before installation, so each
       // and every write — UI command, connect handshake, background battery
-      // poll, diagnostics-console frame — is validated against the earbud
-      // command registry before it can reach the wire. Unrecognized frames
-      // are rejected here, whatever the UI layer asked for.
-      t = withEarbudOnlyBoundary(t, (reason) => {
+      // poll, diagnostics-console frame — passes BOTH gates before it can
+      // reach the wire:
+      //   1. earbud-only: a recognized, checksum-valid Soundcore command
+      //      (Phase 17 registry — src/protocol/targets.ts);
+      //   2. model-aware: the CONNECTED model must actually support the
+      //      command (Phase 18 registry — src/protocol/modelRegistry.ts),
+      //      including the custom-EQ (0xFEFE) distinction. A UI bug that
+      //      shows ANC controls for an R50i still cannot put 06:81 on the wire.
+      t = withDeviceBoundary(t, () => profileRef.current, (reason) => {
         pushLog('sys', '', `Earbud-only boundary: frame NOT sent — ${reason}`);
       });
       transportRef.current = t;
@@ -541,7 +571,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         'sys',
         '',
         `Linked via ${t.label} · profile ${nextProfile.name} (${nextProfile.sku})` +
-          (typeof dspChannel === 'number' ? ` · DSP ch${dspChannel}` : ''),
+          (typeof dspChannel === 'number' ? ` · DSP ch${dspChannel}` : '') +
+          // Honest evidence level (Phase 18): the target models' commands are
+          // protocol-verified against OpenSCQ30, but no physical device has
+          // been validated yet — the UI must never imply otherwise.
+          (targetModelForProfile(nextProfile.id)
+            ? ' · protocol-verified · physical validation pending'
+            : ''),
       );
       if (note) pushLog('sys', '', note);
       if (!nextProfile.eqCommand) {
@@ -669,6 +705,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const connectBridgePort = useCallback(
     (mac: string, label?: string, windowsBattery?: number | null) =>
       wrapConnect(async () => {
+        // Phase 18 session isolation: this attempt becomes the only session
+        // allowed to update parsed state; frames still queued from a previous
+        // device/session are dropped by the guarded rx callback below.
+        const mySession = sessionGuardRef.current.begin();
         // Switching devices (ConnectSheet is reachable while connected, e.g.
         // from the Settings tab): tear the old session down first so its
         // WebSocket is not left registered in the helper's client list.
@@ -688,9 +728,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // disconnect→reconnect must not let the old socket's close tear down
         // the new session).
         const linked: { transport: Transport | null } = { transport: null };
+        const guardedRx = (data: Uint8Array) => {
+          if (!sessionGuardRef.current.isActive(mySession)) return;
+          onRx(data);
+        };
         const { transport, name, battery: b, dspChannel } = await connectBridge(
           mac,
-          onRx,
+          guardedRx,
           resolvedLabel,
           windowsBattery ?? null,
           // Bridge diagnostics (probe results, silent-link watchdog) belong
@@ -702,6 +746,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           (reason) => {
             if (!linked.transport || transportRef.current !== linked.transport) return;
             transportRef.current = null;
+            sessionGuardRef.current.end();
             // The whole control link died: every piece of device state goes
             // with it — a stale name/battery/L-R panel next to a dead link is
             // exactly the misleading UI the state model forbids.
@@ -745,6 +790,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           throw new Error('The developer simulator is only available in development builds.');
         }
         const { connectSimulator } = await import('../transports/simulator');
+        const mySession = sessionGuardRef.current.begin();
         // Leave any real bridge session before starting the simulator (and
         // release its RFCOMM link in the helper) — see releaseTransport.
         await releaseTransport();
@@ -752,7 +798,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? DEVICES.find((d) => d.id === customProfileId)
           : undefined;
         const simProfile = targetProfile ?? profileRef.current;
-        const { transport, name, battery: b } = connectSimulator(onRx, simProfile);
+        const guardedRx = (data: Uint8Array) => {
+          if (!sessionGuardRef.current.isActive(mySession)) return;
+          onRx(data);
+        };
+        const { transport, name, battery: b } = connectSimulator(guardedRx, simProfile);
         await attach(transport, name, b);
         setConnectedMac(null);
       }),
@@ -766,6 +816,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBusy('surround');
       try {
         await write(buildSurroundSound(on), `3D Surround ${on ? 'on' : 'off'}`);
+        // Only A3959-class models mirror the surround flag (byte 74).
+        if (profile.state.surround == null) {
+          pushLog('sys', '', 'Command sent — device confirmation unavailable for this model');
+        }
       } catch (err) {
         // The command never reached the device: restore the real state so the
         // toggle cannot claim something the hardware did not do.
@@ -776,7 +830,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       if (prompts) await beep('ok');
     },
-    [prompts, surround, write],
+    [profile, prompts, pushLog, surround, write],
   );
 
   const resetDevice = useCallback(async () => {
@@ -803,6 +857,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const disconnect = useCallback(async () => {
     const t = transportRef.current;
     transportRef.current = null;
+    // Phase 18: the session ends with the link — a frame that arrives after
+    // this point can never update (now cleared) device state.
+    sessionGuardRef.current.end();
     clearDeviceState();
     try {
       await t?.close();
@@ -921,6 +978,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBusy('gaming');
       try {
         await write(buildGameMode(profile, on), `Gaming ${on ? 'on' : 'off'}`);
+        // Task 19 — no fake success: only models that mirror the gaming flag
+        // in their state update (A3949 byte 65; A3959 byte 77 with the
+        // firmware gate) get a device-confirmed state. For every other model
+        // the honest wording is logged instead of implying confirmation.
+        if (profile.state.gaming == null) {
+          pushLog('sys', '', 'Command sent — device confirmation unavailable for this model');
+        }
       } catch (err) {
         setGamingState(prev);
         throw err;
@@ -929,7 +993,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       if (prompts) await beep('mode');
     },
-    [gaming, profile, prompts, write],
+    [gaming, profile, prompts, pushLog, write],
   );
 
   const setLdac = useCallback(
@@ -939,6 +1003,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBusy('ldac');
       try {
         await write(on ? LDAC.enable : LDAC.disable, `LDAC ${on ? 'on' : 'off'}`);
+        // No model mirrors the LDAC state in the 01:01 blob (OpenSCQ30 reads
+        // it via a separate 01:7F query SoundControl does not send), so the
+        // honest wording is always logged for LDAC changes.
+        pushLog('sys', '', 'Command sent — device confirmation unavailable for this model');
       } catch (err) {
         setLdacState(prev);
         throw err;
@@ -946,7 +1014,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setBusy(null);
       }
     },
-    [ldac, write],
+    [ldac, pushLog, write],
   );
 
   const setDual = useCallback(
@@ -956,6 +1024,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBusy('dual');
       try {
         await write(on ? DUAL.enable : DUAL.disable, `Dual ${on ? 'on' : 'off'}`);
+        // Only A3959-class models mirror the dual-connections flag (byte 73).
+        if (profile.state.dualConnections == null) {
+          pushLog('sys', '', 'Command sent — device confirmation unavailable for this model');
+        }
       } catch (err) {
         setDualState(prev);
         throw err;
@@ -963,7 +1035,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setBusy(null);
       }
     },
-    [dual, write],
+    [dual, profile, pushLog, write],
   );
 
   const applyPreset = useCallback(
@@ -1009,18 +1081,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const commitEq = useCallback(async () => {
     const pkt = buildCustomEq(profile, bands);
     if (!pkt) return;
+    // Task 9 — never send an unsupported custom curve: A3949 (R50i/P20i)
+    // accepts factory presets only (OpenSCQ30 custom_preset_id: None), so
+    // the FEFE frame is refused here and by the model gate under it.
+    if (!profile.customEq) {
+      pushLog(
+        'sys',
+        '',
+        `Custom curves are not supported by ${profile.name} (${profile.sku}) — factory presets only. Nothing was sent.`,
+      );
+      return;
+    }
     setBusy('eq');
     try {
       await write(pkt, 'EQ custom');
     } finally {
       setBusy(null);
     }
-  }, [bands, profile, write]);
+  }, [bands, profile, pushLog, write]);
 
   const applyBands = useCallback(
     async (next: number[]) => {
       const pkt = buildCustomEq(profile, next);
       if (!pkt) return;
+      // Same Task 9 guard as commitEq — the custom FEFE frame is never sent
+      // to a model without custom-curve support.
+      if (!profile.customEq) {
+        pushLog(
+          'sys',
+          '',
+          `Custom curves are not supported by ${profile.name} (${profile.sku}) — factory presets only. Nothing was sent.`,
+        );
+        return;
+      }
       const prev = { eqId, bands };
       setEqId('custom');
       setBands(next);
@@ -1035,7 +1128,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setBusy(null);
       }
     },
-    [bands, eqId, profile, write],
+    [bands, eqId, profile, pushLog, write],
   );
 
   const inject = useCallback(
