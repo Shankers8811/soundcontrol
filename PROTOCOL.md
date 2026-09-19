@@ -1,7 +1,7 @@
 # SoundControl protocol
 
 SoundControl talks to already-paired Soundcore hardware over **Classic
-Bluetooth RFCOMM** with the exact frames the official apps use. The Windows
+Bluetooth RFCOMM** using captured or third-party source-derived frames. The Windows
 desktop renderer reaches RFCOMM through the bundled local Python helper
 (`soundcore_bridge.py`); Android BLE captures are decode-only reference
 material (Appendix A).
@@ -10,13 +10,20 @@ Everything below cites where each fact comes from. Wherever a claim is
 captured live on real hardware, the source project is named;
 [OpenSCQ30](https://github.com/Oppzippy/OpenSCQ30) is the authoritative
 per-model reference and the other projects cross-check it with their own
-captures. `scripts/verify-protocol.mjs` rebuilds every frame this app sends
-and compares it byte-for-byte against those captures; it runs as part of
-`npm run build` and fails on any drift.
+captures. `scripts/verify-protocol.mjs` mixes attributed captured vectors with
+source-derived layout tests; not every builder has a live capture. It runs
+as part of `npm run build`. Passing tests is not physical validation.
 
 Service UUID (when advertised): `0cf12d31-fac3-4553-bd80-d6832e7d1402` —
 the last nibble pair is the model id, so `…34fb` is the generic SPP UUID and
 **not** the DSP service on Liberty-family units.
+
+> **Phase 19 A3959 correction:** The user reports desktop ANC has no physical
+> effect, even during playback; Android works on the same earbuds. See
+> [the byte/transport/sequence audit](docs/PHASE-19-ANC-AUDIT.md). Current
+> A3959 actions read fresh state, preserve adaptive strength/sensitivity,
+> use source-derived dependency transitions and await replies/readback.
+> These changes remain physically unverified. Phase 18 status B remains.
 
 ## Command targets and the host boundary (Phase 17)
 
@@ -181,7 +188,10 @@ Normal           08 EE 00 00 00 06 81 0E 00 02 01 01 00 8F
 
 ### `tws-p30i` — P30i / R50i NC (A3959) (7 bytes)
 
-From OpenSCQ30 `a3959/structures/sound_modes.rs`:
+From OpenSCQ30 `a3959/structures/sound_modes.rs` (source, not a live capture):
+Adaptive strength in byte 1 is read-only; byte 5 is independent sensitivity
+0..10. Neither may be derived from the manual slider. See the Phase 19 audit
+for state preservation, MultiScene selector 2 and acknowledgement sequencing.
 
 ```
 0  ambient      00 NC · 01 Transparency · 02 Normal
@@ -332,11 +342,13 @@ mirrored to the in-app diagnostics log), and arms an 8 s silent-link watchdog:
 the watchdog names the fake-"Connected" state, then keeps re-sending the
 read-only handshake in the background. When the single control slot frees up
 (the Soundcore phone app closes) and the device finally answers, the bridge
-announces "battery and ANC are live now" — no manual reconnect needed.
+announces telemetry arrived; ANC control and physical effect remain unverified.
 
 Channels **12/13** on some families are TOTA/BESOTA firmware-flash channels
 and **16** is Apple iAP2; soundcorebridge hard-blocks them. The probe only
-sends a read-only state request and never probes 13/16.
+sends a read-only state request. Phase 19 blocks 12/13/16 for probes and
+control writes (12 had mistakenly remained in the candidate tuple). No
+A3959 control channel has been established from hardware evidence.
 
 Operational rules borrowed from soundcorebridge (all observed behaviour):
 

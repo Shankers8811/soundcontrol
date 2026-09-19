@@ -170,17 +170,17 @@ check("ch4 answers -> handshake sent", any("send:4" in x for x in log), str(log)
 check("ch4 answers -> reports the channel", any("DSP answered on channel 4" in x for x in log))
 check("ch4 answers -> socket adopted and reader started", adopted)
 
-# 2. ch4 accepts but stays silent; ch12 answers. This is the exact failure the
+# 2. ch4 accepts but stays silent; ch15 answers. This is the exact failure the
 #    old code got wrong.
-b, log, err, _, adopted = run({4: "silent", 12: "answer"})
-check("silent ch4 + answering ch12 -> picks ch12", err is None and b.channel == 12, f"{err} ch={b.channel}")
+b, log, err, _, adopted = run({4: "silent", 15: "answer"})
+check("silent ch4 + answering ch15 -> picks ch15", err is None and b.channel == 15, f"{err} ch={b.channel}")
 check("silent ch4 was probed with a handshake", any("send:4" in x for x in log), str(log))
 check("silent ch4 socket was closed", any("close:4" in x for x in log), str(log))
 # The per-channel reason goes to stderr (which the packaged app captures into
 # %AppData%\soundcontrol\main.log), not to the WebSocket log.
 stderr_text = next((x for x in log if x.startswith("stderr:")), "")
 check(
-    "picks ch12 -> stderr explains why ch4 was rejected",
+    "picks ch15 -> stderr explains why ch4 was rejected",
     "channel 4 accepted the socket but never answered" in stderr_text,
     stderr_text,
 )
@@ -199,11 +199,11 @@ b, log, err, _, adopted = run({4: "noise-then-answer"})
 check("noise before the frame -> adopted", err is None and b.channel == 4, str(err))
 
 # 6. Garbage that never forms a valid frame must not be mistaken for a reply.
-b, log, err, _, adopted = run({4: "garbage", 12: "answer"})
-check("garbage on ch4 is not a reply -> falls through to ch12", err is None and b.channel == 12, f"{err} ch={b.channel}")
+b, log, err, _, adopted = run({4: "garbage", 15: "answer"})
+check("garbage on ch4 is not a reply -> falls through to ch15", err is None and b.channel == 15, f"{err} ch={b.channel}")
 
 # 7. Nothing answers but something accepts: fall back and say so loudly.
-b, log, err, _, adopted = run({4: "silent", 12: "silent"})
+b, log, err, _, adopted = run({4: "silent", 15: "silent"})
 check("all silent -> still connects (manual use)", err is None and b.channel == 4, f"{err}")
 check("all silent -> warns about no handshake", any("did not answer" in x for x in log), str(log))
 
@@ -318,8 +318,8 @@ lying_large[7] = (len(INFO_REPLY) + 6) & 0xFF
 lying_large[-1] = sum(lying_large[:-1]) & 0xFF
 frame_l, rest_l = bridge.split_frame(bytes(lying_large))
 check(
-    "length field lying too large falls back to the checksum boundary",
-    frame_l == bytes(lying_large) and rest_l == b"",
+    "incomplete indicated length waits; checksum prefix is not a frame",
+    frame_l is None and rest_l == bytes(lying_large),
     f"{frame_l!r}",
 )
 
@@ -330,9 +330,19 @@ lying_small[-1] = sum(lying_small[:-1]) & 0xFF
 frame_s, rest_s = bridge.split_frame(bytes(lying_small))
 check(
     "length field lying too small is not trusted without a valid checksum",
-    frame_s == bytes(lying_small) and rest_s == b"",
+    frame_s == b"" and rest_s == bytes(lying_small)[1:],
     f"{frame_s!r}",
 )
+
+# Deliberately make byte 9 a valid checksum of the first nine bytes of a
+# longer, valid 06:01 frame. The old fallback split this at byte 10.
+collision = bytearray([9, 255, 0, 0, 1, 6, 1, 17, 0, 0, 0x51, 0, 0, 0, 0, 1, 0])
+collision[9] = sum(collision[:9]) & 255
+collision[-1] = sum(collision[:-1]) & 255
+for split in range(2, len(collision)):
+    short, held = bridge.split_frame(bytes(collision[:split]))
+    check(f"checksum-collision fragment at {split} is held whole", short is None and held == bytes(collision[:split]))
+check("checksum-collision full frame delivered intact", bridge.split_frame(bytes(collision))[0] == bytes(collision))
 
 unknown_op = bytes([0x09, 0xFF, 0x00, 0x00, 0x7F, 0x7F, 0x01, 12, 0x00]) + b"\xAB\xCD"
 unknown_op += bytes([sum(unknown_op) & 0xFF])
@@ -402,8 +412,8 @@ try:
     stderr_text = next((x for x in log if x.startswith("stderr:")), "")
     check("late answer -> watchdog reported the silence first", "silent-link watchdog" in stderr_text, stderr_text[:400])
     check(
-        "late answer -> promotion message says battery/ANC are live",
-        "after retry" in stderr_text and "live now" in stderr_text,
+        "late answer -> telemetry only, ANC still unverified",
+        "after retry" in stderr_text and "ANC control and physical effect remain unverified" in stderr_text,
         stderr_text[:400],
     )
     check(
@@ -413,12 +423,12 @@ try:
     )
 
     # 15. The silent-fallback message must not swallow the refused channels.
-    b, log, err, _, adopted = run({4: "silent", 12: "silent"}, hold=0.4)
+    b, log, err, _, adopted = run({4: "silent", 15: "silent"}, hold=0.4)
     stderr_text = next((x for x in log if x.startswith("stderr:")), "")
     check("fallback -> still warns about the missing handshake", "did not answer" in stderr_text, stderr_text[:400])
     check(
         "fallback -> names the refused channels too",
-        "ch15" in stderr_text and "Host is down" in stderr_text,
+        "ch10" in stderr_text and "Host is down" in stderr_text,
         stderr_text[:400],
     )
 finally:
@@ -574,6 +584,53 @@ try:
     )
 finally:
     bridge.BRIDGE.send = real_send
+
+# Phase 19: correlated OS write completion is distinct from firmware evidence.
+for channel in bridge.BLOCKED_CHANNELS:
+    b = bridge.Bridge()
+    try:
+        b.connect("AA:BB:CC:DD:EE:FF", channel)
+        check(f"blocked channel {channel} refused before socket creation", False)
+    except RuntimeError as exc:
+        check(f"blocked channel {channel} refused before socket creation", "blocked" in str(exc))
+check("blocked channels absent from discovery", not set(bridge.BLOCKED_CHANNELS).intersection(bridge.DSP_CHANNEL_CANDIDATES))
+
+saved_bridge = bridge.BRIDGE
+try:
+    b = bridge.Bridge()
+    bridge.BRIDGE = b
+    b.session = "synthetic-session"
+    b.channel = 10
+    events = []
+    b.broadcast = events.append
+    class TxSocket:
+        def sendall(self, data):
+            events.append({"event": "OS_SEND", "hex": data.hex().upper()})
+    b.sock = TxSocket()
+    ws = FakeWsSock()
+    b.controller = ws
+    request = {"type": "tx", "hex": INIT.hex(), "id": "42", "session": b.session}
+    bridge.Handler._handle(object(), ws, bridge.json.dumps(request).encode())
+    result = ws_reply(ws)
+    check("TX accepted / exact OS bytes / TX sent ordering", [e["event"] for e in events] == ["TX_ACCEPTED", "OS_SEND", "TX_SENT"] and events[1]["hex"] == INIT.hex().upper())
+    check("sent result correlates ID + session + channel", result.get("id") == "42" and result.get("session") == b.session and result.get("channel") == 10)
+    events.clear()
+    ws = FakeWsSock(); b.controller = ws
+    bridge.Handler._handle(object(), ws, bridge.json.dumps({**request, "session": "stale"}).encode())
+    check("stale session never reaches socket", not events and ws_reply(ws).get("type") == "error")
+    ws = FakeWsSock()  # not the controller
+    bridge.Handler._handle(object(), ws, bridge.json.dumps(request).encode())
+    check("second client cannot interleave writes", not events and ws_reply(ws).get("type") == "error")
+    class FailingSocket:
+        def sendall(self, data):
+            raise OSError("synthetic write failure")
+    b.sock = FailingSocket()
+    ws = FakeWsSock(); b.controller = ws
+    bridge.Handler._handle(object(), ws, bridge.json.dumps(request).encode())
+    result = ws_reply(ws)
+    check("write error carries tx ID and never reports TX_SENT", result.get("id") == "42" and result.get("type") == "error" and [e["event"] for e in events] == ["TX_ACCEPTED"])
+finally:
+    bridge.BRIDGE = saved_bridge
 
 print(f"  {passed} checks")
 if failures:
