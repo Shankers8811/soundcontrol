@@ -1,6 +1,6 @@
 # Phase 19 — A3959 ANC failure audit
 
-Date: 2026-09-19. Device: **R50i NC / P30i, A3959 only**.
+Date: 2026-09-19. Device: **R50i NC / P30i, A3959 only**. PR: [#28](https://github.com/Shankers8811/soundcontrol/pull/28).
 
 **The user's hardware report is authoritative:** Android Soundcore changes ANC audibly; the desktop UI changes but physical ANC does not, even during continuous playback. Phase 18 status B is retained; its description “protocol support complete” is not evidence of physical correctness. No earbuds, Windows Bluetooth adapter, user firmware version, or Android HCI recording are available in this checkout/session. No new physical test was performed here.
 
