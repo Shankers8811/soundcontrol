@@ -99,7 +99,7 @@ is now much narrower, but the requested physical outcome is **not established**.
 
 | Check | Result |
 |---|---|
-| `npm test` | PASS locally (package/UI/model/bridge/E2E/lifecycle + ANC); rerun after final code edits recorded below |
+| `npm test` | PASS locally (package/UI/model/bridge/E2E/lifecycle + ANC); final lifecycle hardening rerun before the follow-up commit |
 | `npm run build` / `verify:protocol` / TypeScript | PASS locally; source/capture tests do not establish firmware correctness |
 | Model profiles | PASS — 108 checks |
 | Bridge | PASS — 119 checks, including correlation, stale sessions, owner, blocked channels, checksum-collision fragmentation |
@@ -107,8 +107,8 @@ is now much narrower, but the requested physical outcome is **not established**.
 | ANC packets / responses / transition / timeout tests | PASS — 13 exact synthetic vectors plus model gates, inbound parsing, dependency ordering, cancellation, privacy/read-only checks |
 | Static Windows-audio safety scan | PASS — 63 application files; no host-audio API references; existing read-only audio capture harness checks retained |
 | Python compile check | PASS |
-| Windows build | CI run requested on this branch; result to be recorded |
-| Windows smoke | CI run requested on this branch; result to be recorded |
+| Windows build | PASS on initial implementation `8a3da9e`; final lifecycle hardening queued for rerun |
+| Windows smoke | PASS on initial implementation `8a3da9e`; final lifecycle hardening queued for rerun |
 | Real hardware / Android HCI comparison | NOT PERFORMED here; user comparison and captures required |
 | Physical Windows audio-state preservation | NOT PERFORMED here; hosted endpoint limitation must remain `AUDIO_STATE_CAPTURE=UNAVAILABLE`, never fake PASS |
 
