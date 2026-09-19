@@ -143,6 +143,65 @@ jobs:
           echo "WIN_CSC_LINK=$(cygpath -w "$PWD/cert.p12")" >> "$GITHUB_ENV"
           echo "WIN_CSC_KEY_PASSWORD=$WIN_CSC_KEY_PASSWORD" >> "$GITHUB_ENV"
           echo "Certificate staged ($(wc -c < cert.p12) bytes) — electron-builder will Authenticode-sign the build with SHA-256."
+      # Validate the certificate BEFORE spending a release build on it
+      # (Phase 15, Tasks 3+4). Loads the staged .p12 with the secret password
+      # (never printed) and hard-fails unless: it has a private key, its
+      # Enhanced Key Usage includes Code Signing (1.3.6.1.5.5.7.3.3), it is
+      # inside its validity window, and its chain builds to a trusted root
+      # under the code-signing policy (a self-signed or otherwise untrusted
+      # certificate fails here). Also prints the publisher identity and —
+      # when WINDOWS_EXPECTED_PUBLISHER is configured — requires a match.
+      # The expected value is never modified to make a check pass.
+      - name: Validate the signing certificate
+        shell: pwsh
+        env:
+          EXPECTED_PUBLISHER: ${{ vars.WINDOWS_EXPECTED_PUBLISHER }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $certPath = $env:WIN_CSC_LINK
+          if (-not $certPath -or -not (Test-Path -LiteralPath $certPath)) {
+            throw "Staged certificate not found at '$certPath'."
+          }
+          # Wrong password => the X509Certificate2 constructor throws.
+          $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certPath, $env:WIN_CSC_KEY_PASSWORD)
+          Write-Host "Certificate loaded."
+          Write-Host "Publisher (subject): $($cert.Subject)"
+          Write-Host "Thumbprint:          $($cert.Thumbprint)"
+          if (-not $cert.HasPrivateKey) {
+            throw 'Certificate has no private key — it cannot sign. Export the .p12 with the private key.'
+          }
+          $eku = $cert.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.37' }
+          if (-not $eku) { throw 'Certificate has no Enhanced Key Usage extension — not suitable for Authenticode code signing.' }
+          $purposes = @($eku.EnhancedKeyUsages | ForEach-Object { $_.Value })
+          Write-Host "Enhanced Key Usage:  $($purposes -join ', ')"
+          if ($purposes -notcontains '1.3.6.1.5.5.7.3.3') {
+            throw "Certificate is not intended for code signing — EKU does not include Code Signing (1.3.6.1.5.5.7.3.3)."
+          }
+          $ku = $cert.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.15' }
+          if ($ku -and -not $ku.KeyUsages.HasFlag([System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature)) {
+            throw 'Certificate key usage does not include Digital Signature.'
+          }
+          $now = Get-Date
+          if ($now -lt $cert.NotBefore) { throw "Certificate is not valid yet (NotBefore $($cert.NotBefore.ToString('yyyy-MM-dd')))." }
+          if ($now -gt $cert.NotAfter)  { throw "Certificate expired on $($cert.NotAfter.ToString('yyyy-MM-dd')) — renew it before releasing." }
+          Write-Host ("Validity:            {0} -> {1} ({2} day(s) left)" -f $cert.NotBefore.ToString('yyyy-MM-dd'), $cert.NotAfter.ToString('yyyy-MM-dd'), ($cert.NotAfter - $now).Days)
+          $chain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
+          $chain.ChainPolicy.ApplicationPolicy.Add([System.Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.3'))
+          $chain.ChainPolicy.RevocationMode = [System.Security.Cryptography.X509Certificates.X509RevocationMode]::Online
+          if (-not $chain.Build($cert)) {
+            $status = ($chain.ChainStatus | ForEach-Object { "$($_.Status): $($_.StatusInformation.Trim())" }) -join ' | '
+            throw "Certificate chain is not trusted under the code-signing policy: $status"
+          }
+          Write-Host 'Chain:               trusted (code-signing policy, online revocation).'
+          if ($env:EXPECTED_PUBLISHER) {
+            if ($cert.Subject -notmatch [regex]::Escape($env:EXPECTED_PUBLISHER)) {
+              throw "Publisher mismatch: certificate subject '$($cert.Subject)' does not match the expected publisher '$env:EXPECTED_PUBLISHER'. The expected value is not modified to make this pass — fix the certificate or the variable."
+            }
+            Write-Host "Publisher matches the expected identity '$env:EXPECTED_PUBLISHER'."
+          } else {
+            Write-Host 'NOTE: WINDOWS_EXPECTED_PUBLISHER is not set — the publisher identity is not pinned. Setting that repository variable is recommended.' -ForegroundColor Yellow
+          }
+          Write-Host 'Certificate validation passed — proceeding to the signed release build.'
       # Release gate 2 — build the Windows installer with signing forced:
       # `forceCodeSigning` makes electron-builder fail the build itself if any
       # signable executable would end up unsigned (bad password, unreadable
