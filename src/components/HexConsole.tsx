@@ -273,11 +273,5 @@ export function HexConsole() {
 }
 
 function formatMs(ts: number) {
-  const s = Math.floor(ts / 1000)
-    .toString()
-    .padStart(3, '0');
-  const ms = Math.floor(ts % 1000)
-    .toString()
-    .padStart(3, '0');
-  return `${s}.${ms}`;
+  return new Date(ts).toISOString().slice(11, 23);
 }

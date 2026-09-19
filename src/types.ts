@@ -186,6 +186,7 @@ export interface LogEntry {
 export interface Transport {
   kind: TransportKind;
   label: string;
+  diagnostics?: () => { session: string | null; channel: number | null };
   write(data: Uint8Array): Promise<void>;
   close(): Promise<void>;
 }

@@ -1,0 +1,232 @@
+{
+  "evidence": "Synthetic source-derived regression vectors; NOT hardware captures, NOT proof of physical ANC",
+  "observedFixture": [
+    2,
+    83,
+    2,
+    0,
+    2,
+    7,
+    1
+  ],
+  "vectors": [
+    {
+      "name": "Normal",
+      "intent": {
+        "mode": "normal",
+        "level": 5,
+        "wind": false,
+        "scene": "outdoor",
+        "transVocal": false,
+        "p30iAutomation": 0
+      },
+      "expected": "08 EE 00 00 00 06 81 11 00 02 53 02 00 00 07 01 ED"
+    },
+    {
+      "name": "Transparency",
+      "intent": {
+        "mode": "transparency",
+        "level": 5,
+        "wind": false,
+        "scene": "outdoor",
+        "transVocal": false,
+        "p30iAutomation": 0
+      },
+      "expected": "08 EE 00 00 00 06 81 11 00 01 53 01 00 00 07 01 EB"
+    },
+    {
+      "name": "Manual 1",
+      "intent": {
+        "mode": "anc",
+        "level": 1,
+        "wind": false,
+        "scene": "outdoor",
+        "transVocal": false,
+        "p30iAutomation": 0
+      },
+      "expected": "08 EE 00 00 00 06 81 11 00 00 13 00 00 00 07 01 A9"
+    },
+    {
+      "name": "Manual 2",
+      "intent": {
+        "mode": "anc",
+        "level": 2,
+        "wind": false,
+        "scene": "outdoor",
+        "transVocal": false,
+        "p30iAutomation": 0
+      },
+      "expected": "08 EE 00 00 00 06 81 11 00 00 23 00 00 00 07 01 B9"
+    },
+    {
+      "name": "Manual 3",
+      "intent": {
+        "mode": "anc",
+        "level": 3,
+        "wind": false,
+        "scene": "outdoor",
+        "transVocal": false,
+        "p30iAutomation": 0
+      },
+      "expected": "08 EE 00 00 00 06 81 11 00 00 33 00 00 00 07 01 C9"
+    },
+    {
+      "name": "Manual 4",
+      "intent": {
+        "mode": "anc",
+        "level": 4,
+        "wind": false,
+        "scene": "outdoor",
+        "transVocal": false,
+        "p30iAutomation": 0
+      },
+      "expected": "08 EE 00 00 00 06 81 11 00 00 43 00 00 00 07 01 D9"
+    },
+    {
+      "name": "Manual 5",
+      "intent": {
+        "mode": "anc",
+        "level": 5,
+        "wind": false,
+        "scene": "outdoor",
+        "transVocal": false,
+        "p30iAutomation": 0
+      },
+      "expected": "08 EE 00 00 00 06 81 11 00 00 53 00 00 00 07 01 E9"
+    },
+    {
+      "name": "Adaptive",
+      "intent": {
+        "mode": "adaptive",
+        "level": 5,
+        "wind": false,
+        "scene": "outdoor",
+        "transVocal": false,
+        "p30iAutomation": 1
+      },
+      "expected": "08 EE 00 00 00 06 81 11 00 00 53 00 01 00 07 01 EA"
+    },
+    {
+      "name": "Wind on",
+      "intent": {
+        "mode": "anc",
+        "level": 5,
+        "wind": true,
+        "scene": "outdoor",
+        "transVocal": false,
+        "p30iAutomation": 0
+      },
+      "expected": "08 EE 00 00 00 06 81 11 00 00 53 00 00 01 07 01 EA"
+    },
+    {
+      "name": "Wind off",
+      "intent": {
+        "mode": "anc",
+        "level": 5,
+        "wind": false,
+        "scene": "outdoor",
+        "transVocal": false,
+        "p30iAutomation": 0
+      },
+      "expected": "08 EE 00 00 00 06 81 11 00 00 53 00 00 00 07 01 E9"
+    },
+    {
+      "name": "Scene transport",
+      "intent": {
+        "mode": "anc",
+        "level": 5,
+        "wind": false,
+        "scene": "transport",
+        "transVocal": false,
+        "p30iAutomation": 2
+      },
+      "expected": "08 EE 00 00 00 06 81 11 00 00 53 00 02 00 07 00 EA"
+    },
+    {
+      "name": "Scene outdoor",
+      "intent": {
+        "mode": "anc",
+        "level": 5,
+        "wind": false,
+        "scene": "outdoor",
+        "transVocal": false,
+        "p30iAutomation": 2
+      },
+      "expected": "08 EE 00 00 00 06 81 11 00 00 53 00 02 00 07 01 EB"
+    },
+    {
+      "name": "Scene indoor",
+      "intent": {
+        "mode": "anc",
+        "level": 5,
+        "wind": false,
+        "scene": "indoor",
+        "transVocal": false,
+        "p30iAutomation": 2
+      },
+      "expected": "08 EE 00 00 00 06 81 11 00 00 53 00 02 00 07 02 EC"
+    }
+  ],
+  "phase18ConstructedFrames": [
+    {
+      "name": "Normal",
+      "frame": "08 EE 00 00 00 06 81 11 00 02 50 02 00 00 00 01 E3",
+      "payload": "02 50 02 00 00 00 01",
+      "checksum": "E3"
+    },
+    {
+      "name": "Transparency",
+      "frame": "08 EE 00 00 00 06 81 11 00 01 50 01 00 00 00 01 E1",
+      "payload": "01 50 01 00 00 00 01",
+      "checksum": "E1"
+    },
+    {
+      "name": "Manual 1",
+      "frame": "08 EE 00 00 00 06 81 11 00 00 10 00 00 00 00 01 9F",
+      "payload": "00 10 00 00 00 00 01",
+      "checksum": "9F"
+    },
+    {
+      "name": "Manual 2",
+      "frame": "08 EE 00 00 00 06 81 11 00 00 20 00 00 00 00 01 AF",
+      "payload": "00 20 00 00 00 00 01",
+      "checksum": "AF"
+    },
+    {
+      "name": "Manual 3",
+      "frame": "08 EE 00 00 00 06 81 11 00 00 30 00 00 00 00 01 BF",
+      "payload": "00 30 00 00 00 00 01",
+      "checksum": "BF"
+    },
+    {
+      "name": "Manual 4",
+      "frame": "08 EE 00 00 00 06 81 11 00 00 40 00 00 00 00 01 CF",
+      "payload": "00 40 00 00 00 00 01",
+      "checksum": "CF"
+    },
+    {
+      "name": "Manual 5",
+      "frame": "08 EE 00 00 00 06 81 11 00 00 50 00 00 00 00 01 DF",
+      "payload": "00 50 00 00 00 00 01",
+      "checksum": "DF"
+    },
+    {
+      "name": "Adaptive",
+      "frame": "08 EE 00 00 00 06 81 11 00 00 53 00 01 00 03 01 E6",
+      "payload": "00 53 00 01 00 03 01",
+      "checksum": "E6"
+    },
+    {
+      "name": "Wind on",
+      "frame": "08 EE 00 00 00 06 81 11 00 00 50 00 00 01 00 01 E0",
+      "payload": "00 50 00 00 01 00 01",
+      "checksum": "E0"
+    },
+    {
+      "name": "Wind off",
+      "frame": "08 EE 00 00 00 06 81 11 00 00 50 00 00 00 00 01 DF",
+      "payload": "00 50 00 00 00 00 01",
+      "checksum": "DF"
+    }
+  ]
+}
