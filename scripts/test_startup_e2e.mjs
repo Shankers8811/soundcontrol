@@ -397,6 +397,11 @@ async function scenarioColdStartRace() {
     // Protocol transmission: tx a real state request, expect a valid 09 FF reply.
     rxLog.length = 0;
     await conn.result.transport.write(STATE_REQUEST);
+    check('write resolves only after correlated TX_SENT', sysLog.some(s => /TX_SENT.*TX_ID=/.test(s.text)), JSON.stringify(sysLog));
+    check('transport exposes anonymous session and actual selected channel', Boolean(conn.result.transport.diagnostics?.().session) && conn.result.transport.diagnostics?.().channel === 4);
+    let writeRejected = false;
+    try { await conn.result.transport.write(Uint8Array.from([0])); } catch { writeRejected = true; }
+    check('bridge rejection rejects renderer write promise (not optimistic success)', writeRejected);
     let frame = null;
     try {
       frame = await waitForRx(rxLog);

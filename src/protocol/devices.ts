@@ -151,7 +151,7 @@ export const DEVICES: DeviceProfile[] = [
     eqCommand: '02:83',
     customEq: true,
     state: P30I_STATE,
-    source: `${OPENSCQ30} (a3959): dual_battery(10), a3959_sound_modes (NC=0/Transparency=1/Normal=2, manual+adaptive, wind), equalizer_with_drc_tws with custom preset 0xFEFE, gaming_mode (state byte 77, firmware >= 01.60), dual_connections (73), surround_sound (74)`,
+    source: `${OPENSCQ30} (a3959): dual_battery(10), a3959_sound_modes (NC=0/Transparency=1/Normal=2, manual + read-only adaptive strength, independent sensitivity, multi-scene, wind; Phase 19 source-derived transitions, user-reported physical failure unresolved), equalizer_with_drc_tws with custom preset 0xFEFE, gaming_mode (state byte 77, firmware >= 01.60), dual_connections (73), surround_sound (74)`,
     verified: true,
   },
   {

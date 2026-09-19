@@ -47,6 +47,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
 from urllib.parse import parse_qs, urlsplit
@@ -73,7 +74,8 @@ HANDSHAKE = bytes.fromhex("08EE00000001010A0002")
 # families (mervin008/soundcorebridge hard-blocks them for writes) and 16 is
 # Apple iAP2. We only ever send a read-only state request, and probing never
 # writes firmware, but the exclusion keeps a future write path from guessing.
-DSP_CHANNEL_CANDIDATES = (4, 12, 15, 10, 30, 1)
+BLOCKED_CHANNELS = (12, 13, 16)
+DSP_CHANNEL_CANDIDATES = (4, 15, 10, 30, 1)
 
 # A cold Windows Bluetooth stack can take a couple of seconds to accept, and a
 # busy headset a moment to answer. Kept short on purpose: the whole probe runs
@@ -188,6 +190,8 @@ class Bridge:
         self.sock: Optional[socket.socket] = None
         self.mac = ""
         self.channel = 4
+        self.session = ""
+        self.controller: Optional[socket.socket] = None
         self.clients: list[socket.socket] = []
         # Serialises writes to the RFCOMM socket: the WebSocket handler thread
         # (tx commands) and the silent-link watchdog thread (background
@@ -250,6 +254,8 @@ class Bridge:
         """
         # Validate before touching any socket: a malformed address must be
         # reported as such, not surface as a confusing OS-level "host down".
+        if channel in BLOCKED_CHANNELS:
+            raise RuntimeError("Firmware/iAP2 channel blocked; no probe or control write allowed")
         normalized = _normalize_mac(mac)
         if not normalized:
             raise RuntimeError(
@@ -282,7 +288,7 @@ class Bridge:
 
             answered = self._probe(sock)
             if answered:
-                self._adopt(sock, mac, ch)
+                self._adopt(sock, mac, ch, answered)
                 msg = f"DSP answered on channel {ch}"
                 sys.stderr.write(f"bridge: {msg}\n")
                 self.broadcast({"type": "sys", "message": msg, "channel": ch})
@@ -348,13 +354,14 @@ class Bridge:
         )
         return " ".join(parts)
 
-    def _adopt(self, sock: socket.socket, mac: str, ch: int) -> None:
+    def _adopt(self, sock: socket.socket, mac: str, ch: int, initial: bytes = b"") -> None:
         sock.settimeout(0.4)
         self.sock = sock
         self.mac = mac
         self.channel = ch
+        self.session = uuid.uuid4().hex[:12]
         self.first_rx.clear()
-        threading.Thread(target=self._reader, daemon=True).start()
+        threading.Thread(target=self._reader, args=(sock, self.session, ch, initial), daemon=True).start()
 
     def _silent_watchdog(self, sock: socket.socket, ch: int) -> None:
         """Name the fake-"Connected" condition, then keep trying to heal it.
@@ -389,25 +396,27 @@ class Bridge:
                 reported = True
             try:
                 with self.tx_lock:
+                    if self.sock is not sock:
+                        return
                     sock.sendall(HANDSHAKE)
             except OSError:
                 return  # the link died; the reader thread reports the close
         if self.sock is not sock:
             return
         msg = (
-            f"DSP answered on channel {ch} after retry — battery and ANC are "
-            "live now"
+            f"DSP answered on channel {ch} after retry — telemetry received; "
+            "ANC control and physical effect remain unverified"
         )
         sys.stderr.write(f"bridge: {msg}\n")
         self.broadcast({"type": "sys", "message": msg, "channel": ch})
 
     @staticmethod
-    def _probe(sock: socket.socket) -> bool:
-        """Send the handshake; true when a valid `09 FF` frame comes back."""
+    def _probe(sock: socket.socket) -> bytes:
+        """Send the handshake; retain bytes when a valid `09 FF` frame comes back."""
         try:
             sock.sendall(HANDSHAKE)
         except OSError:
-            return False
+            return b""
         deadline = time.monotonic() + PROBE_REPLY_TIMEOUT
         buf = b""
         while time.monotonic() < deadline:
@@ -417,52 +426,57 @@ class Bridge:
             except socket.timeout:
                 continue
             except OSError:
-                return False
+                return b""
             if not chunk:
-                return False
+                return b""
             buf += chunk
             if _answers_handshake(buf):
-                return True
-        return False
+                return buf
+        return b""
 
     def send(self, data: bytes) -> None:
         # Capture the socket locally: close() on another thread can null and
         # close self.sock between the check and the write, and sendall() on
         # the stale object then fails with a clean OSError (reported to the
         # caller as a protocol error) instead of an AttributeError.
-        sock = self.sock
-        if sock is None:
-            raise RuntimeError("Not connected")
         with self.tx_lock:
+            sock = self.sock
+            if sock is None:
+                raise RuntimeError("Not connected")
+            if self.channel in BLOCKED_CHANNELS:
+                raise RuntimeError("Control writes blocked on firmware/iAP2 channel")
             sock.sendall(data)
 
     def close(self) -> None:
-        s = self.sock
-        self.sock = None
-        self.mac = ""
-        if s:
-            try:
-                s.close()
-            except OSError:
-                pass
+        with self.tx_lock:
+            s = self.sock
+            self.sock = None
+            self.mac = ""
+            if s:
+                try:
+                    s.close()
+                except OSError:
+                    pass
 
-    def _reader(self) -> None:
+    def _reader(self, sock: socket.socket, session: str, channel: int, initial: bytes = b"") -> None:
         # Keep the socket identity local. A reconnect can replace
         # self.sock while the previous reader thread is unwinding; the old
         # thread must not consume or clear the new connection.
-        sock = self.sock
-        if sock is None:
-            return
         buf = b""
         while self.sock is sock:
             try:
-                chunk = sock.recv(1024)
+                chunk = initial or sock.recv(1024)
+                initial = b""
             except socket.timeout:
                 continue
             except OSError:
                 break
             if not chunk:
                 break
+            if self.sock is not sock:
+                return
+            self.broadcast({"type": "diagnostic", "event": "RX_RECEIVED",
+                            "session": session, "channel": channel})
             buf += chunk
             while True:
                 frame, remainder = split_frame(buf)
@@ -478,11 +492,12 @@ class Bridge:
                         # First device-originated frame of this link; stops
                         # the silent-link watchdog if one is waiting.
                         self.first_rx.set()
-                    self.broadcast({"type": "rx", "hex": frame.hex().upper()})
+                    self.broadcast({"type": "rx", "hex": frame.hex().upper(),
+                                    "session": session, "channel": channel})
         if self.sock is sock:
             self.sock = None
             self.mac = ""
-        self.broadcast({"type": "sys", "error": "RFCOMM closed"})
+            self.broadcast({"type": "sys", "error": "RFCOMM closed", "session": session})
 
 
 def _frame_checksum(data: bytes) -> int:
@@ -493,11 +508,9 @@ def split_frame(buf: bytes) -> tuple[Optional[bytes], bytes]:
     """Extract one validated Soundcore frame from a stream buffer.
 
     RFCOMM is a byte stream, so reads can split a frame or contain several
-    frames. The current Soundcore families put the total frame length in
-    bytes 7–8, but older captures are not always consistent. Trust a sane
-    length only when its checksum validates; otherwise scan for a checksum
-    boundary instead of consuming an arbitrary 64-byte chunk (which used to
-    merge adjacent responses and lose every frame after it).
+    frames. Both coherent length (bytes 7–8) and checksum are mandatory.
+    A checksum-valid prefix of an incomplete frame is not a frame boundary.
+    No A3959 evidence supports the previous guessed-short-frame fallback.
 
     ``b''`` is a progress sentinel: leading noise was discarded, but there is
     not yet a complete frame to return.
@@ -506,7 +519,7 @@ def split_frame(buf: bytes) -> tuple[Optional[bytes], bytes]:
         return None, buf
 
     header_at = next(
-        (i for i in range(len(buf) - 1) if buf[i] in (0x08, 0x09) and buf[i + 1] in (0xEE, 0xFF)),
+        (i for i in range(len(buf) - 1) if buf[i:i + 2] in (b"\x08\xee", b"\x09\xff")),
         None,
     )
     if header_at is None:
@@ -518,26 +531,16 @@ def split_frame(buf: bytes) -> tuple[Optional[bytes], bytes]:
         return None, buf
 
     indicated = buf[7] | (buf[8] << 8)
-    if 10 <= indicated <= 512 and len(buf) >= indicated:
-        candidate = buf[:indicated]
-        if _frame_checksum(candidate[:-1]) == candidate[-1]:
-            return candidate, buf[indicated:]
-
-    # Fallback for legacy frames with a missing or inaccurate length field.
-    # A few command families advertise a length one byte larger than the
-    # actual frame (for example the captured 0x0E TWS ANC frame), so do not
-    # wait forever for the indicated length when the checksum already closes
-    # a shorter frame.
-    limit = min(len(buf), 512)
-    for end in range(10, limit + 1):
-        if _frame_checksum(buf[: end - 1]) == buf[end - 1]:
-            return buf[:end], buf[end:]
-
-    # A complete frame may still be arriving. If the buffer is unreasonably
-    # large, drop one byte so a later valid header can be found.
-    if len(buf) > 512:
+    if not 10 <= indicated <= 512:
         return b"", buf[1:]
-    return None, buf
+    if len(buf) < indicated:
+        # A payload prefix can accidentally satisfy the additive checksum.
+        # That is not a frame boundary: retain ALL bytes until length is met.
+        return None, buf
+    candidate = buf[:indicated]
+    if _frame_checksum(candidate[:-1]) == candidate[-1]:
+        return candidate, buf[indicated:]
+    return b"", buf[1:]  # corrupt complete frame: resynchronise, never guess
 
 
 def b64sha(key: str) -> str:
@@ -976,6 +979,10 @@ class Handler(BaseHTTPRequestHandler):
             # here used to look like a bridge failure.
             sys.stderr.write("bridge: WebSocket client disconnected\n")
         finally:
+            with BRIDGE.connect_lock:
+                if BRIDGE.controller is sock:
+                    BRIDGE.close()
+                    BRIDGE.controller = None
             with BRIDGE.lock:
                 BRIDGE.clients = [c for c in BRIDGE.clients if c is not sock]
 
@@ -996,11 +1003,13 @@ class Handler(BaseHTTPRequestHandler):
         kind = msg.get("type")
         try:
             if kind == "connect":
-                BRIDGE.connect(str(msg.get("mac", "")), int(msg.get("channel", 4)))
+                with BRIDGE.connect_lock:
+                    BRIDGE._connect(str(msg.get("mac", "")), int(msg.get("channel", 4)))
+                    BRIDGE.controller = sock
                 send_ws(
                     sock,
                     json.dumps(
-                        {"type": "connected", "mac": BRIDGE.mac, "channel": BRIDGE.channel}
+                        {"type": "connected", "mac": BRIDGE.mac, "channel": BRIDGE.channel, "session": BRIDGE.session}
                     ).encode(),
                 )
             elif kind == "tx":
@@ -1011,6 +1020,7 @@ class Handler(BaseHTTPRequestHandler):
                         json.dumps(
                             {
                                 "type": "error",
+                                "id": msg.get("id"),
                                 "error": f"tx payload too large ({len(data)} bytes; max {TX_MAX_BYTES})",
                             }
                         ).encode(),
@@ -1024,21 +1034,37 @@ class Handler(BaseHTTPRequestHandler):
                     send_ws(
                         sock,
                         json.dumps(
-                            {"type": "error", "error": f"rejected: {reason}"}
+                            {"type": "error", "id": msg.get("id"), "error": f"rejected: {reason}"}
                         ).encode(),
                     )
                     return
-                BRIDGE.send(data)
-                send_ws(sock, json.dumps({"type": "sent", "n": len(data)}).encode())
+                # Correlate renderer acceptance separately from OS socket completion.
+                # A sent result is NOT a firmware acknowledgement.
+                with BRIDGE.connect_lock:
+                    if BRIDGE.controller is not None and BRIDGE.controller is not sock:
+                        raise RuntimeError("Another control session owns RFCOMM — reconnect explicitly")
+                    if msg.get("session") and msg["session"] != BRIDGE.session:
+                        raise RuntimeError("Stale device session — frame not sent")
+                    meta = {"id": msg.get("id"), "session": BRIDGE.session, "channel": BRIDGE.channel}
+                    if msg.get("id") is not None:
+                        BRIDGE.broadcast({"type": "diagnostic", "event": "TX_ACCEPTED", **meta})
+                    BRIDGE.send(data)
+                    if msg.get("id") is not None:
+                        BRIDGE.broadcast({"type": "diagnostic", "event": "TX_SENT", "hex": data.hex().upper(), **meta})
+                    send_ws(sock, json.dumps({"type": "sent", "n": len(data), **meta}).encode())
             elif kind == "disconnect":
-                BRIDGE.close()
+                with BRIDGE.connect_lock:
+                    if BRIDGE.controller is not None and BRIDGE.controller is not sock:
+                        raise RuntimeError("Cannot disconnect another control session")
+                    BRIDGE.close()
+                    BRIDGE.controller = None
                 send_ws(sock, json.dumps({"type": "disconnected"}).encode())
             elif kind == "scan":
                 send_ws(sock, json.dumps({"type": "hello", "devices": scan_devices()}).encode())
             else:
                 send_ws(sock, json.dumps({"type": "error", "error": f"unknown {kind}"}).encode())
         except Exception as exc:  # noqa: BLE001
-            send_ws(sock, json.dumps({"type": "error", "error": str(exc)}).encode())
+            send_ws(sock, json.dumps({"type": "error", "id": msg.get("id"), "error": str(exc)}).encode())
 
 
 def main() -> None:

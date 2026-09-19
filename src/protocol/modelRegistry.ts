@@ -1,4 +1,5 @@
 import type { DeviceProfile, StateOffsets } from '../types';
+import { validP30iSoundModes } from './p30i';
 import { CUSTOM_EQ_PRESET_ID } from './presets';
 import { commandForFrameKey, validateOutboundFrame, withEarbudOnlyBoundary } from './targets';
 import type { EarbudCommandSpec, OutboundFrameCheck } from './targets';
@@ -225,6 +226,7 @@ export const TARGET_MODELS: readonly ModelRegistryEntry[] = [
       },
     },
     notes: [
+      'Phase 19: user reports no physical ANC effect in desktop, including during playback. Source-derived state-preserving transitions are under investigation; physicalValidation remains PENDING. See docs/PHASE-19-ANC-AUDIT.md.',
       'ANC/transparency/normal ambient values are NOT a generic guess: NoiseCanceling=0, Transparency=1, Normal=2 is OpenSCQ30\'s AmbientSoundMode enum for this model family (docs/R50I-PROTOCOL.md).',
       'Transparency SUB-MODES (fully transparent vs vocal) are NOT supported — the a3959 SoundModes struct has no TransparencyMode field; the vocal toggle stays hidden.',
       'Custom EQ curves (0xFEFE) ARE supported at protocol level (custom_preset_id Some(0xFEFE)) — physically unverified.',
@@ -291,6 +293,9 @@ export function gateCommandForProfile(
   // scripts/test_model_profiles.mjs — so both paths agree).
   switch (commandId) {
     case 'sound-modes.set':
+      if (profile.id === 'p30i' && (!validP30iSoundModes(frame.slice(9, -1)) || (frame[13] & 2) !== 0)) {
+        return deny('A3959 requires a valid 7-byte sound-mode payload; wind-detected bit is read-only');
+      }
       return profile.ancLayout === 'none'
         ? deny(
             `${profile.name} (${profile.sku}) has no sound-mode control — ANC/transparency frames are not sent to this model`,
@@ -357,12 +362,13 @@ export function gateCommandForProfile(
  * `onBlock`; they never reach the wire.
  */
 export function withDeviceBoundary(
-  t: { kind: import('../types').Transport['kind']; label: string; write(data: Uint8Array): Promise<void>; close(): Promise<void> },
+  t: import('../types').Transport,
   getProfile: () => DeviceProfile,
   onBlock: (reason: string) => void = () => {},
 ): import('../types').Transport {
   const earbudOnly = withEarbudOnlyBoundary(t, onBlock);
   return {
+    diagnostics: t.diagnostics,
     kind: earbudOnly.kind,
     label: earbudOnly.label,
     async write(data: Uint8Array): Promise<void> {

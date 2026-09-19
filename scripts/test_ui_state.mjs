@@ -350,9 +350,7 @@ eq('classic transparency + indoor', parseSoundModes([0x01, 0x02, 0x00, 0x00], 'c
 eq('l4nc: manual level 3 + wind on', parseSoundModes([0x00, 0x30, 0x00, 0x00, 0x01], 'tws-l4nc'), {
   mode: 'anc', level: 3, transVocal: false, wind: true,
 });
-eq('p30i: adaptive nibble below 1 is not a level', parseSoundModes([0x02, 0x00, 0x00, 0x00, 0x00], 'tws-p30i'), {
-  mode: 'normal', wind: false,
-});
+eq('p30i: truncated or invalid manual report rejected', parseSoundModes([0x02, 0x00, 0x00, 0x00, 0x00], 'tws-p30i'), null);
 // TEST 12 input — a malformed mirror must be REJECTED, so the last confirmed
 // mode survives (the store only moves ANC state on a non-null report).
 eq('garbage mode byte → null (confirmed state untouched)', parseSoundModes([0x07, 0x00, 0x00, 0x00], 'classic'), null);
