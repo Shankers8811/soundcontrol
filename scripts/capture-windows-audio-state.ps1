@@ -62,7 +62,9 @@ interface IMMDeviceEnumerator {
 
 [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IMMDevice {
-    int Activate(ref Guid iid, int clsCtx, IntPtr activationParams, out IAudioEndpointVolume volume);
+    // Activate returns the requested interface as a raw pointer; callers
+    // Marshal.GetObjectForIUnknown + cast to the interface they asked for.
+    int Activate(ref Guid iid, int clsCtx, IntPtr activationParams, out IntPtr iface);
     int OpenPropertyStore(int access, out IPropertyStore properties);
     // remaining slots unused
 }
@@ -177,8 +179,10 @@ public static class AudioStateReader {
             IMMDevice dev;
             Marshal.ThrowExceptionForHR(en.GetDefaultAudioEndpoint(0 /*eRender*/, 0, out dev));
             var iid = new Guid("5CDF2C82-841E-4546-9722-0CF74078229A");
-            IAudioEndpointVolume vol;
-            Marshal.ThrowExceptionForHR(dev.Activate(ref iid, 1 /*CLSCTX_INPROC_SERVER*/, IntPtr.Zero, out vol));
+            IntPtr volPtr;
+            Marshal.ThrowExceptionForHR(dev.Activate(ref iid, 1 /*CLSCTX_INPROC_SERVER*/, IntPtr.Zero, out volPtr));
+            var vol = (IAudioEndpointVolume)Marshal.GetObjectForIUnknown(volPtr);
+            Marshal.Release(volPtr);
             float level; Marshal.ThrowExceptionForHR(vol.GetMasterVolumeLevelScalar(out level));
             bool mute; Marshal.ThrowExceptionForHR(vol.GetMute(out mute));
             return string.Format("{0:F4} mute={1}", level, mute);
@@ -192,8 +196,10 @@ public static class AudioStateReader {
             IMMDevice dev;
             Marshal.ThrowExceptionForHR(en.GetDefaultAudioEndpoint(0, 0, out dev));
             var iid = new Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F");
-            IAudioSessionManager2 mgr;
-            Marshal.ThrowExceptionForHR(dev.Activate(ref iid, 1, IntPtr.Zero, out mgr));
+            IntPtr mgrPtr;
+            Marshal.ThrowExceptionForHR(dev.Activate(ref iid, 1, IntPtr.Zero, out mgrPtr));
+            var mgr = (IAudioSessionManager2)Marshal.GetObjectForIUnknown(mgrPtr);
+            Marshal.Release(mgrPtr);
             IAudioSessionEnumerator sessions;
             Marshal.ThrowExceptionForHR(mgr.GetSessionEnumerator(out sessions));
             int n; sessions.GetCount(out n);
@@ -205,11 +211,15 @@ public static class AudioStateReader {
                 // dependency-free (no System.Diagnostics reference needed).
                 int pid; ctl.GetProcessId(out pid);
                 string proc = "pid-" + pid;
-                ISimpleAudioVolume vol;
-                if (mgr.GetSimpleAudioVolume(IntPtr.Zero, 0, out vol) == 0) {
+                try {
+                    // The session object itself exposes ISimpleAudioVolume
+                    // (QI cast) — the per-app volume, read-only.
+                    var vol = (ISimpleAudioVolume)ctl;
                     float level; vol.GetMasterVolume(out level);
                     bool mute; vol.GetMute(out mute);
                     lines.Add(string.Format("  {0}: {1:F4} mute={2}", proc, level, mute));
+                } catch {
+                    lines.Add("  " + proc + ": volume-unreadable");
                 }
             }
             lines.Sort(StringComparer.Ordinal);
