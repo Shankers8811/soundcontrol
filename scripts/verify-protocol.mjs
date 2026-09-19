@@ -373,16 +373,16 @@ console.log('  13 TWS sound-mode shape checks');
 /* ----------------------------------------------------------- device table */
 
 const EXPECTED = {
-  A3959: { name: 'P30i / R50i NC', eq: '02:83', anc: 'tws-p30i', batteryMax: 10, gaming: true, ldac: false, dual: true, surround: true },
-  A3949: { name: 'P20i / P25i / R50i', eq: '02:83', anc: 'none', batteryMax: 5, gaming: true, ldac: false, dual: false, surround: false },
-  A3948: { name: 'A20i', eq: '02:83', anc: 'none', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false },
-  A3947: { name: 'Liberty 4 NC', eq: null, anc: 'tws-l4nc', batteryMax: 5, gaming: true, ldac: false, dual: false, surround: true },
-  A3952: { name: 'Liberty 3 Pro', eq: null, anc: 'tws-l3pro', batteryMax: 5, gaming: false, ldac: true, dual: false, surround: false },
-  A3035: { name: 'Space One', eq: null, anc: 'classic', batteryMax: 5, gaming: false, ldac: true, dual: true, surround: false },
-  A3040: { name: 'Space Q45', eq: null, anc: 'classic', batteryMax: 5, gaming: false, ldac: true, dual: true, surround: false },
-  A3027: { name: 'Life Q35', eq: '02:81', anc: 'classic', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false },
-  A3028: { name: 'Life Q30', eq: '02:81', anc: 'classic', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false },
-  A3029: { name: 'Life Tune', eq: '02:81', anc: 'classic', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false },
+  A3959: { name: 'P30i / R50i NC', eq: '02:83', anc: 'tws-p30i', batteryMax: 10, gaming: true, ldac: false, dual: true, surround: true, customEq: true },
+  A3949: { name: 'P20i / P25i / R50i', eq: '02:83', anc: 'none', batteryMax: 5, gaming: true, ldac: false, dual: false, surround: false, customEq: false },
+  A3948: { name: 'A20i', eq: '02:83', anc: 'none', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false, customEq: true },
+  A3947: { name: 'Liberty 4 NC', eq: null, anc: 'tws-l4nc', batteryMax: 5, gaming: true, ldac: false, dual: false, surround: true, customEq: false },
+  A3952: { name: 'Liberty 3 Pro', eq: null, anc: 'tws-l3pro', batteryMax: 5, gaming: false, ldac: true, dual: false, surround: false, customEq: false },
+  A3035: { name: 'Space One', eq: null, anc: 'classic', batteryMax: 5, gaming: false, ldac: true, dual: true, surround: false, customEq: false },
+  A3040: { name: 'Space Q45', eq: null, anc: 'classic', batteryMax: 5, gaming: false, ldac: true, dual: true, surround: false, customEq: false },
+  A3027: { name: 'Life Q35', eq: '02:81', anc: 'classic', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false, customEq: true },
+  A3028: { name: 'Life Q30', eq: '02:81', anc: 'classic', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false, customEq: true },
+  A3029: { name: 'Life Tune', eq: '02:81', anc: 'classic', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false, customEq: true },
 };
 for (const [sku, want] of Object.entries(EXPECTED)) {
   const d = DEVICES.find((x) => x.sku === sku);
@@ -396,6 +396,8 @@ for (const [sku, want] of Object.entries(EXPECTED)) {
   check(`table ${sku} ldac`, String(d.ldac), String(want.ldac));
   check(`table ${sku} dual`, String(d.dual), String(want.dual));
   check(`table ${sku} surround`, String(d.surround), String(want.surround));
+  // Phase 18: custom-EQ support per model (A3949 = factory presets only).
+  check(`table ${sku} customEq`, String(d.customEq), String(want.customEq));
   ok(`table ${sku} cites a source`, d.source.length > 10);
 }
 console.log(`  ${Object.keys(EXPECTED).length * 9} device-table checks`);

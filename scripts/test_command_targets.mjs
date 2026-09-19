@@ -387,6 +387,51 @@ check(
   hits.join(' | '),
 );
 
+/* -------------------------------------------------------- Task 16 harness */
+// scripts/capture-windows-audio-state.ps1 is the Phase 18 READ-ONLY Windows
+// audio regression harness: Task 16 requires READING the audio state to
+// prove SoundControl does not modify it. Reading is not controlling — but
+// the harness itself must never contain a WRITE-side audio API. This check
+// scans it with the write-side tokens only and fails the build if any
+// appears, so the "read-only" claim stays machine-checked.
+{
+  const harnessPath = join(ROOT, 'scripts', 'capture-windows-audio-state.ps1');
+  const harness = readFileSync(harnessPath, 'utf8');
+  const WRITE_SIDE = [
+    /\.SetMasterVolumeLevel(Scalar)?\s*\(/,
+    /\.SetMute\s*\(/,
+    /\.SetChannelVolumeLevel(Scalar)?\s*\(/,
+    /\.SetDefaultAudioEndpoint\s*\(/,
+    /Set-ItemProperty[^(]*\bRun\b/,
+    /\bNew-ItemProperty[^(]*\bRun\b/,
+    /\bnircmd\b/i,
+    /\bVK_VOLUME/,
+    /\bSendInput\b/,
+    /\bkeybd_event\b/,
+    /\bSet-AudioDevice\b/i,
+    /\bAudioDeviceCmdlets\b/i,
+  ];
+  // Scan CODE only: strip <#...#> blocks, # comment lines and the COM
+  // interface member DECLARATIONS (a vtable must list every slot in order —
+  // those Set* slots are annotated "NEVER CALLED"). Only an actual
+  // invocation in live code is a write.
+  const codeOnly = harness
+    .replace(/[\s\S]*?#>/g, '')
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .filter((line) => !/^\s*(int|public int) Set[A-Za-z]+\(/.test(line))
+    .join('\n');
+  const notes = [];
+  for (const re of WRITE_SIDE) {
+    if (re.test(codeOnly)) notes.push(`/${re.source}/`);
+  }
+  check(
+    'Task 16 audio harness is read-only (no write-side API invocation)',
+    notes.length === 0,
+    notes.join(' | '),
+  );
+}
+
 /* ------------------------------------------------------------------ done */
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
