@@ -120,6 +120,7 @@ interface AppState {
   setProfileId: (id: string) => void;
   battery: BatteryState;
   ancStatus: string;
+  ancHasReport: boolean;
   readAncState: () => Promise<void>;
   recordAncObservation: (effect: string) => void;
   ancMode: AncMode;
@@ -225,6 +226,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
   // The low-battery nudge should fire once per connection, not every poll.
   const lowBatteryWarned = useRef(false);
+  const [ancHasReport, setAncHasReport] = useState(false);
   const [ancStatus, setAncStatus] = useState('Device ANC state unknown — physical effect unverified');
   const ancExchange = useRef(new AncExchange());
   const ancInFlight = useRef(false);
@@ -305,6 +307,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // malformed mirrors so garbage can never overwrite a confirmed mode.
     const report = parseSoundModes(payload, profileRef.current.ancLayout);
     if (!report) return;
+    setAncHasReport(true);
     const previous = p30iState.current;
     if (profileRef.current.id === 'p30i') p30iState.current = payload.slice(0, 7);
     pushLog('sys', '', `RX_SOUND_MODE_MIRROR ${JSON.stringify(report)}`);
@@ -538,6 +541,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setProfile(nextProfile);
       ancExchange.current.cancel();
       p30iState.current = null;
+    setAncHasReport(false);
       setAncStatus('Device ANC state unknown — physical effect unverified');
       // Clear the previous device's telemetry: firmware and serial are read
       // per device, and showing a stale value is worse than showing none.
@@ -675,6 +679,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const releaseTransport = useCallback(async () => {
     ancExchange.current.cancel();
     p30iState.current = null;
+    setAncHasReport(false);
     const t = transportRef.current;
     transportRef.current = null;
     if (t) {
@@ -697,6 +702,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const clearDeviceState = useCallback(() => {
     ancExchange.current.cancel();
     p30iState.current = null;
+    setAncHasReport(false);
     setAncStatus('Device ANC state unknown — physical effect unverified');
     setConnected(false);
     setConnectedMac(null);
@@ -1163,6 +1169,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (hit) {
       ancExchange.current.cancel();
       p30iState.current = null;
+    setAncHasReport(false);
       setAncStatus('Device ANC state unknown — profile changed');
       profileRef.current = hit;
       setProfile(hit);
@@ -1209,6 +1216,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       profile,
       setProfileId,
       battery,
+      ancHasReport,
       ancStatus,
       readAncState,
       recordAncObservation,
@@ -1281,6 +1289,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       profile,
       setProfileId,
       battery,
+      ancHasReport,
       ancStatus,
       readAncState,
       recordAncObservation,

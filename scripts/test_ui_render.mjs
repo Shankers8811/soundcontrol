@@ -64,6 +64,7 @@ try {
         export { DashboardPage } from './src/pages/DashboardPage.tsx';
         export { DevicesPage } from './src/pages/DevicesPage.tsx';
         export { EqualizerPage } from './src/pages/EqualizerPage.tsx';
+        export { NoiseControl } from './src/components/NoiseControl.tsx';
         export { ControlsPage } from './src/pages/ControlsPage.tsx';
         export { SettingsPage } from './src/pages/SettingsPage.tsx';
         export { AboutSection } from './src/pages/AboutPage.tsx';
@@ -203,6 +204,82 @@ const eqNc = render(
 );
 check('A3959: every band renders a fader input (custom curves supported)', (eqNc.match(/class="eq-fader"/g) ?? []).length === 8, `got ${(eqNc.match(/class="eq-fader"/g) ?? []).length}`);
 check('A3959: custom curve documents the real FE FE preset id', eqNc.includes('FE FE'));
+
+/* ======================================================================== */
+/* Phase 19 — A3959 ANC diagnostics + honest ANC state (no optimistic UI)   */
+/*                                                                          */
+/* The user reported that desktop ANC does not change what they hear while  */
+/* Android does, on the same R50i NC. These assertions pin the two halves   */
+/* of the honesty contract that can be checked without hardware:            */
+/*   1. the A3959 diagnostics panel exists ONLY for the A3959 profile, and  */
+/*      it states that Windows audio is untouched and that no automated     */
+/*      PASS is produced from a write;                                   */
+/*   2. no ANC mode is presented as the confirmed device state until the    */
+/*      device's own report arrives (ancHasReport), so the app can never    */
+/*      substitute a local UI change for a physical ANC change.             */
+/* ======================================================================== */
+
+console.log('\n[noise control] A3959 diagnostics + honest ANC state');
+
+// The default (A3949) render renders the honest unsupported note, never the
+// A3959-only diagnostics panel.
+const controlsDefault = render(React.createElement(M.ControlsPage));
+check('A3949 Noise Control hides the A3959 diagnostics panel', !controlsDefault.includes('A3959 hardware diagnostics'));
+
+function renderNoiseControlFor(profile, extraState = {}) {
+  return render(
+    React.createElement(AppProvider, null, [
+      (() => {
+        const inner = function Override() {
+          const app = React.useContext(M.AppContext);
+          return React.createElement(
+            M.AppContext.Provider,
+            { value: { ...app, profile, capabilities: M.deriveCapabilities(profile), ...extraState } },
+            React.createElement(M.NoiseControl),
+          );
+        };
+        return React.createElement(inner);
+      })(),
+    ]),
+  );
+}
+
+const ncNc = renderNoiseControlFor(P30I_PROFILE, { connected: true });
+check('A3959 Noise Control renders the hardware diagnostics panel', ncNc.includes('A3959 hardware diagnostics'));
+check('A3959 diagnostics: read-state + each A–I action is offered',
+  ncNc.includes('Read state (A/C/E/G/I)') && ncNc.includes('B · Normal') && ncNc.includes('D · Transparency') && ncNc.includes('F · Manual 1') && ncNc.includes('H · Manual 5'));
+check('A3959 diagnostics: states that Windows audio is not modified', ncNc.includes('No Windows audio settings are changed'));
+check('A3959 diagnostics: tells the user to keep audio playing',
+  ncNc.includes('Start audio yourself and keep it playing'));
+check('A3959 diagnostics: physical result is user-recorded, not automated',
+  ncNc.includes('I felt a change') && ncNc.includes('No physical change') && ncNc.includes('Unsure'));
+const diagPanel = ncNc.slice(ncNc.indexOf('A3959 hardware diagnostics'));
+check('A3959 diagnostics: no automated success claim',
+  diagPanel.includes('not an automated PASS') && !/ANC works|verified working|physical validation complete/i.test(diagPanel));
+
+// Honesty: with no device report yet, the status line is explicitly unknown
+// and NO ANC mode icon may be rendered as the confirmed (aria-pressed) state.
+check('A3959: ANC status line starts explicitly unknown', ncNc.includes('unknown') && ncNc.includes('physical effect unverified'));
+// Scope the mode-icon check to the mode group only (the scene buttons carry
+// their own aria-pressed state, which is a different control).
+function modeIcons(html) {
+  const start = html.indexOf('aria-label="Noise cancellation mode"');
+  if (start < 0) return '';
+  const end = html.indexOf('aria-label="Noise cancellation scene"', start);
+  return html.slice(start, end > start ? end : undefined);
+}
+const modeGroup = modeIcons(ncNc);
+check('A3959: no ANC mode is shown as confirmed before a device report',
+  modeGroup.length > 0 && !modeGroup.includes('aria-pressed="true"'));
+
+// A device report (ancHasReport) is the ONLY thing allowed to mark a mode as
+// the confirmed one — simulate exactly what the store sets from `06:01`.
+const ncReported = renderNoiseControlFor(P30I_PROFILE, { connected: true, ancHasReport: true, ancMode: 'transparency' });
+check('A3959: a device-reported mode is marked confirmed', modeIcons(ncReported).includes('aria-pressed="true"'));
+check('A3959: the A3959 scene selector explains multi-scene automation',
+  ncNc.includes('Selecting a scene requests multi-scene automation, not manual strength'));
+
+check('no third-party project names in the A3959 Noise Control renders either', !/OpenSCQ30|SoundcoreDesktop|Noiseclapper|soundcorebridge|victor-oliveira|DamienStaebler|CoreSound/i.test(ncNc + ncReported));
 
 console.log('\n[controls]');
 const controls = render(React.createElement(M.ControlsPage));
