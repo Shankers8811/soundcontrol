@@ -23,7 +23,7 @@
 
 - All builds and release notes live on the **[Releases page](https://github.com/Shankers8811/soundcontrol/releases/latest)**.
 - The same download is built into the app under **Settings → About** (**Download .exe** → latest release).
-- Windows SmartScreen may show an unsigned-publisher prompt on first run (the app is free and not code-signed); choose **More info → Run anyway** — see [Code signing & SmartScreen](#-code-signing--smartscreen) for how to make that warning disappear.
+- Windows SmartScreen may show an unsigned-publisher prompt for the current (unsigned) release; choose **More info → Run anyway** — see [Code signing & SmartScreen](#-code-signing--smartscreen). Release builds are now gated on Authenticode signing, so the prompt disappears once a certificate is configured and a signed release ships.
 - **Lifecycle is deliberately boring:** SoundControl starts only when you launch it (it never
   registers a Windows startup entry, and a startup entry left by an older version is removed at
   launch), and closing the window exits completely — the Bluetooth helper is terminated, port
@@ -31,7 +31,7 @@
   launch-at-login or minimize-to-tray setting by design; obsolete entries in an old
   `%AppData%\soundcontrol\settings.json` are stripped at startup so they can never re-enable
   either behaviour. The complete installed package stays far below 500 MB (measured on Windows CI).
-- More docs: [TROUBLESHOOTING.md](TROUBLESHOOTING.md) (every connect failure mode, explained from the real log messages), [ROADMAP.md](ROADMAP.md) (shipped vs open), [PROTOCOL.md](PROTOCOL.md) (verified wire spec), [PUBLISH.md](PUBLISH.md) (release checklist).
+- More docs: [TROUBLESHOOTING.md](TROUBLESHOOTING.md) (every connect failure mode, explained from the real log messages), [ROADMAP.md](ROADMAP.md) (shipped vs open), [PROTOCOL.md](PROTOCOL.md) (verified wire spec), [PUBLISH.md](PUBLISH.md) (release checklist), [docs/WINDOWS-CODE-SIGNING.md](docs/WINDOWS-CODE-SIGNING.md) (SmartScreen & Authenticode signing).
 
 **🔎 Connecting earbuds on Windows (important).** SoundControl talks to devices **already paired
 with Windows** through a small local bridge that runs on a Python runtime **bundled inside the
@@ -257,25 +257,36 @@ The in-app download button and the links above resolve through
 `releases/latest/download/...`, so they always point at the newest Release.
 
 ### 🔏 Code signing & SmartScreen
-By default the installer is **unsigned**, so first-time downloaders see the
-SmartScreen "Windows protected your PC — Unknown publisher" prompt. It is not a
-virus check failure; click **More info → Run anyway**, or right-click the file →
+The currently published installer is **unsigned**, so first-time downloaders see
+the SmartScreen "Windows protected your PC — Unknown publisher" prompt. It is not
+a virus check failure; click **More info → Run anyway**, or right-click the file →
 **Properties → Unblock** before launching. The prompt can only be removed with an
-Authenticode code-signing certificate — nothing in the build config can suppress it.
+Authenticode code-signing certificate — nothing in the build config can suppress
+it, and SoundControl will never try to bypass or weaken SmartScreen.
 
-To sign releases, add two repository secrets (Settings → Secrets and variables → Actions):
+The signing pipeline is fully implemented and enforced: **release builds are
+gated on signing** — the release workflow refuses to build without credentials,
+electron-builder runs with `forceCodeSigning`, and the actual generated EXE is
+verified (`Get-AuthenticodeSignature` + `signtool verify /pa`, publisher
+identity, SHA-256 recorded, every shipped executable signed) before the GitHub
+Release is published. All details: **[docs/WINDOWS-CODE-SIGNING.md](docs/WINDOWS-CODE-SIGNING.md)**.
+
+What is still missing is the **certificate**: no signing credential is
+configured in this repository yet, so releases cannot be signed until one is
+added. To enable signing, set two repository secrets (Settings → Secrets and
+variables → Actions):
 
 | Secret | Value |
 |---|---|
-| `WINDOWS_CERTIFICATE_BASE64` | base64 text of the `.p12`/`.pfx` file (e.g. `openssl base64 -in cert.p12 -out cert.b64`) |
-| `WINDOWS_CERTIFICATE_PASSWORD` | the certificate password |
+| `WIN_CSC_LINK` | base64 text of the `.p12`/`.pfx` file (e.g. `openssl base64 -in cert.p12 -out cert.b64 -A`) |
+| `WIN_CSC_KEY_PASSWORD` | the certificate password |
 
-The Release workflow picks them up automatically and electron-builder signs the app
-and the installer; the cleanup step deletes the certificate after the build.
-The workflow also runs a **"Report Authenticode signature status"** step: with no
-secrets it only reports the installer as unsigned, but once
-`WINDOWS_CERTIFICATE_BASE64` exists a build whose signature is not *Valid* fails
-the release instead of shipping another unsigned binary.
+(Optionally also set the repository variable `WINDOWS_EXPECTED_PUBLISHER` so
+the release gate can pin the expected signer identity.) electron-builder signs
+the app, the bundled Python executables, the uninstaller and the installer
+with SHA-256 + RFC 3161 timestamping, and the cleanup step deletes the staged
+certificate after the build. Until those secrets exist, every attempt to cut a
+release fails loudly instead of shipping another unsigned installer.
 
 **Getting a certificate — three routes, cheapest first:**
 
@@ -303,9 +314,15 @@ openssl base64 -in soundcontrol.p12 -out soundcontrol.b64 -A
 
 # 3. store the two secrets, then re-run the Release workflow
 #    Settings → Secrets and variables → Actions → New repository secret
-#      WINDOWS_CERTIFICATE_BASE64   = <contents of soundcontrol.b64>
-#      WINDOWS_CERTIFICATE_PASSWORD = <p12 password>
+#      WIN_CSC_LINK          = <contents of soundcontrol.b64>
+#      WIN_CSC_KEY_PASSWORD  = <p12 password>
 ```
+
+Honest expectation: signing makes the publisher verifiable, but a brand-new
+signed file can still be considered unrecognized until SmartScreen reputation
+builds up from real downloads (EV certificates are the exception with
+near-immediate reputation). See
+[SmartScreen reputation expectations](docs/WINDOWS-CODE-SIGNING.md#smartscreen-reputation-expectations).
 
 Verify afterwards on any Windows box: right-click the installer → Properties
 (the digital signature tab appears), or in PowerShell

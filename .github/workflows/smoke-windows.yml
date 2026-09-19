@@ -19,6 +19,28 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Phase 18 Task 16 — Windows audio regression proof. Snapshot the
+      # machine's audio configuration BEFORE any SoundControl process runs;
+      # the final step compares against it. Exit 2 = no audio endpoints on
+      # this runner (recorded honestly, not a failure); a later DIFFERENCE is
+      # the regression that fails the job.
+      - name: Capture Windows audio state (before SoundControl runs)
+        shell: pwsh
+        run: |
+          # Child process + explicit exits on every path: nested pwsh exit
+          # codes must never leak into this step's own outcome.
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/capture-windows-audio-state.ps1 -OutFile audio-before.txt
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            Write-Host "::error::Audio-state harness failed (exit $code) - fix scripts/capture-windows-audio-state.ps1; the regression proof cannot run."
+            exit $code
+          }
+          if (Test-Path audio-before.txt) {
+            Get-Content audio-before.txt
+          } else {
+            Write-Host '::warning::Audio endpoints unavailable on this runner (AUDIO_STATE_CAPTURE=UNAVAILABLE) - the audio regression comparison will be skipped, recorded honestly as NOT PERFORMED.'
+          }
+          exit 0
       - name: Build the Windows application
         env:
           SOUNDCONTROL_PYTHON_REQUIRED: '1'
@@ -90,3 +112,30 @@ jobs:
           } finally {
             if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force }
           }
+      # Phase 18 Task 16 — the proof: after building, installing, launching
+      # (twice), uninstalling and killing SoundControl, Windows audio must be
+      # EXACTLY as it was. Exit 1 (state changed) fails the job; exit 2 means
+      # the runner exposed no audio endpoints, so the comparison is honestly
+      # recorded as not performed instead of pretended.
+      - name: Windows audio regression proof - state must be unchanged
+        shell: pwsh
+        run: |
+          if (-not (Test-Path audio-before.txt)) {
+            Write-Host '::warning::No baseline captured (runner had no audio endpoints) - AUDIO REGRESSION COMPARISON NOT PERFORMED on this runner.'
+            exit 0
+          }
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/capture-windows-audio-state.ps1 -Baseline audio-before.txt
+          $code = $LASTEXITCODE
+          if ($code -eq 0) {
+            Write-Host 'WINDOWS AUDIO REGRESSION PROOF PASSED - SoundControl left Windows audio untouched.'
+            exit 0
+          }
+          if ($code -eq 1) {
+            throw 'REGRESSION: Windows audio state changed while SoundControl ran - see the diff above.'
+          }
+          if ($code -eq 3) {
+            Write-Host '::warning::Audio endpoints unavailable during comparison (AUDIO_STATE_COMPARE=UNAVAILABLE) - comparison NOT PERFORMED, not faked.'
+            exit 0
+          }
+          Write-Host "::error::Audio-state harness failed during comparison (exit $code) - fix the harness; the proof cannot run."
+          exit $code

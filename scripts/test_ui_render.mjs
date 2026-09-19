@@ -14,7 +14,8 @@
  *     earbud card in "Status unavailable" (unknown ≠ disconnected),
  *     disabled volume card explaining the protocol gap.
  *   - Devices: real scan surface, capability matrix rows.
- *   - Equalizer: preset grid + FE FE custom curve (this profile has EQ).
+ *   - Equalizer: preset grid; custom faders hidden for A3949 (factory
+ *     presets only per OpenSCQ30) and present for A3959 via profile override.
  *   - Controls: the explicit gesture-unsupported statement.
  *   - Settings: desktop-only rows disabled with a reason; developer tools
  *     absent from a production build.
@@ -156,14 +157,52 @@ check('capability matrix lists the honest volume/gesture facts', devices.include
 // you cannot override the profile of a device that is not connected.
 check('model profile preview (override only when connected)', devices.includes('Preview profiles') && !devices.includes('>Override profile<'));
 
-console.log('\n[equalizer]');
+console.log('\n[equalizer] — default profile is R50i / A3949: factory presets ONLY');
 const eq = render(React.createElement(M.EqualizerPage));
 check('page title', eq.includes('>Equalizer<'));
 check('this EQ-capable profile shows the preset grid', eq.includes('Soundcore presets') && eq.includes('Soundcore Signature'));
-check('custom curve documents the real FE FE preset id', eq.includes('FE FE'));
-check('fader range documents the real wire values (±6 dB, 100 Hz–12.8 kHz)', eq.includes('±6 dB') && eq.includes('100 Hz') && eq.includes('12.8 kHz'));
-check('every band renders a fader input', (eq.match(/class="eq-fader"/g) ?? []).length === 8, `got ${(eq.match(/class="eq-fader"/g) ?? []).length}`);
+// Phase 18: OpenSCQ30 documents A3949 (R50i/P20i/P25i) WITHOUT custom
+// presets (custom_preset_id None), so the custom editor must NOT render and
+// the honest note must appear instead — a fader here would be a control the
+// hardware does not accept.
+check('A3949: custom faders are hidden (no custom-curve support)', (eq.match(/class="eq-fader"/g) ?? []).length === 0, `got ${(eq.match(/class="eq-fader"/g) ?? []).length}`);
+check('A3949: honest "not supported" note replaces the editor', eq.includes('Custom curves are not supported by'));
+check('A3949: header states factory presets only', eq.includes('factory presets only'));
+check('fader range docs stay for models that do have custom curves (±6 dB, 100 Hz–12.8 kHz)', eq.includes('±6 dB') && eq.includes('100 Hz') && eq.includes('12.8 kHz'));
 check('disabled while not connected', eq.includes('Connect a device to apply presets'));
+
+// The SAME page rendered for the R50i NC / A3959 profile — which OpenSCQ30
+// documents WITH custom presets (custom_preset_id Some(0xFEFE)) — must show
+// the full custom editor. Context override: the store's real provider value
+// with only the profile swapped (capabilities derive from it).
+const P30I_PROFILE = M.DEVICES.find((d) => d.sku === 'A3959');
+check('A3959 profile exists in the table for the override render', !!P30I_PROFILE);
+const eqNc = render(
+  React.createElement(AppProvider, null, [
+    (() => {
+      const inner = function Override() {
+        const app = React.useContext(M.AppContext);
+        return React.createElement(
+          M.AppContext.Provider,
+          {
+            value: {
+              ...app,
+              profile: P30I_PROFILE,
+              connected: true,
+              // capabilities are derived inside the provider from the real
+              // profile — re-derive them for the overridden one.
+              capabilities: M.deriveCapabilities(P30I_PROFILE),
+            },
+          },
+          React.createElement(M.EqualizerPage),
+        );
+      };
+      return React.createElement(inner);
+    })(),
+  ]),
+);
+check('A3959: every band renders a fader input (custom curves supported)', (eqNc.match(/class="eq-fader"/g) ?? []).length === 8, `got ${(eqNc.match(/class="eq-fader"/g) ?? []).length}`);
+check('A3959: custom curve documents the real FE FE preset id', eqNc.includes('FE FE'));
 
 console.log('\n[controls]');
 const controls = render(React.createElement(M.ControlsPage));

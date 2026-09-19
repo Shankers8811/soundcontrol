@@ -56,7 +56,10 @@ are the reward.
 - **Demo Mode** synthesises everything and never opens a Bluetooth socket — safe to run
   in CI and while reviewing the renderer.
 - Releases are built by `.github/workflows/release-windows.yml` from the tag with `npm ci`
-  against the committed lockfile. Installers are unsigned unless certificate secrets exist.
+  against the committed lockfile. Release builds are gated on Authenticode signing: without
+  the `WIN_CSC_LINK`/`WIN_CSC_KEY_PASSWORD` secrets the build fails, and the generated
+  installer is signature-verified before the GitHub Release is published. CI/test artifacts
+  (not distributed) may be unsigned.
 
 ## Hardening already applied
 
