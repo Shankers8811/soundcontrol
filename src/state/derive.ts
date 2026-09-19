@@ -7,6 +7,7 @@
  * test framework. Every rule here is derived from PROTOCOL.md and the
  * per-model profiles in `src/protocol/devices.ts` — nothing is guessed.
  */
+import { validP30iSoundModes } from '../protocol/p30i';
 import type { AncLayout, AncMode, AncScene, BatteryState, DeviceProfile, EarbudPresence } from '../types';
 
 /* ------------------------------------------------------------------ */
@@ -324,10 +325,13 @@ export interface SoundModeReport {
   mode: AncMode;
   /** Manual ANC level 1..5 when the layout carries one in the high nibble. */
   level?: number;
-  /** Classic over-ears only. */
+  /** A3959 multi-scene or classic scene. */
   scene?: AncScene;
   transVocal?: boolean;
   wind?: boolean;
+  automation?: number;
+  adaptiveStrength?: number;
+  adaptiveSensitivity?: number;
 }
 
 /**
@@ -340,6 +344,18 @@ export function parseSoundModes(
   payload: ArrayLike<number>,
   layout: AncLayout,
 ): SoundModeReport | null {
+  if (layout === 'tws-p30i') {
+    if (!validP30iSoundModes(payload)) return null;
+    return {
+      mode: payload[0] === 0 ? (payload[3] === 1 ? 'adaptive' : 'anc') : payload[0] === 1 ? 'transparency' : 'normal',
+      level: payload[1] >> 4,
+      automation: payload[3],
+      adaptiveStrength: payload[1] & 15,
+      adaptiveSensitivity: payload[5],
+      wind: (payload[4] & 1) !== 0,
+      scene: payload[6] === 0 ? 'transport' : payload[6] === 1 ? 'outdoor' : 'indoor',
+    };
+  }
   if (layout === 'none' || payload.length < 2) return null;
   const b0 = payload[0];
   if (b0 !== 0x00 && b0 !== 0x01 && b0 !== 0x02) return null;
@@ -351,7 +367,7 @@ export function parseSoundModes(
   if (layout === 'tws-l4nc' && payload.length >= 5) {
     report.transVocal = (payload[2] & 0x01) !== 0;
     report.wind = (payload[4] & 0x01) !== 0;
-  } else if ((layout === 'tws-p30i' || layout === 'tws-l3pro') && payload.length >= 5) {
+  } else if (layout === 'tws-l3pro' && payload.length >= 5) {
     report.wind = (payload[4] & 0x01) !== 0;
   }
   if (layout === 'classic' && payload.length >= 4) {

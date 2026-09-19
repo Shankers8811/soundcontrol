@@ -1,5 +1,14 @@
 # R50i / R50i NC protocol — what this repository actually establishes
 
+> **Phase 19 correction — user-reported ANC failure:** Android changes ANC
+> physically on the same A3959; SoundControl does not, even during playback.
+> “SUPPORTED” below describes third-party protocol evidence only, not working
+> hardware. [Phase 19 audit](PHASE-19-ANC-AUDIT.md) supersedes the earlier
+> claims of complete ANC correctness and documents byte-by-byte discrepancies,
+> stateful transitions, independent response parsing and remaining unknowns.
+> Physical validation remains PENDING (Phase 18 status B).
+
+
 **Models:** Soundcore **R50i** (SKU **A3949**, also sold as P20i / P25i) and
 Soundcore **R50i NC** (SKU **A3959**, also sold as P30i).
 
@@ -112,11 +121,11 @@ that the ambient-mode enum is not a generic guess)*:
 
 ```
 byte 0  ambient sound mode:  0x00 = NoiseCanceling · 0x01 = Transparency · 0x02 = Normal
-byte 1  (manual << 4) | adaptive   (manual 1..5, adaptive 0..5)
+byte 1  (manual << 4) | adaptive   (manual 1..5; adaptive read-only, preserve report)
 byte 2  ambient sound mode (repeated)
 byte 3  ANC automation: 0x00 Manual · 0x01 Adaptive · 0x02 Multi-scene
 byte 4  wind noise: bit0 suppression on/off (bit1 = "wind detected", read-only)
-byte 5  adaptive sensitivity level
+byte 5  independent adaptive sensitivity level 0..10 (preserve report)
 byte 6  multi-scene ANC scene: 0x00 Transport · 0x01 Outdoor · 0x02 Indoor
 ```
 

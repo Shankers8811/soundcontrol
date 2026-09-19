@@ -1,11 +1,10 @@
 /**
  * Protocol verification harness.
  *
- * Every frame SoundControl can send is rebuilt here and compared, byte for
- * byte, against captures published by independent reverse-engineering
- * projects. If a builder ever drifts from what real hardware accepts, this
- * script fails the build instead of a user's earbuds silently ignoring a
- * command.
+ * Tests combine actual captures (explicitly attributed per model) with
+ * source-derived layout checks. A3959 ANC checks are NOT live captures and
+ * passing them does NOT prove that firmware accepts or physically applies ANC.
+ * See Phase 19: source-derived vectors and transition tests in test_anc.mjs.
  *
  *   npm run verify:protocol
  *

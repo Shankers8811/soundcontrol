@@ -19,10 +19,11 @@
     "test:ui": "node scripts/test_ui_state.mjs && node scripts/test_ui_render.mjs",
     "test:e2e": "node scripts/test_startup_e2e.mjs",
     "test:lifecycle": "node scripts/test_main_lifecycle.mjs",
-    "test": "npm run test:package && npm run test:ui && npm run test:targets && npm run test:models && npm run test:bridge && npm run test:e2e && npm run test:lifecycle",
+    "test": "npm run test:package && npm run test:ui && npm run test:targets && npm run test:models && npm run test:bridge && npm run test:e2e && npm run test:lifecycle && npm run test:anc",
     "test:package": "node scripts/check-package-files.mjs --self-test",
     "test:targets": "node scripts/test_command_targets.mjs",
-    "test:models": "node scripts/test_model_profiles.mjs"
+    "test:models": "node scripts/test_model_profiles.mjs",
+    "test:anc": "node scripts/test_anc.mjs"
   },
   "build": {
     "appId": "com.soundcontrol.desktop",
