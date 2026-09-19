@@ -77,6 +77,7 @@ jobs:
       # works on Unix. `npm run build:win` below additionally runs the
       # 479-check protocol suite + tsc + vite build + packaging whitelist.
       - name: Test (UI state/render + packaging guard)
+        shell: bash
         run: npm run test:ui && npm run test:package
       # Release gate 1 — fail fast, before spending a build on it. Production
       # Windows releases must never fall back to an unsigned installer, so a
