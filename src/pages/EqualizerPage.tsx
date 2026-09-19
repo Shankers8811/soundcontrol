@@ -43,7 +43,8 @@ export function EqualizerPage() {
             )}
             {caps.supportsEqualizer && (
               <span className="font-mono text-[10px] text-faint">
-                wire {app.profile.eqCommand} · custom FE FE
+                wire {app.profile.eqCommand}
+                {caps.supportsCustomEq ? ' · custom FE FE' : ' · factory presets only'}
               </span>
             )}
           </>
@@ -87,7 +88,23 @@ export function EqualizerPage() {
               }
             >
               <EqCurve bands={app.bands} />
-              <CustomFaders />
+              {caps.supportsCustomEq ? (
+                <CustomFaders />
+              ) : (
+                /* Phase 18: A3949 (R50i / P20i / P25i) accepts factory
+                   presets only — OpenSCQ30's device definition sets
+                   custom_preset_id None and no live capture ever used FEFE —
+                   so the custom editor is hidden rather than shown as if it
+                   worked. Factory presets (right column) keep working. */
+                <p className="mt-3 rounded-xl border border-edge bg-sunken px-4 py-3 text-xs leading-relaxed text-mute">
+                  Custom curves are not supported by{' '}
+                  <span className="font-semibold text-ink">{app.profile.name}</span> (
+                  {app.profile.sku}) — the factory presets on the right are everything this model
+                  accepts. SoundControl does not send the{' '}
+                  <span className="font-mono text-[11px]">FE FE</span> custom frame to hardware
+                  that has no documented support for it.
+                </p>
+              )}
             </Card>
           </div>
 

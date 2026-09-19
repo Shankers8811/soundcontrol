@@ -73,6 +73,12 @@ export const NO_ANC_SUB: AncSubFeatures = {
 export interface Capabilities {
   supportsNoiseControl: boolean;
   supportsEqualizer: boolean;
+  /**
+   * Custom EQ curves (preset id 0xFEFE). False for A3949 (R50i / P20i /
+   * P25i): OpenSCQ30 sets custom_preset_id None for that model and none of
+   * the 22 live captures uses FEFE — factory presets only (Phase 18).
+   */
+  supportsCustomEq: boolean;
   supportsVolume: false;
   supportsGestures: false;
   /** True only when `01:85` is documented for the exact model (see types.ts). */
@@ -92,6 +98,7 @@ export function deriveCapabilities(profile: DeviceProfile): Capabilities {
   return {
     supportsNoiseControl: profile.ancLayout !== 'none',
     supportsEqualizer: profile.eqCommand !== null,
+    supportsCustomEq: profile.eqCommand !== null && profile.customEq,
     supportsVolume: false,
     supportsGestures: false,
     supportsFactoryReset: profile.factoryReset === true,
