@@ -80,11 +80,19 @@ installer. Three gates enforce that:
 1. **Credentials gate (before the build).** If `WIN_CSC_LINK` or
    `WIN_CSC_KEY_PASSWORD` secrets are missing, the job fails immediately with
    instructions — it does not build an unsigned installer.
-2. **Build gate (inside electron-builder).** The release build passes
+2. **Certificate validation (after staging, before the build).** The staged
+   `.p12` is loaded with the secret password (never printed) and must carry a
+   private key, the **Code Signing EKU** (1.3.6.1.5.5.7.3.3), a current
+   validity window, and a **trusted chain under the code-signing policy** —
+   self-signed or otherwise unsuitable certificates fail here, before any
+   build time is spent. The publisher subject is printed, and when
+   `WINDOWS_EXPECTED_PUBLISHER` is set it must match (the expected value is
+   never adjusted to make a check pass).
+3. **Build gate (inside electron-builder).** The release build passes
    `--config.win.forceCodeSigning=true`, so electron-builder itself fails the
    build if any signable executable would end up unsigned (wrong password,
    unreadable certificate, signtool failure).
-3. **Verification gate (after the build, before publishing).**
+4. **Verification gate (after the build, before publishing).**
    `scripts/verify-windows-signing.ps1 -RequireSigned` verifies the **actual
    generated EXE** — never a certificate file:
    * the installer exists (`release-assets/SoundControl-Setup.exe`);
