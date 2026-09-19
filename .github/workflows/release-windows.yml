@@ -18,9 +18,9 @@ name: Release Windows
 #      hard-fail if any signable executable would ship unsigned;
 #   3. "Verify Authenticode signatures (release gate)" checks the real
 #      generated EXEs with Get-AuthenticodeSignature + `signtool verify /pa`
-#      (valid signature, trusted chain, publisher identity, SHA-256 recorded,
-#      every shipped executable signed) — the GitHub Release is only
-#      published after that gate passes.
+#      (valid signature, trusted chain, currently-valid certificate,
+#      publisher identity, SHA-256 recorded, every shipped executable signed)
+#      — the GitHub Release is only published after that gate passes.
 #
 # Required repository secrets (Settings → Secrets and variables → Actions):
 #   WIN_CSC_LINK          base64 of the .pfx/.p12 certificate
@@ -70,6 +70,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Test before packaging: the Windows-safe unit suites (renderer state,
+      # render smoke, packaging-guard self-test). The full cross-platform
+      # suite (bridge/E2E/lifecycle) runs in tests.yml on ubuntu — the
+      # lifecycle harness deliberately uses a shebang-based helper that only
+      # works on Unix. `npm run build:win` below additionally runs the
+      # 479-check protocol suite + tsc + vite build + packaging whitelist.
+      - name: Test (UI state/render + packaging guard)
+        run: npm run test:ui && npm run test:package
       # Release gate 1 — fail fast, before spending a build on it. Production
       # Windows releases must never fall back to an unsigned installer, so a
       # missing certificate secret is a build failure, not a warning. Normal
@@ -184,6 +192,7 @@ jobs:
           if ($env:EXPECTED_PUBLISHER) {
             ./scripts/verify-windows-signing.ps1 -ReleaseDir release -InstallerPath release-assets/SoundControl-Setup.exe -RequireSigned -ExpectedPublisher $env:EXPECTED_PUBLISHER
           } else {
+            Write-Host 'NOTE: WINDOWS_EXPECTED_PUBLISHER is not set — the gate requires a Valid signature with a non-empty publisher identity, but does not pin the exact publisher. Setting that repository variable is recommended once the certificate is known.' -ForegroundColor Yellow
             ./scripts/verify-windows-signing.ps1 -ReleaseDir release -InstallerPath release-assets/SoundControl-Setup.exe -RequireSigned
           }
           if ($LASTEXITCODE -ne 0) { throw "release signing gate failed (exit $LASTEXITCODE)" }

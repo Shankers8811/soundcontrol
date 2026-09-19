@@ -6,14 +6,16 @@ Unknown publisher"), how the project's Authenticode signing pipeline works,
 which credentials it needs, and what signing honestly does and does not
 change.
 
-> **SmartScreen cannot be bypassed or disabled by application code — and this
-> project will never try.** Nothing in SoundControl, its installer, or its
-> build scripts weakens, patches, suppresses, or works around Microsoft
-> Defender SmartScreen or any other Windows security feature. The only
-> legitimate fix for "Unknown publisher" is to distribute a properly signed
-> installer from a consistent publisher identity — which is what this pipeline
-> implements. Any prompt that remains after that is Microsoft's reputation
-> system working as designed (see [SmartScreen reputation expectations](#smartscreen-reputation-expectations)).
+> **SoundControl does not bypass Microsoft Defender SmartScreen.** Nothing in
+> SoundControl, its installer, or its build scripts weakens, patches,
+> suppresses, or works around Microsoft Defender SmartScreen or any other
+> Windows security feature — no settings changes, no registry edits, no
+> Group Policy changes, no Mark-of-the-Web manipulation, and no instructions
+> for users to disable security warnings. The only legitimate fix for
+> "Unknown publisher" is to distribute a properly signed installer from a
+> consistent publisher identity — which is what this pipeline implements.
+> Any prompt that remains after that is Microsoft's reputation system working
+> as designed (see [SmartScreen reputation expectations](#smartscreen-reputation-expectations)).
 
 ## Why SmartScreen appears
 
@@ -206,9 +208,58 @@ Get-FileHash .\SoundControl-Setup.exe -Algorithm SHA256
 signtool verify /pa SoundControl-Setup.exe
 ```
 
-Expect `Status : Valid`, a non-empty signer subject, and a present
-`TimeStamperCertificate`. `signtool verify /pa` must exit 0. If any of those
-fail, the artifact must not be released.
+Expect `Status : Valid`, a non-empty signer subject, a **currently valid
+certificate** (the gate also fails on an expired or not-yet-valid signer), a
+present `TimeStamperCertificate`, and — when
+`WINDOWS_EXPECTED_PUBLISHER` is configured — a signer subject matching it.
+`signtool verify /pa` must exit 0. If any of those fail, the artifact must
+not be released.
+
+## When signing credentials are unavailable
+
+This is the current state of the repository: **no code-signing certificate is
+configured yet**, so:
+
+* **No release can be published.** The release workflow's credentials gate
+  fails every tag build and `[publish-windows]` build before anything is
+  compiled or published. That is deliberate — an unsigned "Unknown publisher"
+  release is exactly the problem this pipeline exists to prevent.
+* **Normal development is unaffected.** Local `npm run build:win` and CI
+  builds/tests/smoke runs keep working unsigned; their artifacts are not
+  distributed.
+* To enable signed releases: obtain a certificate (routes above), then set the
+  `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` repository secrets (and ideally
+  the `WINDOWS_EXPECTED_PUBLISHER` variable), then tag the next release. The
+  gates then exercise the full sign-and-verify path for the first time.
+* Do **not** work around the block by removing the gates, faking a
+  verification result, or shipping a self-signed certificate: a self-signed
+  signature is untrusted and still shows "Unknown publisher", now with an
+  extra untrusted-publisher warning. The block is the system working.
+
+## Rotating / renewing the certificate safely
+
+* **Renew with the same publisher identity.** SmartScreen reputation accrues
+  to the signing identity; a different subject (or a different legal entity
+  name) starts reputation from zero. Renew the existing certificate with the
+  same CA-validated organization/common name.
+* **Renew before expiry.** The release gate fails on an expired signer
+  certificate. RFC 3161 timestamping keeps *already-released* installers
+  valid after expiry, but new builds need a current certificate.
+* **Update the secrets, nothing else.** Replace the `WIN_CSC_LINK` secret
+  value with the new certificate's base64 (and the password secret if it
+  changed). No workflow or source changes are needed. If the new certificate
+  carries a different subject, update `WINDOWS_EXPECTED_PUBLISHER` to match —
+  the gate will otherwise (correctly) refuse to publish.
+* **Revoke and reissue on suspected compromise** — do not simply rotate. If
+  the private key or password may have leaked, revoke the certificate with
+  the CA immediately, then reissue and update the secrets. Anyone with the
+  `.p12` + password can sign malware as this project's publisher.
+* **Prefer non-exportable keys** when the renewal offers them (token, HSM, or
+  a cloud signing service): then there is no `.p12` blob to leak, and this
+  workflow's file-based staging gets replaced by the provider's integration
+  while the verification gate stays identical.
+* Never commit the old/new certificate, key or password anywhere — including
+  tickets, forks or the final report of a phase.
 
 ## SmartScreen reputation expectations
 

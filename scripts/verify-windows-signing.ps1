@@ -11,11 +11,13 @@
     3. the certificate chain is trusted (signtool verify /pa);
     4. the publisher identity is displayed, and matches -ExpectedPublisher
        when one is configured;
-    5. the file has not been modified after signing (a Valid signature means
+    5. the signing certificate is currently valid (not expired, not
+       not-yet-valid);
+    6. the file has not been modified after signing (a Valid signature means
        the file still matches the hash that was signed);
-    6. the SHA-256 hash of the installer is recorded (console, summary file
+    7. the SHA-256 hash of the installer is recorded (console, summary file
        and the GitHub Actions step summary);
-    7. every shipped executable under win-unpacked/ (the app exe and the
+    8. every shipped executable under win-unpacked/ (the app exe and the
        bundled Python runtime) carries a Valid signature as well.
 
   Modes:
@@ -227,6 +229,19 @@ if ([string]::IsNullOrWhiteSpace($subject)) {
 if ($signature.SignerCertificate) {
   Info "Signer thumbprint: $($signature.SignerCertificate.Thumbprint)"
   Info "Certificate validity: $($signature.SignerCertificate.NotBefore.ToString('yyyy-MM-dd')) -> $($signature.SignerCertificate.NotAfter.ToString('yyyy-MM-dd'))"
+  # Explicit validity-window check. A timestamped signature technically stays
+  # Valid after expiry, but a fresh release must be signed by a certificate
+  # that is currently valid — an expired (or not-yet-valid) signer means the
+  # certificate was renewed/rotated wrong and must not ship.
+  $now = Get-Date
+  if ($now -lt $signature.SignerCertificate.NotBefore) {
+    Add-Failure "Signing certificate is not valid yet (NotBefore $($signature.SignerCertificate.NotBefore.ToString('yyyy-MM-dd')))."
+  } elseif ($now -gt $signature.SignerCertificate.NotAfter) {
+    Add-Failure "Signing certificate expired on $($signature.SignerCertificate.NotAfter.ToString('yyyy-MM-dd')) — renew the certificate (see docs/WINDOWS-CODE-SIGNING.md) and rebuild."
+  } else {
+    $daysLeft = ($signature.SignerCertificate.NotAfter - $now).Days
+    Info "Certificate is currently valid (expires in $daysLeft day(s))."
+  }
 }
 if ($signature.TimeStamperCertificate) {
   Info 'RFC3161 timestamp: present (signature stays valid after certificate expiry)'
