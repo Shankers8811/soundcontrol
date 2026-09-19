@@ -16,7 +16,7 @@
 | Item | Value |
 |---|---|
 | **Starting commit** | `7a8c08b1746565646207d3f1e1b5456f34f67113` (merge of PR #26, `main`) |
-| **Ending commit** | final substantive commit on the branch (see §3 for the full commit list; the only commit after the last entry is the one-line hash annotation for this field) |
+| **Ending commit** | [`f356cdc`](https://github.com/Shankers8811/soundcontrol/commit/f356cdc) — final substantive Phase 14 commit (see §3; the only commit after it is this one-line hash annotation) |
 | **electron-builder** | `26.15.3` (verified in `package-lock.json` / `node_modules`; signing mechanism chosen from its actual source, not deprecated options) |
 | **Application version** | `1.0.6` — **unchanged** |
 | **Release touched?** | **No.** v1.0.6 was not rebuilt, re-tagged, modified or deleted; its asset is byte-for-byte the same unsigned `SoundControl-Setup.exe` |
@@ -55,7 +55,7 @@
 | [`f919bf5`](https://github.com/Shankers8811/soundcontrol/commit/f919bf588a0d9882c503fe9f37dee066925f4013) | `test(release): verify the signing gate fails closed without credentials [publish-windows]` — intentional empty marker commit proving the gate |
 | [`7f5ffbc`](https://github.com/Shankers8811/soundcontrol/commit/7f5ffbc) | `docs: add Phase 14 final report and complete signing docs` |
 | [`1e6c0f6`](https://github.com/Shankers8811/soundcontrol/commit/1e6c0f656c27f0bd904353e69ce7573f05fda618) | `docs(report): record the third CI round — smoke flake did not reproduce` |
-| *(this turn)* | certificate-expiry gate, release-flow test step, docs §13/§14, security review, expanded report |
+| [`f356cdc`](https://github.com/Shankers8811/soundcontrol/commit/f356cdc) | `feat(signing): certificate-expiry gate, release-flow test step, expanded docs & report` — final substantive Phase 14 commit |
 
 ## 4. Signing configuration (Task 2)
 
