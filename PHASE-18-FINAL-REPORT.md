@@ -60,7 +60,7 @@ UI were buggy.
 | 13 — session isolation | New `createSessionGuard`: every connect attempt begins a session, disconnect/link-down ends it; late frames from an old session/device are dropped before parsing; capabilities are re-derived per connection (the R50i-NC→R50i stale-ANC failure is impossible and tested) |
 | 14 — both profiles tested | New `scripts/test_model_profiles.mjs`: **108 checks** (registry integrity, matrix↔code consistency, identification incl. traps, 30 command-gate cases, transport boundary, response mirrors + firmware gate, session guard, capability derivation, ANC enum values) |
 | 15 — hardware harness | New `docs/R50I-R50I-NC-HARDWARE-TEST.md`: per-model connect/identify/feature/disconnect procedure with the required record table (MODEL, FIRMWARE, DEVICE NAME, DATE, FEATURE, COMMAND, EXPECTED, ACTUAL, PASS/FAIL, WINDOWS AUDIO CHANGED?, NOTES) and promotion rules |
-| 16 — audio regression proof | New read-only `scripts/capture-windows-audio-state.ps1` (default devices, master volume, mute, per-app sessions; read-only property machine-checked); wired into **Windows Smoke CI**: state captured before SoundControl runs, compared after install/launch/uninstall — any change fails the workflow |
+| 16 — audio regression proof | New read-only `scripts/capture-windows-audio-state.ps1` (default devices, master volume, mute, per-app sessions; read-only property machine-checked); wired into **Windows Smoke CI**: state captured before SoundControl runs, compared after install/launch/uninstall — any change fails the workflow. Hosted runners have no audio endpoints → recorded honestly as NOT PERFORMED there; the full proof runs on real hardware via Task 15 |
 | 17 — protocol documentation | New `docs/R50I-PROTOCOL.md`: per-model frame layouts, command tables, response/error behavior, capability requirements, with UNKNOWN — NOT VERIFIED markers and externally-derived knowledge identified (OpenSCQ30) |
 | 18 — evidence-based research | OpenSCQ30 master consulted model-by-model (`a3949.rs`, `a3959.rs`, their `state_update.rs`, `structures/sound_modes.rs`, i18n table); used as supporting evidence only — no code copied; all findings recorded in `docs/R50I-PROTOCOL.md` and the registry. **Evidence conflict resolved fail-closed:** custom EQ on A3949 (OpenSCQ30 says none) is disabled despite the shared EQ module |
 | 19 — no fake success | Device toggle mirrors parsed where the model documents them (gaming A3949 byte 65; gaming/surround/dual A3959 bytes 77/74/73 with the firmware ≥ 01.60 gate) → UI state becomes **device-confirmed**; models without a mirror log the exact honest wording "Command sent — device confirmation unavailable for this model" |
@@ -79,8 +79,9 @@ UI were buggy.
 | Main-process lifecycle | ✅ |
 | `npm run build` (protocol verification incl. per-SKU `customEq`, tsc, vite, packaging whitelist) | ✅ exit 0 |
 
-**Windows build + smoke:** run on this phase's commit — see CI evidence
-below (the smoke workflow now includes the audio regression proof step).
+**Windows build + smoke:** run on this phase's final commit — see CI evidence
+below (the smoke workflow now includes the audio regression proof steps,
+with the hosted-runner limitation recorded honestly).
 **Static safety scan:** no host-audio API across 60 application files ✅.
 **Release workflow:** correctly skipped (no marker, no tag). **Fail-closed
 behavior everywhere retained.**
@@ -89,7 +90,23 @@ behavior everywhere retained.**
 
 - Tests workflow: ✅ (12 steps, incl. the new *Model profiles* step)
 - Windows Build: ✅
-- Windows Smoke: ✅ — including the new **audio regression proof** step
+- Windows Smoke: ✅ (all steps — install/upgrade, clean-install/uninstall,
+  autostart-off, lifecycle, packaged-app launch) **including both audio-state
+  steps**, at the final phase commit `048f158`
+  - The audio-state harness itself ran successfully (compiled, enumerated
+    devices) after two fixes: an `IMMDevice.Activate` COM interop compile
+    error, and a nested-pwsh exit-code leak — both corrected with a
+    deterministic exit contract (capture: file or `AUDIO_STATE_CAPTURE=
+    UNAVAILABLE` marker; compare: unchanged / regression / unavailable
+    distinct codes; every workflow branch exits explicitly).
+  - **Honest limitation recorded, not faked:** the GitHub-hosted Windows
+    runner exposes **no audio endpoints**, so the capture step reported
+    `AUDIO_STATE_CAPTURE=UNAVAILABLE` and the comparison was recorded as
+    **AUDIO REGRESSION COMPARISON NOT PERFORMED** (visible as workflow
+    annotations). The guard is active and fail-closed — a state change or
+    a harness defect fails the workflow; only the environment limitation
+    is skipped with a warning. The full capture-and-compare proof runs on
+    real hardware per `docs/R50I-R50I-NC-HARDWARE-TEST.md`.
 - Release Windows: skipped (correctly — signing credentials still absent,
   per Phase 16: PRODUCTION AUTHENTICODE SIGNING PENDING)
 
