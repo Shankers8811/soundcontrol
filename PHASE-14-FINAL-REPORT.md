@@ -16,7 +16,7 @@
 | Item | Value |
 |---|---|
 | **Starting commit** | `7a8c08b1746565646207d3f1e1b5456f34f67113` (merge of PR #26, `main`) |
-| **Ending commit** | [`f356cdc`](https://github.com/Shankers8811/soundcontrol/commit/f356cdc) — final substantive Phase 14 commit (see §3; the only commit after it is this one-line hash annotation) |
+| **Ending commit** | [`167d127`](https://github.com/Shankers8811/soundcontrol/commit/167d127) — final substantive Phase 14 commit (see §3; followed only by report-annotation commits) |
 | **electron-builder** | `26.15.3` (verified in `package-lock.json` / `node_modules`; signing mechanism chosen from its actual source, not deprecated options) |
 | **Application version** | `1.0.6` — **unchanged** |
 | **Release touched?** | **No.** v1.0.6 was not rebuilt, re-tagged, modified or deleted; its asset is byte-for-byte the same unsigned `SoundControl-Setup.exe` |
@@ -55,7 +55,8 @@
 | [`f919bf5`](https://github.com/Shankers8811/soundcontrol/commit/f919bf588a0d9882c503fe9f37dee066925f4013) | `test(release): verify the signing gate fails closed without credentials [publish-windows]` — intentional empty marker commit proving the gate |
 | [`7f5ffbc`](https://github.com/Shankers8811/soundcontrol/commit/7f5ffbc) | `docs: add Phase 14 final report and complete signing docs` |
 | [`1e6c0f6`](https://github.com/Shankers8811/soundcontrol/commit/1e6c0f656c27f0bd904353e69ce7573f05fda618) | `docs(report): record the third CI round — smoke flake did not reproduce` |
-| [`f356cdc`](https://github.com/Shankers8811/soundcontrol/commit/f356cdc) | `feat(signing): certificate-expiry gate, release-flow test step, expanded docs & report` — final substantive Phase 14 commit |
+| [`f356cdc`](https://github.com/Shankers8811/soundcontrol/commit/f356cdc) | `feat(signing): certificate-expiry gate, release-flow test step, expanded docs & report` |
+| [`167d127`](https://github.com/Shankers8811/soundcontrol/commit/167d127) | `ci(release): pin bash for the release-flow test step; validate it on Windows [publish-windows]` — marker run proves the release-flow Test step passes on a real Windows runner and the credentials gate still fails closed |
 
 ## 4. Signing configuration (Task 2)
 
@@ -101,12 +102,20 @@ checkout → npm ci
   → Publish GitHub Release   ← unreachable unless every gate above passed
 ```
 
-**Live proof that unsigned production releases are now impossible:** marker
-commit `f919bf5` triggered a real release run
-([35383630314](https://github.com/Shankers8811/soundcontrol/actions/runs/35383630314))
-which failed **exactly** at *“Require Authenticode signing credentials”*;
-build, staging, verification, smoke and **publish** steps were all skipped,
-and the v1.0.6 release was left untouched (asset name/timestamp unchanged).
+**Live proof that unsigned production releases are now impossible — twice:**
+
+* Marker commit `f919bf5` triggered a real release run
+  ([35383630314](https://github.com/Shankers8811/soundcontrol/actions/runs/35383630314))
+  which failed **exactly** at *“Require Authenticode signing credentials”*;
+  build, staging, verification, smoke and **publish** steps were all skipped,
+  and the v1.0.6 release was left untouched (asset name/timestamp unchanged).
+* Marker commit `167d127` triggered a second release run
+  ([35419113088](https://github.com/Shankers8811/soundcontrol/actions/runs/35419113088))
+  after the expanded flow was added: the new **“Test (UI state/render +
+  packaging guard)”** step passed on a real Windows runner, then the job
+  failed at the same credentials gate with everything downstream — including
+  **Publish GitHub Release** — skipped. This validates the complete
+  Build → Test → (gates) → Publish ordering and the fail-closed behavior.
 Normal CI/test builds (build-windows, smoke-windows, tests) remain
 unsigned-allowed because their artifacts are not distributed.
 
@@ -157,7 +166,8 @@ Same verification is available locally: `npm run verify:signing` /
 | TypeScript, Python, Node syntax, UI state/render, bridge, protocol, E2E, lifecycle, packaging whitelist | `tests.yml` (ubuntu) — runs [35383192791](https://github.com/Shankers8811/soundcontrol/actions/runs/35383192791), [35383630327](https://github.com/Shankers8811/soundcontrol/actions/runs/35383630327), [35384134345](https://github.com/Shankers8811/soundcontrol/actions/runs/35384134345) | ✅ all rounds |
 | Windows build (with the new `signtoolOptions` config) + signature report step | `build-windows.yml` — [35383192887](https://github.com/Shankers8811/soundcontrol/actions/runs/35383192887), [35383630767](https://github.com/Shankers8811/soundcontrol/actions/runs/35383630767), [35384134393](https://github.com/Shankers8811/soundcontrol/actions/runs/35384134393) | ✅ all rounds |
 | Windows smoke: **install**, **upgrade**, **launch**, **run twice**, **helper lifecycle**, **port lifecycle**, **uninstall**, **autostart cleanup** | `smoke-windows.yml` — [35383192805](https://github.com/Shankers8811/soundcontrol/actions/runs/35383192805), [35384134327](https://github.com/Shankers8811/soundcontrol/actions/runs/35384134327) | ✅ (one 2nd-round timing flake of the pre-existing clean-install step did not reproduce on identical code — environmental, unrelated to signing) |
-| Release gate (fail-closed proof) | `release-windows.yml` — [35383630314](https://github.com/Shankers8811/soundcontrol/actions/runs/35383630314) | ⛔ failed at the credentials gate **by design**; publish skipped |
+| Release-flow **Test step** on Windows (UI state/render + packaging guard, as the release job runs it) | `release-windows.yml` (marker run) — [35419113088](https://github.com/Shankers8811/soundcontrol/actions/runs/35419113088) | ✅ step passed, then the job failed at the credentials gate **by design**; publish skipped |
+| Final full round on the ending commit's tree | Tests [35419115114](https://github.com/Shankers8811/soundcontrol/actions/runs/35419115114) / [35419113095](https://github.com/Shankers8811/soundcontrol/actions/runs/35419113095) ✅ · Windows Build [35419113096](https://github.com/Shankers8811/soundcontrol/actions/runs/35419113096) ✅ · Smoke [35419113085](https://github.com/Shankers8811/soundcontrol/actions/runs/35419113085) ✅ | ✅ all green |
 
 No existing test was weakened, deleted or modified. Bluetooth/RFCOMM/bridge,
 lifecycle, helper/port handling, UI, protocol, security/auth, packaging,
