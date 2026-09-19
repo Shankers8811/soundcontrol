@@ -27,13 +27,20 @@ jobs:
       - name: Capture Windows audio state (before SoundControl runs)
         shell: pwsh
         run: |
-          ./scripts/capture-windows-audio-state.ps1 -OutFile audio-before.txt
-          if ($LASTEXITCODE -eq 2) {
-            Write-Host '::warning::Audio endpoints unavailable on this runner — the audio regression comparison will be skipped (recorded, not faked).'
-            exit 0
+          # Child process on purpose: the script's exit codes (0 captured /
+          # 2 no-audio-endpoints) must reach $LASTEXITCODE intact, and a
+          # harness defect must surface as a real failure, not be swallowed.
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/capture-windows-audio-state.ps1 -OutFile audio-before.txt
+          $code = $LASTEXITCODE
+          if ($code -eq 0) {
+            Get-Content audio-before.txt
+          } elseif ($code -eq 2) {
+            Write-Host '::warning::Audio endpoints unavailable on this runner - the audio regression comparison will be skipped (recorded, not faked).'
+            Remove-Item audio-before.txt -ErrorAction SilentlyContinue
+          } else {
+            Write-Host "::error::Audio-state harness failed unexpectedly (exit $code) - fix scripts/capture-windows-audio-state.ps1; the regression proof cannot run."
+            exit $code
           }
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Get-Content audio-before.txt
       - name: Build the Windows application
         env:
           SOUNDCONTROL_PYTHON_REQUIRED: '1'
@@ -114,16 +121,20 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path audio-before.txt)) {
-            Write-Host '::warning::No baseline captured (runner had no audio endpoints) - PHYSICAL/AUDIO REGRESSION COMPARISON NOT PERFORMED on this runner.'
+            Write-Host '::warning::No baseline captured (runner had no audio endpoints) - AUDIO REGRESSION COMPARISON NOT PERFORMED on this runner.'
             exit 0
           }
-          ./scripts/capture-windows-audio-state.ps1 -Baseline audio-before.txt
-          if ($LASTEXITCODE -eq 1) {
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/capture-windows-audio-state.ps1 -Baseline audio-before.txt
+          $code = $LASTEXITCODE
+          if ($code -eq 1) {
             throw 'REGRESSION: Windows audio state changed while SoundControl ran'
           }
-          if ($LASTEXITCODE -eq 2) {
-            Write-Host '::warning::Audio endpoints disappeared mid-run - comparison not performed.'
+          if ($code -eq 2) {
+            Write-Host '::warning::Audio endpoints unavailable mid-run - comparison not performed (recorded, not faked).'
             exit 0
           }
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($code -ne 0) {
+            Write-Host "::error::Audio-state harness failed during comparison (exit $code) - fix the harness; the proof cannot run."
+            exit $code
+          }
           Write-Host 'WINDOWS AUDIO REGRESSION PROOF PASSED - SoundControl left Windows audio untouched.'
