@@ -19,10 +19,13 @@
     - master volume + mute of the default playback endpoint
     - per-application audio sessions: process name, volume, mute
 
-  Exit codes:
-    0  captured (and, with -Baseline, compared clean)
-    1  REGRESSION: the compared state differs from the baseline
-    2  capture unavailable in this environment (no audio service/endpoints)
+  Exit codes (deterministic; see the contract at the bottom of this file):
+    0  capture: file written, or AUDIO_STATE_CAPTURE=UNAVAILABLE + no file
+       compare: state UNCHANGED (proof passed)
+    1  compare: REGRESSION - the state differs (diff printed); also used for
+       harness defects (message printed)
+    2  compare: baseline file missing
+    3  compare: audio endpoints unavailable right now
 
 .PARAMETER OutFile
   Write the snapshot to this file (default: print to stdout).
@@ -247,38 +250,52 @@ $sessions
     return $text, $allUnavailable
 }
 
-if ($Baseline -ne '') {
+# Deterministic exit contract (consumed by CI and the hardware checklist):
+#   capture mode : 0 = file written (or AUDIO_STATE_CAPTURE=UNAVAILABLE printed
+#                  and NO file, when this machine exposes no audio endpoints);
+#                  1 = harness defect (message printed) — must be fixed.
+#   compare mode : 0 = compared, state UNCHANGED · 1 = REGRESSION (state
+#                  changed, diff printed) or harness defect · 2 = baseline file
+#                  missing · 3 = audio endpoints unavailable right now.
+try {
+  if ($Baseline -ne '') {
     if (-not (Test-Path -LiteralPath $Baseline)) {
-        Write-Error "baseline file not found: $Baseline"
-        exit 2
+      Write-Output "HARNESS ERROR: baseline file not found: $Baseline"
+      exit 2
     }
-    $before = (Get-Content -LiteralPath $Baseline -Raw) -replace '\[before\]', '[state]'
     $now, $unavail = Capture-State 'state'
     if ($unavail) {
-        Write-Output 'AUDIO STATE CAPTURE UNAVAILABLE in this environment — comparison not possible (recorded, not faked).'
-        exit 2
+      Write-Output 'AUDIO_STATE_COMPARE=UNAVAILABLE'
+      exit 3
     }
+    $before = (Get-Content -LiteralPath $Baseline -Raw) -replace '\[before\]', '[state]'
     $beforeLines = $before -split "`r?`n" | Where-Object { $_ -ne '' }
     $nowLines = $now -split "`r?`n" | Where-Object { $_ -ne '' }
     $diff = Compare-Object -ReferenceObject $beforeLines -DifferenceObject $nowLines
     if ($diff) {
-        Write-Output 'WINDOWS AUDIO STATE CHANGED — SoundControl (or another process) modified audio configuration:'
-        $diff | ForEach-Object { Write-Output ("  {0} {1}" -f $_.SideIndicator, $_.InputObject) }
-        exit 1
+      Write-Output 'WINDOWS AUDIO STATE CHANGED - SoundControl (or another process) modified audio configuration:'
+      $diff | ForEach-Object { Write-Output ("  {0} {1}" -f $_.SideIndicator, $_.InputObject) }
+      exit 1
     }
-    Write-Output 'WINDOWS AUDIO STATE UNCHANGED — default devices, master volume, mute and per-app sessions all identical.'
+    Write-Output 'WINDOWS AUDIO STATE UNCHANGED - default devices, master volume, mute and per-app sessions all identical.'
     exit 0
-}
+  }
 
-$state, $unavail = Capture-State 'before'
-if ($OutFile -ne '') {
+  $state, $unavail = Capture-State 'before'
+  if ($unavail) {
+    # Honest environment limitation: no fake snapshot, no file — the
+    # comparison step will record the proof as NOT PERFORMED, not invented.
+    Write-Output 'AUDIO_STATE_CAPTURE=UNAVAILABLE'
+    exit 0
+  }
+  if ($OutFile -ne '') {
     Set-Content -LiteralPath $OutFile -Value $state -Encoding UTF8
     Write-Output "captured to $OutFile"
-} else {
+  } else {
     Write-Output $state
+  }
+  exit 0
+} catch {
+  Write-Output ("HARNESS ERROR: " + $_.Exception.Message)
+  exit 1
 }
-if ($unavail) {
-    Write-Output 'NOTE: audio endpoints unavailable in this environment — snapshot records that honestly.'
-    exit 2
-}
-exit 0
