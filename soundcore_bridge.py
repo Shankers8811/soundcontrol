@@ -100,6 +100,63 @@ SILENT_LINK_WATCHDOG_S = 8.0
 WS_MAX_MESSAGE_BYTES = 1 << 20  # 1 MiB per WebSocket message
 TX_MAX_BYTES = 4096  # per RFCOMM write
 
+# --- Earbud-only control boundary (Phase 17) --------------------------------
+# SOUND CONTROL = EAR BUD / HEADPHONE DEVICE CONTROL, never Windows audio.
+# This helper's only device I/O is the RFCOMM socket to the connected
+# earbuds: it contains no Windows audio, mixer, endpoint or registry APIs and
+# must never gain any. Windows is touched only for transport discovery
+# (read-only paired-device enumeration) and the helper's own process needs.
+#
+# The renderer validates outbound frames against the earbud command registry
+# (src/protocol/targets.ts) before any write; the check below is an
+# independent second gate, so even a buggy or hostile renderer cannot make
+# this helper transmit anything but recognized Soundcore earbud commands.
+# Keep this set in sync with EARBUD_COMMANDS / EARBUD_COMMAND_FRAME_KEYS —
+# both sides are cross-checked by tests (scripts/test_bridge_probe.py and
+# scripts/test_command_targets.mjs).
+TX_ALLOWED_FRAMES = frozenset(
+    {
+        "01:01",  # state.request        (handshake)
+        "01:03",  # battery.query
+        "01:04",  # charging.query
+        "01:05",  # device.info          (serial + firmware)
+        "01:85",  # device.factory-reset
+        "01:87",  # game-mode.set
+        "01:7F",  # ldac.query
+        "01:FF",  # ldac.set
+        "02:81",  # equalizer.set
+        "02:83",  # equalizer.set-drc
+        "02:86",  # surround.set
+        "06:81",  # sound-modes.set      (ANC / transparency / wind)
+        "0B:84",  # dual-audio.set
+        "10:85",  # game-mode.set-a3947
+    }
+)
+
+
+def validate_tx_frame(data: bytes) -> Optional[str]:
+    """Earbud-only transmission gate.
+
+    Returns None when `data` is a recognized, checksum-valid Soundcore earbud
+    command frame that may be transmitted to the device, or a human-readable
+    rejection reason when it is not. Anything else — wrong header, incoherent
+    length, bad checksum, or a CAT:TYPE outside the supported command set —
+    is refused BEFORE it reaches the RFCOMM socket.
+    """
+    if len(data) < 10:
+        return "not a Soundcore earbud protocol frame (too short)"
+    if data[0:5] != b"\x08\xee\x00\x00\x00":
+        return "not a Soundcore earbud protocol frame (bad header)"
+    total = data[7] | (data[8] << 8)
+    if total != len(data):
+        return f"length field ({total}) does not match the frame ({len(data)} bytes)"
+    if (sum(data[:-1]) & 0xFF) != data[-1]:
+        return "checksum mismatch"
+    key = f"{data[5]:02X}:{data[6]:02X}"
+    if key not in TX_ALLOWED_FRAMES:
+        return f"not a recognized supported earbud command ({key})"
+    return None
+
 
 def _answers_handshake(buf: bytes) -> bool:
     """True when `buf` holds at least one checksum-valid `09 FF` frame."""
@@ -956,6 +1013,18 @@ class Handler(BaseHTTPRequestHandler):
                                 "type": "error",
                                 "error": f"tx payload too large ({len(data)} bytes; max {TX_MAX_BYTES})",
                             }
+                        ).encode(),
+                    )
+                    return
+                reason = validate_tx_frame(data)
+                if reason:
+                    # Earbud-only control boundary: the frame never reaches
+                    # the Bluetooth socket. The reply is a clear error, not
+                    # a silent drop, so the renderer can surface it.
+                    send_ws(
+                        sock,
+                        json.dumps(
+                            {"type": "error", "error": f"rejected: {reason}"}
                         ).encode(),
                     )
                     return

@@ -473,6 +473,108 @@ for label, payload in (
     except Exception as exc:  # noqa: BLE001 — the test fails on ANY escape
         check(f"WS {label} -> clean error reply", False, f"raised {type(exc).__name__}: {exc}")
 
+# --- Earbud-only control boundary (Phase 17) --------------------------------
+#
+# SOUND CONTROL = EAR BUD / HEADPHONE DEVICE CONTROL — never Windows audio.
+# The helper must only ever transmit recognized Soundcore earbud command
+# frames on its RFCOMM socket. These checks pin the second, helper-side gate
+# (the renderer enforces the same registry in src/protocol/targets.ts;
+# scripts/test_command_targets.mjs cross-checks the TypeScript side).
+
+def _frame(cat: int, typ: int, payload: bytes = b"") -> bytes:
+    """A checksum-valid Soundcore frame with the given CAT:TYPE."""
+    total = 10 + len(payload)
+    body = (
+        bytes([0x08, 0xEE, 0x00, 0x00, 0x00, cat, typ, total & 0xFF, (total >> 8) & 0xFF])
+        + payload
+    )
+    return body + bytes([sum(body) & 0xFF])
+
+
+EXPECTED_TX_ALLOWED = {
+    "01:01", "01:03", "01:04", "01:05", "01:7F", "01:85", "01:87", "01:FF",
+    "02:81", "02:83", "02:86", "06:81", "0B:84", "10:85",
+}
+
+check(
+    "TX_ALLOWED_FRAMES matches the 14-command Soundcore contract",
+    set(bridge.TX_ALLOWED_FRAMES) == EXPECTED_TX_ALLOWED,
+    f"got {sorted(bridge.TX_ALLOWED_FRAMES)}",
+)
+
+for key in sorted(EXPECTED_TX_ALLOWED):
+    cat, typ = (int(x, 16) for x in key.split(":"))
+    reason = bridge.validate_tx_frame(_frame(cat, typ))
+    check(f"validate_tx_frame accepts registered command {key}", reason is None, str(reason))
+
+check(
+    "validate_tx_frame accepts the real INIT handshake frame",
+    bridge.validate_tx_frame(bytes.fromhex("08EE00000001010A0002")) is None,
+)
+
+INIT = bytes.fromhex("08EE00000001010A0002")
+bad_cs = bytearray(INIT)
+bad_cs[-1] ^= 0xFF
+bad_len = bytearray(INIT)
+bad_len[7] = 0x2A
+for label, data, expect in (
+    ("empty frame", b"", "too short"),
+    ("truncated frame", b"\x08\xEE\x00", "too short"),
+    ("bad header", b"A" * 20, "bad header"),
+    ("length field lies", bytes(bad_len), "length field"),
+    ("checksum mismatch", bytes(bad_cs), "checksum"),
+    ("unknown CAT 07:81 (checksum-valid)", _frame(0x07, 0x81), "not a recognized"),
+    ("unknown TYPE 06:99 (checksum-valid)", _frame(0x06, 0x99), "not a recognized"),
+    ("fantasy volume frame 03:80", _frame(0x03, 0x80, b"\x64"), "not a recognized"),
+):
+    reason = bridge.validate_tx_frame(data)
+    check(
+        f"validate_tx_frame rejects {label}",
+        isinstance(reason, str) and expect in reason,
+        repr(reason),
+    )
+
+# Handler level: a rejected frame must never reach BRIDGE.send; a recognized
+# frame must. The send path is recorded (and never touches a real socket).
+sent_frames: list[bytes] = []
+real_send = bridge.BRIDGE.send
+
+
+def recording_send(data: bytes) -> None:
+    sent_frames.append(data)
+
+
+bridge.BRIDGE.send = recording_send
+try:
+    sock = FakeWsSock()
+    bridge.Handler._handle(
+        object(),
+        sock,
+        bridge.json.dumps({"type": "tx", "hex": _frame(0x07, 0x81).hex()}).encode(),
+    )
+    reply = ws_reply(sock)
+    check(
+        "WS tx with unrecognized frame -> rejected error, never transmitted",
+        reply.get("type") == "error"
+        and "rejected" in str(reply.get("error", ""))
+        and "not a recognized" in str(reply.get("error", ""))
+        and not sent_frames,
+        repr(reply)[:200] + f" sent={len(sent_frames)}",
+    )
+
+    sock = FakeWsSock()
+    bridge.Handler._handle(
+        object(), sock, bridge.json.dumps({"type": "tx", "hex": INIT.hex()}).encode()
+    )
+    reply = ws_reply(sock)
+    check(
+        "WS tx with a recognized frame -> transmitted",
+        reply.get("type") == "sent" and len(sent_frames) == 1 and sent_frames[0] == INIT,
+        repr(reply)[:200] + f" sent={len(sent_frames)}",
+    )
+finally:
+    bridge.BRIDGE.send = real_send
+
 print(f"  {passed} checks")
 if failures:
     print(f"\n{len(failures)} FAILED:")

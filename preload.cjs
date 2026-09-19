@@ -12,6 +12,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // deliberately no settings-write channel: startup/tray behaviour is a fixed
   // product policy enforced by the main process (autostart.cjs), not a
   // user-toggleable setting, so nothing in the renderer can alter it.
+  //
+  // Earbud-only boundary (Phase 17): there is also deliberately NO channel
+  // that touches Windows audio — no volume, mute, default-device, endpoint,
+  // mixer, enhancement or Sound-settings IPC exists or may be added. The
+  // renderer controls earbuds over the Bluetooth bridge, never the PC.
   getAppVersion: () => ipcRenderer.invoke('soundcontrol:app-version'),
   openLogFolder: () => ipcRenderer.invoke('soundcontrol:open-log-folder'),
 });
