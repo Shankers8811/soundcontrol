@@ -75,8 +75,8 @@ UI shows **disabled with the protocol reason** — SoundControl never renders a 
 
 | Feature | Official Android App | SoundControl for Windows |
 |---|:---:|:---:|
-| **Ambient Sound (ANC)** | ✅ 5-Level Manual, Adaptive, Multi-Scene | ✅ Real `06:81` frames with per-model layouts: scenes + transparency sub-modes on classic over-ears; manual level, adaptive and wind-noise bytes on TWS |
-| **Transparency Mode** | ✅ Fully Transparent & Talk Mode | ✅ Fully Transparent & Talk Mode (vocal byte where the model documents one) |
+| **Ambient Sound (ANC)** | ✅ 5-Level Manual, Adaptive, Multi-Scene | ⚠️ **R50i NC (A3959): physically NOT verified — the owner reports no audible ANC change on Windows while the Android app does change ANC on the same earbuds**; see [Phase 19](PHASE-19-FINAL-REPORT.md). Real `06:81` frames with per-model layouts (states are only shown as confirmed when the device reports them back) |
+| **Transparency Mode** | ✅ Fully Transparent & Talk Mode | ⚠️ Same physical caveat as ANC on R50i NC; vocal sub-mode only where the model documents one |
 | **Equalizer Presets** | ✅ 22 Soundcore Curated Presets | ✅ All 22 presets on EQ-capable models (`02:81` / `02:83`); HearID models (`03:87`) get a disabled page with the reason — never a guessed frame |
 | **Custom Graphic EQ** | ✅ 8-Band Slider Curve (-6 to +6 dB) | ✅ 8-band −6…+6 dB curve sent as the real `FE FE` custom preset (same model gating) |
 | **Per-earbud connection state** | ✅ Live per-side status | ✅ Derived from the device's own battery bytes (`0xFF` = that side is not connected); "Status unavailable" stays distinct from "Not connected" |
@@ -184,6 +184,7 @@ Use `npm run electron` with the renderer available when testing the desktop shel
 ### Tests
 ```bash
 npm test            # everything below in sequence
+npm run test:anc    # A3959 ANC: exact frames, device-report parsing, transition dependencies, timeouts, model gates, read-only bits, diagnostics privacy
 npm run test:ui     # pure UI state derivation (capabilities, earbud presence, battery math, scan machine) + a server-side render smoke of every page
 npm run test:bridge # Python bridge unit tests (channel probe, token/origin auth, WS protocol)
 npm run test:e2e    # startup/lifecycle e2e: real helper server + real renderer transport against an emulated RFCOMM device (incl. per-side earbud telemetry)
@@ -198,6 +199,18 @@ sandbox — [`HARDWARE-VALIDATION.md`](HARDWARE-VALIDATION.md) is the step-by-st
 checklist (pairing → discovery → connection → battery → ANC → EQ → disconnect →
 reconnect → multi-device → shutdown) for verifying the app against real devices
 on a Windows machine, with the evidence to record at each step.
+
+**Phase 19 — R50i NC (A3959) ANC:** an owner report states that ANC changes are
+audible from the Android Soundcore app but **not** from SoundControl on the same
+earbuds, even while audio keeps playing. That report is treated as the physical
+result; no simulated or CI result overrides it. [`PHASE-19-FINAL-REPORT.md`](PHASE-19-FINAL-REPORT.md)
+and the [byte/transport/sequence audit](docs/PHASE-19-ANC-AUDIT.md) document the
+reproduced false-success paths, the A3959 source discrepancies, the diagnostics
+now built in, and what remains unknown (real TX/RX frames, RFCOMM channel,
+firmware compatibility, Android sequence). The
+[Known-Good Android Comparison](docs/R50I-R50I-NC-HARDWARE-TEST.md#r50i-nc-anc--known-good-android-comparison)
+section is the procedure that can settle it; only the owner can promote the
+physical result, and only as `PHYSICAL ACOUSTIC EFFECT CONFIRMED BY USER`.
 
 ### App icon (SC monogram)
 Every shipped icon raster — window, taskbar, desktop shortcut, installer and
