@@ -30,6 +30,15 @@ const P30I_STATE: StateOffsets = {
   eqPresetId: 32,
   eqBands: { at: 34, count: 10 },
   soundModes: 64,
+  // Trailing block (OpenSCQ30 a3959 state_update.rs, Phase 18): buttons(8)
+  // at 55…62, ambient_cycle 63, sound_modes 64…70, unknown 71, touch_tone
+  // 72, dual_connections_enabled 73, surround_sound 74, auto_power_off 75,
+  // low_battery_prompt 76, gaming_mode 77 (only when min firmware >= 01.60),
+  // unknown(12) → payload is 90 bytes.
+  dualConnections: 73,
+  surround: 74,
+  gaming: 77,
+  gamingMinFirmware: '01.60',
 };
 
 /**
@@ -49,6 +58,10 @@ const P20I_STATE: StateOffsets = {
   eqPresetId: 32,
   eqBands: { at: 34, count: 10 },
   soundModes: null,
+  // Trailing block (OpenSCQ30 a3949 state_update.rs, Phase 18): unknown(11)
+  // at 44…54, buttons(6) 55…60, unknown(4) 61…64, gaming_mode 65,
+  // touch_tone 66 → payload is 67 bytes.
+  gaming: 65,
 };
 
 /**
@@ -136,8 +149,9 @@ export const DEVICES: DeviceProfile[] = [
     names: ['P30i', 'R50i NC', 'A3959', 'soundcore P30i', 'soundcore R50i NC'],
     ancLayout: 'tws-p30i',
     eqCommand: '02:83',
+    customEq: true,
     state: P30I_STATE,
-    source: `${OPENSCQ30} (a3959): dual_battery(10), a3959_sound_modes, equalizer_with_drc_tws`,
+    source: `${OPENSCQ30} (a3959): dual_battery(10), a3959_sound_modes (NC=0/Transparency=1/Normal=2, manual+adaptive, wind), equalizer_with_drc_tws with custom preset 0xFEFE, gaming_mode (state byte 77, firmware >= 01.60), dual_connections (73), surround_sound (74)`,
     verified: true,
   },
   {
@@ -160,8 +174,13 @@ export const DEVICES: DeviceProfile[] = [
     names: ['P20i', 'P25i', 'R50i', 'A3949', 'soundcore P20i', 'soundcore P25i', 'soundcore R50i'],
     ancLayout: 'none',
     eqCommand: '02:83',
+    // OpenSCQ30 a3949.rs: equalizer_with_drc_tws with custom_preset_id: None
+    // — "device doesn't support custom presets". None of the 22 live P20i
+    // captures uses the FEFE custom id either (all factory presets 00..16),
+    // so custom curves stay OFF for this family: factory presets only.
+    customEq: false,
     state: P20I_STATE,
-    source: `${OPENSCQ30} (a3949); 22 live 02:83 captures in victor-oliveira1/soundcore_anker_equalyzer (RFCOMM channel 10)`,
+    source: `${OPENSCQ30} (a3949): no sound-modes module (no ANC/transparency), equalizer_with_drc_tws WITHOUT custom presets, gaming_mode (state byte 65), dual_battery(5); 22 live 02:83 factory-preset captures in victor-oliveira1/soundcore_anker_equalyzer (RFCOMM channel 10)`,
     verified: true,
   },
   {
@@ -182,8 +201,9 @@ export const DEVICES: DeviceProfile[] = [
     names: ['A20i', 'A3948', 'soundcore A20i'],
     ancLayout: 'none',
     eqCommand: '02:83',
+    customEq: true,
     state: P20I_STATE,
-    source: `${OPENSCQ30} (a3948): equalizer_with_drc_tws, dual_battery(5), no gaming mode`,
+    source: `${OPENSCQ30} (a3948): equalizer_with_drc_tws (common_settings_type_2, custom preset 0xFEFE), dual_battery(5), no gaming mode`,
     verified: true,
   },
   {
@@ -205,6 +225,7 @@ export const DEVICES: DeviceProfile[] = [
     ancLayout: 'tws-l4nc',
     // A3947 writes EQ only via the model-specific 03:87 HearID frame.
     eqCommand: null,
+    customEq: false,
     state: LIBERTY4NC_STATE,
     source: `${OPENSCQ30} (a3947): a3947_sound_modes, case_battery_level(5), EQ over 03:87 only`,
     verified: true,
@@ -227,6 +248,7 @@ export const DEVICES: DeviceProfile[] = [
     names: ['Liberty 3 Pro', 'A3952', 'soundcore Liberty 3 Pro'],
     ancLayout: 'tws-l3pro',
     eqCommand: null,
+    customEq: false,
     state: LIBERTY3PRO_STATE,
     source: `${OPENSCQ30} (a3952): a3952_sound_modes, ldac, equalizer_with_custom_hear_id_tws`,
     verified: true,
@@ -249,6 +271,7 @@ export const DEVICES: DeviceProfile[] = [
     names: ['Space One', 'A3035', 'soundcore Space One'],
     ancLayout: 'classic',
     eqCommand: null,
+    customEq: false,
     state: overEarState(),
     source: `${OPENSCQ30} (a3035): a3035_sound_modes, ldac, single_battery_level(5), EQ over 03:87 only`,
     verified: true,
@@ -271,6 +294,7 @@ export const DEVICES: DeviceProfile[] = [
     names: ['Q45', 'Space Q45', 'A3040', 'soundcore Space Q45'],
     ancLayout: 'classic',
     eqCommand: null,
+    customEq: false,
     state: overEarState(),
     source: `${OPENSCQ30} (a3040): a3040_sound_modes, ldac, dual_connections, single_battery_level(5)`,
     verified: true,
@@ -293,6 +317,9 @@ export const DEVICES: DeviceProfile[] = [
     names: ['Q35', 'Life Q35', 'A3027', 'soundcore Life Q35'],
     ancLayout: 'classic',
     eqCommand: '02:81',
+    // FEFE custom curves documented for the 02:81 command (OpenSCQ30
+    // set_equalizer custom test vector, SoundcoreDesktop EQGain()).
+    customEq: true,
     state: overEarState(),
     source: `${OPENSCQ30} (a3027): classic 4-byte sound modes, equalizer(common_settings), single_battery(5)`,
     verified: true,
@@ -315,6 +342,9 @@ export const DEVICES: DeviceProfile[] = [
     names: ['Q30', 'Life Q30', 'A3028', 'Soundcore Life Q30'],
     ancLayout: 'classic',
     eqCommand: '02:81',
+    // FEFE custom curves documented for the 02:81 command (OpenSCQ30
+    // set_equalizer custom test vector, SoundcoreDesktop EQGain()).
+    customEq: true,
     state: overEarState(),
     source: `${OPENSCQ30} (a3028) + live frames in JordanViknar/Noiseclapper-GNOME and DamienStaebler/SoundcoreDesktop`,
     verified: true,
@@ -337,6 +367,9 @@ export const DEVICES: DeviceProfile[] = [
     names: ['Life Tune', 'A3029', 'soundcore Life Tune'],
     ancLayout: 'classic',
     eqCommand: '02:81',
+    // FEFE custom curves documented for the 02:81 command (OpenSCQ30
+    // set_equalizer custom test vector, SoundcoreDesktop EQGain()).
+    customEq: true,
     state: overEarState(),
     source:
       'OpenSCQ30 routes A3029 through the A3028 (Life Q30) implementation; name from its own i18n entry',
@@ -438,6 +471,7 @@ export const UNKNOWN_PROFILE: DeviceProfile = {
   names: [],
   ancLayout: 'none',
   eqCommand: null,
+  customEq: false,
   state: {
     batteryLeft: 2,
     batteryRight: 3,
@@ -455,11 +489,50 @@ export const UNKNOWN_PROFILE: DeviceProfile = {
   verified: false,
 };
 
+interface AliasMatch {
+  id: string;
+  alias: string;
+  start: number;
+  end: number;
+}
+
+/** Whole-token alias matches with their spans (Phase 18 identification). */
+function aliasMatches(n: string): AliasMatch[] {
+  return RANKED_ALIASES.flatMap((a) => {
+    const m = new RegExp(`\\b${a.alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).exec(n);
+    return m ? [{ id: a.id, alias: a.alias, start: m.index, end: m.index + a.alias.length }] : [];
+  });
+}
+
+/**
+ * Resolve token matches to ONE profile, or null when unresolvable:
+ *  - no matches → null;
+ *  - the longest match wins, and a shorter match fully INSIDE its span is
+ *    the same words ("R50i NC" also contains the token "R50i" — not a
+ *    competing model), so it is ignored;
+ *  - a match for a DIFFERENT model outside the winner's span ("P30i R50i")
+ *    is genuine ambiguity → null (unknown-model profile, never a guess).
+ */
+function resolveAliasMatches(matches: AliasMatch[]): DeviceProfile | null {
+  if (matches.length === 0) return null;
+  const winner = [...matches].sort((a, b) => b.end - b.start - (a.end - a.start))[0];
+  const competing = matches.filter(
+    (m) => m.id !== winner.id && !(m.start >= winner.start && m.end <= winner.end),
+  );
+  if (competing.length > 0) return null;
+  return DEVICES.find((d) => d.id === winner.id) ?? null;
+}
+
 export function matchDevice(name: string | undefined | null): DeviceProfile {
   if (!name) return UNKNOWN_PROFILE;
   const n = name.toLowerCase();
-  const hit = RANKED_ALIASES.find((a) => n.includes(a.alias));
-  if (hit) return DEVICES.find((d) => d.id === hit.id) ?? UNKNOWN_PROFILE;
+  // Phase 18: aliases must match as WHOLE TOKENS, not substrings — "R50iNC"
+  // or "XR50i" must NOT resolve to the R50i profile, and a name that
+  // contains tokens from TWO different models ("P30i R50i") is ambiguous
+  // rather than a lucky longest-first win. Both cases resolve to the honest
+  // unknown-model profile instead of a guessed capability set.
+  const hit = resolveAliasMatches(aliasMatches(n));
+  if (hit) return hit;
   // Unverified marketing names and SKUs deliberately DO NOT resolve to a
   // real profile (Pass 11 §12): "Liberty 4" (A3953) is not "Liberty 4 NC"
   // (A3947), and Sport X10 (A3961) / Sleep A10 (A6610) are not A3949.
@@ -472,8 +545,18 @@ export function matchDevice(name: string | undefined | null): DeviceProfile {
 export function matchNote(name: string | undefined | null): string | null {
   if (!name) return null;
   const n = name.toLowerCase();
-  if (RANKED_ALIASES.some((a) => n.includes(a.alias))) return null;
-  const alias = RANKED_UNVERIFIED.find((a) => n.includes(a.alias));
+  const tokenMatch = (alias: string) =>
+    new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(n);
+  const matches = aliasMatches(n);
+  if (matches.length > 0) {
+    if (resolveAliasMatches(matches)) return null;
+    // Tokens matched but resolution failed: the name carries tokens from
+    // more than one model. That is ambiguity, not an identification.
+    return `The device name "${name}" matches more than one Soundcore model, so SoundControl cannot
+      safely pick a capability profile. It connects with the generic profile: firmware, serial and
+      earbud presence still work, but model-specific controls stay unavailable.`;
+  }
+  const alias = RANKED_UNVERIFIED.find((a) => tokenMatch(a.alias));
   if (alias) return alias.note;
   // Nothing matched at all: the device runs on the unidentified-model
   // profile. Tell the user why battery percentages (and model-specific

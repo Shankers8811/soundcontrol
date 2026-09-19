@@ -11,6 +11,7 @@ import {
   xorChecksum,
 } from '../protocol/codec';
 import { redactSecrets } from '../lib/reporting';
+import { gateCommandForProfile } from '../protocol/modelRegistry';
 import { validateOutboundFrame } from '../protocol/targets';
 import { useApp } from '../state/store';
 import type { LogEntry } from '../types';
@@ -69,19 +70,28 @@ export function HexConsole() {
       const xorValid = verifyXorFrame(framed);
       // Phase 17 earbud-only boundary: show exactly which registered earbud
       // command (if any) the draft resolves to, and refuse to send anything
-      // the protocol layer would reject anyway.
+      // the protocol layer would reject anyway. Phase 18 adds the model
+      // gate: a registered command the CONNECTED model does not support
+      // (e.g. 06:81 ANC while an R50i is attached) is also refused.
       const check = validateOutboundFrame(framed);
+      let modelOk = true;
+      let modelNote = '';
+      if (check.ok) {
+        const gate = gateCommandForProfile(check.command.id, framed, app.profile);
+        modelOk = gate.ok;
+        modelNote = gate.ok ? '' : ` · NOT supported by ${app.profile.name} (${app.profile.sku})`;
+      }
       return {
         ok: true,
         msg:
           (autoCs
             ? `Σ 0x${framed[framed.length - 1].toString(16).padStart(2, '0').toUpperCase()} · XOR would be 0x${xor.toString(16).padStart(2, '0').toUpperCase()}`
             : `Σ ${cs.toString(16).padStart(2, '0')} · RFCOMM ${valid ? 'valid' : 'mismatch'} · BLE-XOR ${xorValid ? 'valid' : 'mismatch'}`) +
-          (check.ok ? ` · ${check.command.id} → earbud` : ' · NOT a recognized earbud command'),
+          (check.ok ? ` · ${check.command.id} → earbud${modelNote}` : ' · NOT a recognized earbud command'),
         bytes: raw,
         framed,
         valid,
-        recognized: check.ok,
+        recognized: check.ok && modelOk,
       };
     } catch (err) {
       return {
@@ -91,7 +101,7 @@ export function HexConsole() {
         framed: new Uint8Array(),
       };
     }
-  }, [draft, autoCs]);
+  }, [app.profile, draft, autoCs]);
 
   const decodedB64 = useMemo(() => {
     if (!b64.trim()) return { ok: true as const, hex: '', msg: 'Paste a Base64 capture to decode it to hex.' };

@@ -5,7 +5,9 @@ name: Tests
 # unit tests, the pure UI state-derivation tests (capabilities, earbud
 # presence, battery math, scan machine), the earbud-only control boundary
 # tests (command-target registry, protocol-level frame validation, static
-# scan proving no Windows audio APIs), and the startup/lifecycle e2e
+# scan proving no Windows audio APIs), the R50i/R50i NC model-profile tests
+# (capability matrix, model command gating, response mirrors, session
+# isolation), and the startup/lifecycle e2e
 # harness (real bridge server + real renderer transport code against an
 # emulated helper with a fake RFCOMM device). Windows-specific packaging
 # and packaged-app launch checks live in build-windows.yml and
@@ -44,6 +46,8 @@ jobs:
         run: npm run test:ui
       - name: Earbud-only control boundary (command targets, protocol gate, host-audio scan)
         run: npm run test:targets
+      - name: Model profiles - R50i A3949 / R50i NC A3959 / unknown (matrix, gating, mirrors, sessions)
+        run: npm run test:models
       - name: Startup/lifecycle e2e (emulated helper, fake RFCOMM)
         run: npm run test:e2e
       - name: Main-process lifecycle (real helper kill/restart races, stubbed Electron)
