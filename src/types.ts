@@ -96,6 +96,26 @@ export interface StateOffsets {
   eqBands: { at: number; count: number } | null;
   /** Start of the sound-mode block echoed by the device (`06:01` mirror). */
   soundModes: number | null;
+  /**
+   * Gaming-mode flag byte inside the `01:01` state update (Phase 18): when
+   * present, the device's OWN report confirms/denies the toggle — the UI
+   * state becomes device-confirmed instead of optimistic-only. Evidence:
+   * OpenSCQ30 a3949/a3959 `state_update.rs` parse chains.
+   */
+  gaming?: number | null;
+  /**
+   * 3D Surround flag byte inside the `01:01` state update (a3959 at 74).
+   */
+  surround?: number | null;
+  /** Dual-connections-enabled flag byte inside the `01:01` state update (a3959 at 73). */
+  dualConnections?: number | null;
+  /**
+   * A3959 only: OpenSCQ30 gates the gaming byte on
+   * `dual_firmware_version.min() >= 01.60` ("requires firmware version >=
+   * 01.60, but we can just parse and check that later"). When set, the
+   * gaming byte is only trusted when both buds' firmware is at least this.
+   */
+  gamingMinFirmware?: string | null;
 }
 
 export interface DeviceProfile {
@@ -127,6 +147,16 @@ export interface DeviceProfile {
   ancLayout: AncLayout;
   eqCommand: EqCommand | null;
   state: StateOffsets;
+  /**
+   * True only when the model accepts a CUSTOM equalizer curve (preset id
+   * 0xFEFE). OpenSCQ30's `equalizer_with_drc_tws` for A3959/A3948 and the
+   * classic 02:81 models use `custom_preset_id: Some(0xfefe)`, while A3949
+   * explicitly overrides it to `None` ("device doesn't support custom
+   * presets") — and none of the 22 live P20i captures contains a FEFE
+   * frame. False ⇒ the custom-curve UI stays hidden and the FEFE frame is
+   * rejected by the model gate (factory presets still work).
+   */
+  customEq: boolean;
   /**
    * True only when the `01:85` factory-reset frame is documented for THIS
    * model. The only public source (OpenSCQ30) maps it to the Soundcore

@@ -18,6 +18,60 @@ Service UUID (when advertised): `0cf12d31-fac3-4553-bd80-d6832e7d1402` —
 the last nibble pair is the model id, so `…34fb` is the generic SPP UUID and
 **not** the DSP service on Liberty-family units.
 
+## Command targets and the host boundary (Phase 17)
+
+**SOUND CONTROL = EAR BUD / HEADPHONE DEVICE CONTROL — never Windows audio.**
+
+Every outbound command carries an explicit target, and the only legal target
+for a user-facing feature is the **connected earbud device**. Windows may be
+touched only for application infrastructure: read-only Bluetooth
+(paired-device) discovery, the local helper process, and app lifecycle. The
+application never modifies Windows volume, mute, default devices, endpoints,
+mixer, enhancements, spatial sound, Sound/Bluetooth settings, or registry
+audio configuration, and it contains no APIs for doing so (enforced by a
+static scan in `scripts/test_command_targets.mjs`).
+
+The supported command set — the only frames the application may transmit — is
+registered in `src/protocol/targets.ts` and enforced at **two independent
+layers** before anything reaches the RFCOMM socket:
+
+1. **Renderer (`withEarbudOnlyBoundary`)** — every transport the store
+   installs is wrapped, so all writes (UI actions, connect handshake,
+   background battery polls, the diagnostics console) pass
+   `validateOutboundFrame`: structurally valid Soundcore frame (header,
+   coherent length, checksum) AND a registered `CAT:TYPE` AND target
+   `earbud`. Anything else is rejected before it leaves the renderer.
+2. **Helper (`validate_tx_frame` in `soundcore_bridge.py`)** — the Windows
+   helper re-validates every `tx` frame against the same command set, so even
+   a buggy or hostile renderer cannot make it transmit anything but
+   recognized earbud commands. The helper contains no Windows audio APIs at
+   all; its only device I/O is the RFCOMM socket.
+
+| Frame | Command id | Feature |
+|---|---|---|
+| `01:01` | `state.request` | Handshake / state request |
+| `01:03` | `battery.query` | Battery levels |
+| `01:04` | `charging.query` | Charging flags |
+| `01:05` | `device.info` | Serial + firmware |
+| `01:7F` | `ldac.query` | LDAC codec state |
+| `01:FF` | `ldac.set` | LDAC enable/disable |
+| `01:85` | `device.factory-reset` | Factory reset |
+| `01:87` | `game-mode.set` | Gaming / low-latency mode |
+| `10:85` | `game-mode.set-a3947` | Gaming mode (Liberty 4 NC) |
+| `02:81` | `equalizer.set` | Equalizer preset/bands |
+| `02:83` | `equalizer.set-drc` | Equalizer with DRC (TWS) |
+| `02:86` | `surround.set` | 3D Surround Sound |
+| `06:81` | `sound-modes.set` | ANC / transparency / wind |
+| `0B:84` | `dual-audio.set` | Dual audio |
+
+An unrecognized frame — wrong header, incoherent length, bad checksum, or a
+`CAT:TYPE` outside this table — is **rejected** with a clear error and never
+transmitted. Both sides of the contract are cross-checked by tests
+(`scripts/test_command_targets.mjs`,
+`scripts/test_bridge_probe.py` → `TX_ALLOWED_FRAMES`). Device-side volume is
+notably absent: no published capture contains a volume command, so the app
+has none — the Volume card states this instead of pretending.
+
 ## Frame
 
 ```

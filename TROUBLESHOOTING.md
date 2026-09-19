@@ -103,10 +103,13 @@ hearing profile. Use the Soundcore app for those models' EQ.
 
 ## SmartScreen "Unknown publisher"
 
-Only an Authenticode certificate removes it. Routes and the two repository
-secrets are documented in README → *Code signing & SmartScreen*; the release
-workflow now fails loudly if certificate secrets exist but the installer is
-not signed valid.
+Only an Authenticode certificate removes it — SmartScreen cannot legitimately
+be disabled by application code, and SoundControl does not try. The signing
+pipeline and release gate are implemented (release builds fail unless signed
+and verified); what is still needed is the certificate, configured as the
+`WIN_CSC_LINK`/`WIN_CSC_KEY_PASSWORD` repository secrets. Routes and setup:
+README → *Code signing & SmartScreen* and
+[docs/WINDOWS-CODE-SIGNING.md](docs/WINDOWS-CODE-SIGNING.md).
 
 ## Reporting a bug
 
