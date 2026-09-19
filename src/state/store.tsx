@@ -296,9 +296,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /**
    * Mirror a `06:01` sound-mode report back into the UI. Layouts differ per
-   * TWS family, so this reads only the bytes that are unambiguous in all of
-   * them: byte 0 is the ambient mode everywhere, and byte 1's high nibble is
-   * the manual ANC level everywhere.
+   * family. A3959 is independently validated as a complete seven-byte struct;
+   * classic layouts do not interpret byte 1 as a manual-strength nibble.
    */
   const syncSoundModes = useCallback((payload: Uint8Array) => {
     // The device's own sound-mode report is the ONLY input that moves the
@@ -744,11 +743,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const resolvedLabel =
           label ??
           recentDevices.find((d) => d.mac.toUpperCase() === mac.toUpperCase())?.name;
-        // Filled in once connectBridge resolves; the link-down callback uses
-        // it to verify the dropped transport is still the active one (a fast
-        // disconnect→reconnect must not let the old socket's close tear down
-        // the new session).
-        const linked: { transport: Transport | null } = { transport: null };
+        // Compare session identity, not the original Transport object: attach()
+        // wraps it in the device boundary, so object equality would suppress
+        // every link-down callback after attachment.
         const guardedRx = (data: Uint8Array) => {
           if (!sessionGuardRef.current.isActive(mySession)) return;
           onRx(data);
@@ -765,7 +762,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // (helper exit/crash/restart): leave the "Connected" state out loud
           // instead of sitting there until the next write fails.
           (reason) => {
-            if (!linked.transport || transportRef.current !== linked.transport) return;
+            if (!sessionGuardRef.current.isActive(mySession)) return;
             transportRef.current = null;
             sessionGuardRef.current.end();
             // The whole control link died: every piece of device state goes
@@ -777,8 +774,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             if (prompts) void beep('warn');
           },
         );
-        linked.transport = transport;
+        if (!sessionGuardRef.current.isActive(mySession)) { await transport.close(); throw new Error('Device session ended during connect'); }
         await attach(transport, name, b, dspChannel);
+        if (!sessionGuardRef.current.isActive(mySession)) throw new Error('Device session ended during initialization');
         setConnectedMac(mac || null);
         // Settings persistence: remember the last few devices for one-tap
         // reconnect on the next launch.
@@ -921,8 +919,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const readAncState = useCallback(async () => {
     if (ancInFlight.current) throw new Error('ANC action already in progress');
     ancInFlight.current = true; setBusy('anc');
+    const t = transportRef.current;
     try { await queryAncState(); }
-    catch (err) { setAncStatus(String(err)); pushLog('sys', '', String(err)); throw err; }
+    catch (err) { if (transportRef.current === t) setAncStatus(String(err)); pushLog('sys', '', String(err)); throw err; }
     finally { ancInFlight.current = false; setBusy(null); }
   }, [pushLog, queryAncState]);
 

@@ -74,7 +74,11 @@ Before Phase 19, the candidates were `(4,12,15,10,30,1)` despite a comment claim
 
 Probe: read-only `01:01`, connect timeout 2.5 s, reply budget 1.5 s. A checksum-valid `09 FF` frame demonstrates Soundcore traffic, not ANC controllability, and need not be the expected full state. Silent fallback remains explicitly unverified. No special write is used to discover control channels. A read-only watchdog retries at 8 s; it now says telemetry arrived, not “ANC is live.”
 
-Probe bytes used to be consumed and discarded. They are now handed into the adopted reader for logging/reassembly. The reader carries an immutable socket/session/channel; stale readers cannot read/clear a replacement connection or attribute old RX to the new session. Each adoption gets a random anonymous session id, not a MAC/name. A control WebSocket owns writes/disconnects; a second client cannot interleave commands without explicitly creating a new device session. Socket writes and close are synchronized; reconnect is serialized.
+Probe bytes used to be consumed and discarded. They are now handed into the adopted reader for logging/reassembly. The reader carries an immutable socket/session/channel; stale readers cannot read/clear a replacement connection or attribute old RX to the new session. Each adoption gets a random anonymous session id, not a MAC/name. The store now
+checks the session guard on link-down, not object identity with the original
+transport (which differed from the boundary-wrapped transport and previously
+suppressed link-down handling). RFCOMM close also cancels pending writes/state
+waits, not just WebSocket close. A control WebSocket owns writes/disconnects; a second client cannot interleave commands without explicitly creating a new device session. Socket writes and close are synchronized; reconnect is serialized.
 
 RFCOMM is a stream: `sendall` sends the exact complete validated byte array, but a receiver may split/coalesce it. There is no evidence that Bluetooth packet boundaries equal Soundcore frames or that adding a delimiter is appropriate. No delimiter/padding is added. `split_frame` retains partial frames, splits multiple frames, checks lengths/checksums and resynchronizes. Tests cover fragments, coalescing, garbage and false-length input. Do not change framing based on `recv` chunk boundaries.
 

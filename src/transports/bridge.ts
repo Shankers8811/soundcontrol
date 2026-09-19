@@ -214,6 +214,12 @@ export async function connectBridge(
   // Set by transport.close() so an intentional disconnect is never reported
   // to the UI as a dropped link.
   let closedByUs = false;
+  let downReported = false;
+  const reportDown = (reason: string) => {
+    if (closedByUs || downReported) return;
+    downReported = true;
+    onDown?.(reason);
+  };
   let session: string | null = null;
   let nextTx = 0;
   const pending = new Map<string, { resolve: () => void; reject: (e: Error) => void; timer: number }>();
@@ -333,6 +339,11 @@ export async function connectBridge(
             // firing seconds after the connect already resolved.
             if (m.type === 'sys' && (m.message || m.error)) {
               onSys(m.error ?? m.message ?? '', Boolean(m.error));
+              if (m.error === 'RFCOMM closed') {
+                rejectPending('RFCOMM closed before TX_SENT');
+                reportDown('RFCOMM control connection closed — device state is unavailable; reconnect.');
+                ws.close();
+              }
             }
             // A command that failed on the helper side (e.g. "Not connected"
             // when the RFCOMM link died but this WebSocket is still up) must
@@ -349,7 +360,7 @@ export async function connectBridge(
         ws.addEventListener('close', () => {
           rejectPending('Helper closed before TX_SENT');
           if (!closedByUs) {
-            onDown?.(
+            reportDown(
               'The Bluetooth helper connection closed unexpectedly — the helper may have exited or restarted. Reconnect your device.',
             );
           }

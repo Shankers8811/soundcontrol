@@ -356,11 +356,12 @@ class Bridge:
 
     def _adopt(self, sock: socket.socket, mac: str, ch: int, initial: bytes = b"") -> None:
         sock.settimeout(0.4)
-        self.sock = sock
-        self.mac = mac
-        self.channel = ch
-        self.session = uuid.uuid4().hex[:12]
-        self.first_rx.clear()
+        with self.tx_lock:
+            self.sock = sock
+            self.mac = mac
+            self.channel = ch
+            self.session = uuid.uuid4().hex[:12]
+            self.first_rx.clear()
         threading.Thread(target=self._reader, args=(sock, self.session, ch, initial), daemon=True).start()
 
     def _silent_watchdog(self, sock: socket.socket, ch: int) -> None:
@@ -494,9 +495,12 @@ class Bridge:
                         self.first_rx.set()
                     self.broadcast({"type": "rx", "hex": frame.hex().upper(),
                                     "session": session, "channel": channel})
-        if self.sock is sock:
-            self.sock = None
-            self.mac = ""
+        with self.tx_lock:
+            ended_current_session = self.sock is sock
+            if ended_current_session:
+                self.sock = None
+                self.mac = ""
+        if ended_current_session:
             self.broadcast({"type": "sys", "error": "RFCOMM closed", "session": session})
 
 
@@ -1006,12 +1010,12 @@ class Handler(BaseHTTPRequestHandler):
                 with BRIDGE.connect_lock:
                     BRIDGE._connect(str(msg.get("mac", "")), int(msg.get("channel", 4)))
                     BRIDGE.controller = sock
-                send_ws(
-                    sock,
-                    json.dumps(
-                        {"type": "connected", "mac": BRIDGE.mac, "channel": BRIDGE.channel, "session": BRIDGE.session}
-                    ).encode(),
-                )
+                    send_ws(
+                        sock,
+                        json.dumps(
+                            {"type": "connected", "mac": BRIDGE.mac, "channel": BRIDGE.channel, "session": BRIDGE.session}
+                        ).encode(),
+                    )
             elif kind == "tx":
                 data = bytes.fromhex(str(msg.get("hex", "")).replace(" ", ""))
                 if len(data) > TX_MAX_BYTES:
