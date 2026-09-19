@@ -1,6 +1,6 @@
 # PHASE 19 — R50i NC (A3959) real ANC failure investigation
 
-**Date:** 2026-09-19 · **Branch:** `arena/01a0b886-soundcontrol`
+**Date:** 2026-09-19 · **Branch:** `arena/01a0b886-soundcontrol` · **PR:** [#28](https://github.com/Shankers8811/soundcontrol/pull/28)
 
 ## ANC STATUS: NOT WORKING — TRANSPORT/SEQUENCE ISSUE
 
@@ -97,20 +97,28 @@ is now much narrower, but the requested physical outcome is **not established**.
 
 ## Validation
 
+All numbers below are local results for the final commit `fc399a6`; the file was
+small (`dist/assets/index_*.js` 386 kB, CSS 48 kB) and the packaging whitelist
+clean (60 app files, no maps/tests/emulator/secrets, all 6 runtime files present).
+
 | Check | Result |
 |---|---|
-| `npm test` | PASS locally (package/UI/model/bridge/E2E/lifecycle + ANC); final lifecycle hardening rerun before the follow-up commit |
-| `npm run build` / `verify:protocol` / TypeScript | PASS locally; source/capture tests do not establish firmware correctness |
+| `npm run build` (`verify:protocol` + `tsc --noEmit` + Vite + packaging guard) | PASS — 495 protocol checks; **not** firmware evidence |
+| Packaging guard self-test | PASS — 11/11 cases |
+| UI state derivation | PASS — 258 checks |
+| UI render smoke (incl. new A3959 diagnostics/honest-state assertions) | PASS — 129 checks |
+| Earbud-only/model boundary + host-audio static scan | PASS — 21 checks; no host-audio API across 63 application files |
 | Model profiles | PASS — 108 checks |
-| Bridge | PASS — 119 checks, including correlation, stale sessions, owner, blocked channels, checksum-collision fragmentation |
-| Startup E2E | PASS locally — 101 checks against emulated RFCOMM, not hardware |
-| ANC packets / responses / transition / timeout tests | PASS — 13 exact synthetic vectors plus model gates, inbound parsing, dependency ordering, cancellation, privacy/read-only checks |
-| Static Windows-audio safety scan | PASS — 63 application files; no host-audio API references; existing read-only audio capture harness checks retained |
+| Bridge | PASS — 119 checks (correlation, stale session, control ownership, blocked channels, checksum-collision fragmentation) |
+| Startup/lifecycle E2E (emulated RFCOMM) | PASS — 101 checks; emulated, not hardware |
+| Main-process lifecycle | PASS |
+| ANC packets / responses / transitions / timeouts / privacy | PASS — 13 exact synthetic vectors plus dependency ordering, independent inbound parsing, read-only bits, cancellation |
 | Python compile check | PASS |
-| Windows build | PASS on initial implementation `8a3da9e`; final lifecycle hardening queued for rerun |
-| Windows smoke | PASS on initial implementation `8a3da9e`; final lifecycle hardening queued for rerun |
-| Real hardware / Android HCI comparison | NOT PERFORMED here; user comparison and captures required |
-| Physical Windows audio-state preservation | NOT PERFORMED here; hosted endpoint limitation must remain `AUDIO_STATE_CAPTURE=UNAVAILABLE`, never fake PASS |
+| Windows Build CI (`35429926015`, push run for `fc399a6`) | PASS — installer + bundled Python runtime, size gate, unsigned CI report |
+| Windows Desktop Smoke CI (`35429927274`) | PASS — upgrade, clean install/two launches/uninstall, autostart cleanup, close-exits-helper, packaged launch |
+| Release Windows CI (`35429926017`) | SKIPPED by design (no release workflow trigger) |
+| CI audio regression comparison | **NOT PERFORMED** — runner has no audio endpoints; recorded honestly as `AUDIO_STATE_CAPTURE=UNAVAILABLE` |
+| Real A3959 hardware / Android HCI comparison | **NOT PERFORMED** here; the user's retest and captures are required |
 
 ## Evidence ladder and remaining stop point
 
