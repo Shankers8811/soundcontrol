@@ -190,7 +190,10 @@ RFCOMM_CHANNEL/SESSION` plus `RX_FRAME`/`RX_SOUND_MODE_MIRROR`/
   on the Windows runner and compare it with the monogram (dominant background
   colour + accent-glyph share), so "the installed binary, its shortcuts and the
   taskbar show the product icon, not default Electron artwork" is checked against
-  the artifact users receive. Image-generation dependency rule intact: the icon
+  the artifact users receive. This step passes on the current commit (see §7);
+  GitHub's raw log download was unavailable for that run (upstream EOF), so the
+  evidence recorded here is the step's green conclusion plus the code path that
+  throws on any mismatch. Image-generation dependency rule intact: the icon
   source is the committed SVG/PNGs; nothing is fetched at build time.
 * Window/taskbar (`electron-main.cjs`, `public/icon-512.png`) and the About
   window (`IconLogo`, shared monogram component) already point at the same
@@ -214,8 +217,9 @@ changing host audio; there is no fallback of that kind in the code.
 | `npm test` (package, UI state, UI render, targets, models, bridge, E2E, lifecycle, ANC, icons) | PASS locally — UI 258 + 131, targets 21, models 108, bridge 119, E2E 101, ANC suite, icons 21 |
 | A3959 ANC suite | PASS — 13 synthetic vectors + recorded-hardware payload (offsets, 91-byte layout, `0x55` nibble, `0xFF` passthrough), model gates, transition dependencies, sequencer ordering/abort semantics, privacy |
 | Icon suite | PASS — 21 checks incl. ICO authenticity and packaging wiring |
-| Windows Build CI | queued for this commit; result recorded in the PR |
-| Windows Desktop Smoke CI (incl. new packaged-icon extraction step) | queued; result recorded in the PR |
+| Windows Build CI (`35509221553`, `93a8f24`) | **PASS** — installer with bundled Python runtime, size gate, unsigned-CI report |
+| Windows Desktop Smoke CI (`35509221428`) | **PASS** — every step green, including **`Verify the packaged exe + installer carry the authentic icon`**: `ExtractAssociatedIcon` on the built `SoundControl.exe` *and* on the NSIS installer, compared with the monogram by `scripts/verify-exe-icon.mjs` (dominant background colour + accent-glyph share). Both passed; the step throws on any mismatch, so this is evidence from the shipped PE resource, not from the source file |
+| Tests CI (`35509222444`) | **PASS** — includes the icon-packaging step |
 | Release Windows CI | skipped by design (no release workflow trigger) |
 | Windows-audio regression comparison on CI | **NOT PERFORMED** — the runner has no audio endpoints (`AUDIO_STATE_CAPTURE=UNAVAILABLE`), recorded honestly rather than as a pass |
 | Real A3959 retest / Android HCI comparison | **NOT PERFORMED** — requires the maintainer |

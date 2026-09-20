@@ -42,7 +42,7 @@ evidence ladder; nothing in the repository is above level 4). Run
 | Also sold as | P20i, P25i | P30i |
 | Name mapping source | *(OpenSCQ30 i18n)* `soundcore-a3949 = Soundcore P20i / P25i / R50i` | *(OpenSCQ30 i18n)* `soundcore-a3959 = Soundcore P30i / R50i NC` |
 | Transport | Classic Bluetooth RFCOMM (DSP channel found by the bridge's handshake probe) | same |
-| State-update payload | 67 bytes | 90 bytes |
+| State-update payload | 67 bytes | 91 bytes *(Phase 20 correction; §3)* |
 
 Identification in SoundControl *(implemented)*: ranked **whole-token** name
 matching (longest first, `R50i NC` outranks `R50i`; `R50iNC`/`XR50i` match
@@ -174,7 +174,7 @@ byte 6  multi-scene ANC scene: 0x00 Transport · 0x01 Outdoor · 0x02 Indoor
 ## 7. Toggles — gaming `01:87`, dual `0B:84`, surround `02:86`
 
 - Gaming *(both models)*: payload `[01|00]`. A3949 mirrors the flag at state
-  byte 65; A3959 at byte 77 (firmware ≥ 01.60 only). Where no mirror exists,
+  byte 65; A3959 at payload byte 78 (firmware ≥ 01.60 only). Where no mirror exists,
   the app logs the honest "Command sent — device confirmation unavailable".
 - Dual / surround *(A3959 only)*: payload `[01|00]`, mirrored at state bytes
   73 / 74. On A3949 the frames are refused (no such hardware feature).
