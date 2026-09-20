@@ -54,3 +54,5 @@ jobs:
         run: npm run test:lifecycle
       - name: A3959 ANC source vectors, responses, transitions and diagnostics
         run: npm run test:anc
+      - name: Icon packaging evidence (multi-size .ico, authentic monogram)
+        run: npm run test:icons

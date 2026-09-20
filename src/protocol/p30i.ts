@@ -1,13 +1,34 @@
 import { frame } from './packets';
 
-/** A3959-specific source evidence, NOT a physical capture. See docs/PHASE-19-ANC-AUDIT.md.
- * Incoming bytes are parsed independently; byte 2 is an enum but upstream ignores
- * its value (it need not equal byte 0). Never write wind-detected bit 1.
+/**
+ * A3959-specific evidence. See docs/PHASE-19-ANC-AUDIT.md and
+ * docs/PHASE-20-FINAL-REPORT.md.
+ *
+ * Incoming bytes are parsed independently; byte 2 is an enum but upstream
+ * ignores its value (it need not equal byte 0). Never write wind-detected
+ * bit 1.
+ *
+ * Byte 5 is deliberately NOT range-checked. It is the read-only
+ * adaptive-sensitivity byte: OpenSCQ30's A3959 setting handler exposes it as
+ * a 0..=10 control range, but the recorded real-hardware state in
+ * tests/fixtures/a3959-recorded-state.json reports 0xFF there — this
+ * protocol family's "unknown/unset" marker. Phase 19 required <= 10 here, which
+ * made the whole state frame invalid on such a device and stopped every ANC
+ * write before it was sent. We pass the byte through verbatim and report the
+ * out-of-range value as a diagnostic instead of refusing to talk to the
+ * earbuds over a field we never write.
  */
+export const P30I_SENSITIVITY_DOCUMENTED_MAX = 10;
+
+/** True when byte 5 is inside the documented control range (diagnostics only). */
+export function p30iSensitivityInDocumentedRange(p: ArrayLike<number>): boolean {
+  return p.length > 5 && p[5] <= P30I_SENSITIVITY_DOCUMENTED_MAX;
+}
+
 export function validP30iSoundModes(p: ArrayLike<number>): boolean {
   return p.length === 7 && p[0] <= 2 && p[2] <= 2 &&
     (p[1] >> 4) >= 1 && (p[1] >> 4) <= 5 && (p[1] & 15) <= 5 &&
-    p[3] <= 2 && p[4] <= 3 && p[5] <= 10 && p[6] <= 2;
+    p[3] <= 2 && p[4] <= 3 && p[6] <= 2;
 }
 
 /** One-field transitions with A3959's OpenSCQ30 MigrationSteps dependencies.

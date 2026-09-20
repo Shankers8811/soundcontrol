@@ -12,23 +12,27 @@
     "build:win": "npm run build && electron-builder --win",
     "bridge": "python3 soundcore_bridge.py",
     "fetch:python-embed": "node scripts/fetch-python-embed.mjs",
-    "prebuild:win": "npm run fetch:python-embed",
+    "prebuild:win": "npm run icons && npm run fetch:python-embed",
     "verify:protocol": "node scripts/verify-protocol.mjs",
     "verify:signing": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify-windows-signing.ps1",
     "test:bridge": "python3 scripts/test_bridge_probe.py",
     "test:ui": "node scripts/test_ui_state.mjs && node scripts/test_ui_render.mjs",
     "test:e2e": "node scripts/test_startup_e2e.mjs",
     "test:lifecycle": "node scripts/test_main_lifecycle.mjs",
-    "test": "npm run test:package && npm run test:ui && npm run test:targets && npm run test:models && npm run test:bridge && npm run test:e2e && npm run test:lifecycle && npm run test:anc",
+    "test": "npm run test:package && npm run test:ui && npm run test:targets && npm run test:models && npm run test:bridge && npm run test:e2e && npm run test:lifecycle && npm run test:anc && npm run test:icons",
     "test:package": "node scripts/check-package-files.mjs --self-test",
     "test:targets": "node scripts/test_command_targets.mjs",
     "test:models": "node scripts/test_model_profiles.mjs",
-    "test:anc": "node scripts/test_anc.mjs"
+    "test:anc": "node scripts/test_anc.mjs",
+    "icons": "node scripts/generate-ico.mjs",
+    "icons:svg": "node scripts/generate-icons.mjs",
+    "test:icons": "node scripts/test_icons.mjs",
+    "anc:frames": "node scripts/print-anc-frames.mjs"
   },
   "build": {
     "appId": "com.soundcontrol.desktop",
     "productName": "SoundControl",
-    "copyright": "Copyright © 2026",
+    "copyright": "Copyright \u00a9 2026",
     "directories": {
       "output": "release"
     },
@@ -57,7 +61,7 @@
       "target": [
         "nsis"
       ],
-      "icon": "public/icon-512.png",
+      "icon": "build/icon.ico",
       "signtoolOptions": {
         "signingHashAlgorithms": [
           "sha256"
@@ -72,7 +76,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "SoundControl"
+      "shortcutName": "SoundControl",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     }
   },
   "dependencies": {

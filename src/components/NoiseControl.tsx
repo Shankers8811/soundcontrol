@@ -177,8 +177,10 @@ export function NoiseControl() {
           <section className="mb-4 rounded-lg border border-edge p-3 text-xs">
             <p className="font-semibold">A3959 hardware diagnostics — physical validation pending</p>
             <p className="my-2 text-mute">Use the same earbuds as Android. Start audio yourself and keep it playing. Each action reads state, sends source-derived transitions, waits for replies, then reads state again. No Windows audio settings are changed. Export TX/RX from Settings → Diagnostics.</p>
+            <p className="mb-2 font-mono text-[11px] text-mute">Firmware (01:05): {app.firmware} · SESSION/CHANNEL are logged with every action</p>
             <div className="flex flex-wrap gap-2">
               <button disabled={disabled} onClick={() => void app.readAncState().catch(() => {})}>Read state (A/C/E/G/I)</button>
+              <button disabled={disabled} onClick={() => void app.readFirmware().catch(() => {})}>Read firmware (01:05)</button>
               <button disabled={disabled} onClick={() => void app.setAnc('normal').catch(() => {})}>B · Normal</button>
               <button disabled={disabled} onClick={() => void app.setAnc('transparency').catch(() => {})}>D · Transparency</button>
               <button disabled={disabled} onClick={() => void app.setAnc('anc', 1).catch(() => {})}>F · Manual 1</button>
