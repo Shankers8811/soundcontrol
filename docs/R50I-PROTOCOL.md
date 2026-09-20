@@ -1,5 +1,14 @@
 # R50i / R50i NC protocol — what this repository actually establishes
 
+> **Phase 19 correction — user-reported ANC failure:** Android changes ANC
+> physically on the same A3959; SoundControl does not, even during playback.
+> “SUPPORTED” below describes third-party protocol evidence only, not working
+> hardware. [Phase 19 audit](PHASE-19-ANC-AUDIT.md) supersedes the earlier
+> claims of complete ANC correctness and documents byte-by-byte discrepancies,
+> stateful transitions, independent response parsing and remaining unknowns.
+> Physical validation remains PENDING (Phase 18 status B).
+
+
 **Models:** Soundcore **R50i** (SKU **A3949**, also sold as P20i / P25i) and
 Soundcore **R50i NC** (SKU **A3959**, also sold as P30i).
 
@@ -33,7 +42,7 @@ evidence ladder; nothing in the repository is above level 4). Run
 | Also sold as | P20i, P25i | P30i |
 | Name mapping source | *(OpenSCQ30 i18n)* `soundcore-a3949 = Soundcore P20i / P25i / R50i` | *(OpenSCQ30 i18n)* `soundcore-a3959 = Soundcore P30i / R50i NC` |
 | Transport | Classic Bluetooth RFCOMM (DSP channel found by the bridge's handshake probe) | same |
-| State-update payload | 67 bytes | 90 bytes |
+| State-update payload | 67 bytes | 91 bytes *(Phase 20 correction; §3)* |
 
 Identification in SoundControl *(implemented)*: ranked **whole-token** name
 matching (longest first, `R50i NC` outranks `R50i`; `R50iNC`/`XR50i` match
@@ -59,7 +68,7 @@ command registry and the model gate before transmission; see
 *(OpenSCQ30 a3949/a3959 `packets/inbound/state_update.rs`)* — the layouts
 DIFFER, which is itself identification evidence:
 
-| Offset | A3949 (67-byte payload) | A3959 (90-byte payload) |
+| Offset | A3949 (67-byte payload) | A3959 (91-byte payload) |
 |---|---|---|
 | 0–1 | TWS status | TWS status |
 | 2 / 3 | battery left / right (**scale 0..5**, `0xFF` = absent) | battery left / right (**scale 0..10**) |
@@ -72,14 +81,25 @@ DIFFER, which is itself identification evidence:
 | 55–62 | buttons(6 × 1 byte) | unknown(1) + buttons(8 × 1 byte) |
 | 63–64 | unknown(4) | ambient_cycle(1) at 63 |
 | 64–70 | — | **sound modes (7 bytes, §5)** |
-| 65 | **gaming flag** | touch_tone 72, **dual flag 73**, **surround flag 74**, auto_power_off 75, low_battery_prompt 76 |
-| 66 | touch_tone | **gaming flag 77** — only trustworthy when min(both firmware) ≥ **01.60** *(OpenSCQ30 firmware gate)* |
-| 78–89 | — | unknown(12) — **UNKNOWN — NOT VERIFIED** |
+| 65 | **gaming flag** | unknown(1) at 71, touch_tone 72, **dual flag 73**, **surround flag 74**, auto_power_off 75–76 (enabled + duration) |
+| 66 | touch_tone | low_battery_prompt 77 |
+| — | — | **gaming flag 78** — only trustworthy when min(both firmware) ≥ **01.60** *(OpenSCQ30 firmware gate)* |
+| 79–90 | — | unknown(12) — **UNKNOWN — NOT VERIFIED** |
+
+**Phase 20 correction:** this table previously said 90 bytes with
+`low_battery_prompt` at 76 and gaming at 77 — one byte early from
+`auto_power_off` onward (`auto_power_off` is two bytes). The corrected map is
+cross-checked against a **recorded real A3959 `01:01` response**, whose labelled
+fields total exactly 91 bytes (`tests/fixtures/a3959-recorded-state.json`).
+Consequences for the app: the gaming mirror is only trustworthy from a payload
+of **79** bytes, and a 78-byte payload no longer satisfies the A3959 layout.
 
 *(implemented)*: a state frame shorter than the model's documented layout is
 rejected whole (never partially parsed); gaming/surround/dual flags update
 the UI as **device-confirmed** state where the model mirrors them; the A3959
-gaming byte is ignored below firmware 01.60.
+gaming byte is ignored below firmware 01.60. The recorded response also shows
+the read-only adaptive-sensitivity byte as `0xFF` ("unknown"), which is why the
+A3959 sound-mode block is never rejected on that byte's value (Phase 20).
 
 ## 4. Command matrix
 
@@ -112,11 +132,11 @@ that the ambient-mode enum is not a generic guess)*:
 
 ```
 byte 0  ambient sound mode:  0x00 = NoiseCanceling · 0x01 = Transparency · 0x02 = Normal
-byte 1  (manual << 4) | adaptive   (manual 1..5, adaptive 0..5)
+byte 1  (manual << 4) | adaptive   (manual 1..5; adaptive read-only, preserve report)
 byte 2  ambient sound mode (repeated)
 byte 3  ANC automation: 0x00 Manual · 0x01 Adaptive · 0x02 Multi-scene
 byte 4  wind noise: bit0 suppression on/off (bit1 = "wind detected", read-only)
-byte 5  adaptive sensitivity level
+byte 5  independent adaptive sensitivity level 0..10 (preserve report)
 byte 6  multi-scene ANC scene: 0x00 Transport · 0x01 Outdoor · 0x02 Indoor
 ```
 
@@ -154,7 +174,7 @@ byte 6  multi-scene ANC scene: 0x00 Transport · 0x01 Outdoor · 0x02 Indoor
 ## 7. Toggles — gaming `01:87`, dual `0B:84`, surround `02:86`
 
 - Gaming *(both models)*: payload `[01|00]`. A3949 mirrors the flag at state
-  byte 65; A3959 at byte 77 (firmware ≥ 01.60 only). Where no mirror exists,
+  byte 65; A3959 at payload byte 78 (firmware ≥ 01.60 only). Where no mirror exists,
   the app logs the honest "Command sent — device confirmation unavailable".
 - Dual / surround *(A3959 only)*: payload `[01|00]`, mirrored at state bytes
   73 / 74. On A3949 the frames are refused (no such hardware feature).

@@ -338,15 +338,16 @@ function a3949Payload({ batteryL = 4, batteryR = 3, fw = '01.5901.59', gaming = 
   p[65] = gaming; // gaming byte (state_update.rs: take(11)+buttons(6)+take(4))
   return p;
 }
-// A3959 state payload: 90 bytes per the OpenSCQ30 parse chain.
+// A3959 state payload: 91 bytes — OpenSCQ30 parse chain (auto_power_off is two
+// bytes) cross-checked against a recorded real A3959 state response.
 function a3959Payload({ fw = '01.6001.60', dual = 0x01, surround = 0x01, gaming = 0x01 } = {}) {
-  const p = new Uint8Array(90);
+  const p = new Uint8Array(91); // recorded real A3959 payload length
   p[2] = 8; p[3] = 7; // dual_battery(10) scale
   for (let i = 0; i < 10; i++) p[6 + i] = fw.charCodeAt(i);
   p[64] = 0x00; // ambient: NoiseCanceling
   p[73] = dual;
   p[74] = surround;
-  p[77] = gaming;
+  p[78] = gaming;
   return p;
 }
 
@@ -356,8 +357,8 @@ check(
   String(M.requiredStateLength(A3949.state)),
 );
 check(
-  'requiredStateLength: A3959 needs ≥ 78 bytes (gaming at 77, sound modes at 64..70)',
-  M.requiredStateLength(A3959.state) === 78,
+  'requiredStateLength: A3959 needs ≥ 79 bytes (gaming at 78, sound modes at 64..70)',
+  M.requiredStateLength(A3959.state) === 79,
   String(M.requiredStateLength(A3959.state)),
 );
 check(

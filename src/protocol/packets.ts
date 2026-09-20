@@ -21,7 +21,7 @@ import { CUSTOM_EQ_PRESET_ID, type EqPreset } from './presets';
  * `body_length = length − 5 − 2 − 2 − 1`) and against every captured frame in
  * PROTOCOL.md.
  */
-function frame(cat: number, type: number, payload: number[] = []): Uint8Array {
+export function frame(cat: number, type: number, payload: number[] = []): Uint8Array {
   const total = 10 + payload.length;
   return withChecksum([
     0x08, 0xee, 0x00, 0x00, 0x00,
@@ -78,6 +78,10 @@ const CLASSIC_MODE: Record<Exclude<AncMode, 'adaptive'>, number> = {
 };
 
 export interface AncIntent {
+  /** A3959 observed state; runtime requires this, offline vectors may omit it. */
+  p30iState?: Uint8Array;
+  /** Only an explicit scene selection requests multi-scene automation. */
+  p30iAutomation?: number;
   mode: AncMode;
   /** Manual ANC strength 1..5 (only meaningful when `mode === 'anc'`). */
   level: number;
@@ -140,14 +144,16 @@ function adaptiveFromLevel(level: number): number {
 export function buildP30iAnc(intent: AncIntent): Uint8Array {
   const ambient = intent.mode === 'anc' || intent.mode === 'adaptive' ? 0x00 : intent.mode === 'transparency' ? 0x01 : 0x02;
   const adaptive = intent.mode === 'adaptive';
-  const nibble = manualAdaptiveByte(intent.level, adaptive ? adaptiveFromLevel(intent.level) : 0);
+  const observed = intent.p30iState;
+  // Adaptive strength is read-only in A3959's setting_handler.rs. Sensitivity
+  // is an independent 0..10 setting, NOT adaptiveFromLevel(manual).
+  // No observed state: zero placeholders for construction-only test vectors.
+  const nibble = manualAdaptiveByte(intent.level, observed ? observed[1] & 15 : 0);
   return frame(0x06, 0x81, [
-    ambient,
-    nibble,
-    ambient,
-    adaptive ? 0x01 : 0x00,
-    intent.wind ? 0x01 : 0x00,
-    adaptive ? adaptiveFromLevel(intent.level) : 0x00,
+    ambient, nibble, ambient,
+    intent.p30iAutomation ?? (adaptive ? 1 : intent.mode === 'anc' ? 0 : observed?.[3] ?? 0),
+    intent.wind ? 1 : 0, // Never echo the read-only detected bit.
+    observed?.[5] ?? 0,
     CLASSIC_SCENE[intent.scene],
   ]);
 }

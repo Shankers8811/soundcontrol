@@ -214,16 +214,40 @@ export async function connectBridge(
   // Set by transport.close() so an intentional disconnect is never reported
   // to the UI as a dropped link.
   let closedByUs = false;
+  let downReported = false;
+  const reportDown = (reason: string) => {
+    if (closedByUs || downReported) return;
+    downReported = true;
+    onDown?.(reason);
+  };
+  let session: string | null = null;
+  let nextTx = 0;
+  const pending = new Map<string, { resolve: () => void; reject: (e: Error) => void; timer: number }>();
+  const rejectPending = (reason: string) => {
+    for (const p of pending.values()) { window.clearTimeout(p.timer); p.reject(new Error(reason)); }
+    pending.clear();
+  };
 
   const transport: Transport = {
     kind: 'bridge',
+    diagnostics: () => ({ session, channel: dspChannel }),
     label: name || 'soundcore',
     async write(data) {
       if (ws.readyState !== WebSocket.OPEN) throw new Error('Connection lost');
-      ws.send(JSON.stringify({ type: 'tx', hex: toHex(data, '') }));
+      const id = String(++nextTx);
+      await new Promise<void>((resolve, reject) => {
+        const timer = window.setTimeout(() => {
+          pending.delete(id);
+          reject(new Error('TX_SENT timeout — RFCOMM transmission unconfirmed; no automatic retry'));
+        }, 5000);
+        pending.set(id, { resolve, reject, timer });
+        try { ws.send(JSON.stringify({ type: 'tx', id, session, hex: toHex(data, '') })); }
+        catch (err) { window.clearTimeout(timer); pending.delete(id); reject(err); }
+      });
     },
     async close() {
       closedByUs = true;
+      rejectPending('Disconnected before TX_SENT');
       try {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'disconnect' }));
@@ -261,7 +285,7 @@ export async function connectBridge(
     const onClose = () => fail('The desktop helper closed the connection before the earbuds connected.');
 
     const onMsg = (ev: MessageEvent) => {
-      let msg: BridgeHello & { hex?: string };
+      let msg: BridgeHello & { hex?: string; session?: string };
       try {
         msg = JSON.parse(String(ev.data));
       } catch {
@@ -280,6 +304,8 @@ export async function connectBridge(
         return;
       }
       if (msg.type === 'connected') {
+        session = msg.session ?? null;
+        onSys(`SESSION=${session ?? 'UNAVAILABLE'} RFCOMM_CHANNEL=${msg.channel ?? 'UNKNOWN'} — control capability unverified`, false);
         if (typeof msg.channel === 'number') dspChannel = msg.channel;
         window.clearTimeout(timer);
         ws.removeEventListener('message', onMsg);
@@ -291,12 +317,33 @@ export async function connectBridge(
               hex?: string;
               message?: string;
               error?: string;
+              id?: string;
+              session?: string;
+              event?: string;
+              channel?: number;
             };
+            if (m.session && session && m.session !== session) return;
+            if (m.type === 'diagnostic') {
+              onSys(`${m.event} SESSION=${m.session} RFCOMM_CHANNEL=${m.channel}${m.id ? ` TX_ID=${m.id}` : ''}${m.hex ? ` FRAME=${m.hex}` : ''}`, false);
+            }
+            if ((m.type === 'sent' || m.type === 'error') && m.id) {
+              const p = pending.get(m.id);
+              if (p) {
+                window.clearTimeout(p.timer); pending.delete(m.id);
+                if (m.type === 'sent') p.resolve();
+                else p.reject(new Error(m.error ?? 'RFCOMM write failed'));
+              }
+            }
             if (m.type === 'rx' && m.hex) onRx(fromHex(m.hex));
             // Late diagnostics from the helper, e.g. the silent-link watchdog
             // firing seconds after the connect already resolved.
             if (m.type === 'sys' && (m.message || m.error)) {
               onSys(m.error ?? m.message ?? '', Boolean(m.error));
+              if (m.error === 'RFCOMM closed') {
+                rejectPending('RFCOMM closed before TX_SENT');
+                reportDown('RFCOMM control connection closed — device state is unavailable; reconnect.');
+                ws.close();
+              }
             }
             // A command that failed on the helper side (e.g. "Not connected"
             // when the RFCOMM link died but this WebSocket is still up) must
@@ -311,8 +358,9 @@ export async function connectBridge(
         // (helper exit/crash/restart), tell the app so it can leave the
         // "Connected" state instead of failing silently on the next write.
         ws.addEventListener('close', () => {
+          rejectPending('Helper closed before TX_SENT');
           if (!closedByUs) {
-            onDown?.(
+            reportDown(
               'The Bluetooth helper connection closed unexpectedly — the helper may have exited or restarted. Reconnect your device.',
             );
           }

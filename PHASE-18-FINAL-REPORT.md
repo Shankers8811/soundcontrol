@@ -30,8 +30,8 @@
 
 | Category | Features |
 |---|---|
-| **Protocol status** | Complete for everything the model has: 90-byte state layout documented byte-for-byte (OpenSCQ30 a3959 `state_update.rs`), identification, reads, sound modes, EQ, toggles |
-| **Supported (protocol)** | state request · battery `01:03` (scale 0–10) · charging · serial+firmware · **sound modes `06:81`** (ambient enum NC=0/Transparency=1/Normal=2 from OpenSCQ30 — not a generic guess; manual 1–5 + adaptive; wind byte; multi-scene) · **EQ `02:83` incl. custom `FE FE`** · gaming `01:87` (mirrored at byte 77, only firmware ≥ 01.60) · dual `0B:84` (byte 73) · surround `02:86` (byte 74) |
+| **Protocol status** | Complete for everything the model has: state layout documented byte-for-byte (Phase 20 corrected the length to 91 bytes and gaming to byte 78) (OpenSCQ30 a3959 `state_update.rs`), identification, reads, sound modes, EQ, toggles |
+| **Supported (protocol)** | state request · battery `01:03` (scale 0–10) · charging · serial+firmware · **sound modes `06:81`** (ambient enum NC=0/Transparency=1/Normal=2 from OpenSCQ30 — not a generic guess; manual 1–5 + adaptive; wind byte; multi-scene) · **EQ `02:83` incl. custom `FE FE`** · gaming `01:87` (mirrored at payload byte 78 — Phase 20 correction, only firmware ≥ 01.60) · dual `0B:84` (byte 73) · surround `02:86` (byte 74) |
 | **Unsupported (evidence)** | LDAC (no module) · transparency sub-modes/vocal (no field in the a3959 struct) · factory reset · classic `02:81` EQ · `10:85` game variant |
 | **Unknown** | on-device malformed-frame behavior (never sent) |
 | **Physically verified** | **NONE — pending** (hardware checklist section C) |

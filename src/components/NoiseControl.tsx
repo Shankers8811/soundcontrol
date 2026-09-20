@@ -126,10 +126,10 @@ export function NoiseControl() {
   );
 
   const disabled = !app.connected || app.busy === 'anc';
-  const isAnc = app.ancMode === 'anc' || app.ancMode === 'adaptive';
+  const isAnc = app.ancHasReport && (app.ancMode === 'anc' || app.ancMode === 'adaptive');
 
   const changeMode = (mode: 'anc' | 'normal' | 'transparency') => {
-    if (disabled || MODES.find((m) => m.id === mode)?.matches(app.ancMode)) return;
+    if (disabled) return;
     // Duplicate-command guard: ignore clicks while a mode change is in flight.
     void app.setAnc(mode).catch(() => {
       /* rolled back in the store; the error banner explains what happened */
@@ -172,11 +172,33 @@ export function NoiseControl() {
           )
         }
       >
-        <div className="flex items-start justify-center gap-8 py-2 sm:gap-12">
+        <p role="status" className="mb-4 text-xs text-mute">{app.ancStatus}</p>
+        {app.profile.id === 'p30i' && (
+          <section className="mb-4 rounded-lg border border-edge p-3 text-xs">
+            <p className="font-semibold">A3959 hardware diagnostics — physical validation pending</p>
+            <p className="my-2 text-mute">Use the same earbuds as Android. Start audio yourself and keep it playing. Each action reads state, sends source-derived transitions, waits for replies, then reads state again. No Windows audio settings are changed. Export TX/RX from Settings → Diagnostics.</p>
+            <p className="mb-2 font-mono text-[11px] text-mute">Firmware (01:05): {app.firmware} · SESSION/CHANNEL are logged with every action</p>
+            <div className="flex flex-wrap gap-2">
+              <button disabled={disabled} onClick={() => void app.readAncState().catch(() => {})}>Read state (A/C/E/G/I)</button>
+              <button disabled={disabled} onClick={() => void app.readFirmware().catch(() => {})}>Read firmware (01:05)</button>
+              <button disabled={disabled} onClick={() => void app.setAnc('normal').catch(() => {})}>B · Normal</button>
+              <button disabled={disabled} onClick={() => void app.setAnc('transparency').catch(() => {})}>D · Transparency</button>
+              <button disabled={disabled} onClick={() => void app.setAnc('anc', 1).catch(() => {})}>F · Manual 1</button>
+              <button disabled={disabled} onClick={() => void app.setAnc('anc', 5).catch(() => {})}>H · Manual 5</button>
+            </div>
+            <p className="mt-3">Record your observation for this transition (not an automated PASS):</p>
+            <div className="mt-2 flex flex-wrap gap-3">
+              <button disabled={disabled} onClick={() => app.recordAncObservation('PHYSICAL ACOUSTIC EFFECT CONFIRMED BY USER')}>I felt a change</button>
+              <button disabled={disabled} onClick={() => app.recordAncObservation('NO PHYSICAL EFFECT OBSERVED')}>No physical change</button>
+              <button disabled={disabled} onClick={() => app.recordAncObservation('PHYSICAL EFFECT UNCERTAIN')}>Unsure</button>
+            </div>
+          </section>
+        )}
+        <div className="flex items-start justify-center gap-8 py-2 sm:gap-12" aria-label="Noise cancellation mode">
           {MODES.map((m) => (
             <ModeIcon
               key={m.id}
-              active={m.matches(app.ancMode)}
+              active={app.ancHasReport && m.matches(app.ancMode)}
               pulsing={pulsing}
               label={m.label}
               icon={m.icon}
@@ -209,7 +231,7 @@ export function NoiseControl() {
                         key={lvl}
                         disabled={disabled}
                         aria-pressed={on}
-                        onClick={() => void app.setAnc(app.ancMode === 'adaptive' ? 'adaptive' : 'anc', lvl).catch(() => {})}
+                        onClick={() => void app.setAnc(app.profile.id === 'p30i' ? 'anc' : app.ancMode === 'adaptive' ? 'adaptive' : 'anc', lvl).catch(() => {})}
                         className={`h-8 w-8 rounded-lg border text-xs font-bold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${
                           on
                             ? 'border-accent bg-accent/15 text-accent-soft shadow-[0_0_10px_rgb(61_123_255/0.25)]'
@@ -246,7 +268,9 @@ export function NoiseControl() {
                 <div>
                   <p className="text-xs font-semibold text-ink">Scene</p>
                   <p className="text-[11px] text-mute">
-                    {app.profile.ancLayout === 'tws-l4nc'
+                    {app.profile.ancLayout === 'tws-p30i'
+                      ? 'Selecting a scene requests multi-scene automation, not manual strength'
+                      : app.profile.ancLayout === 'tws-l4nc'
                       ? 'Transportation profile carried in the frame'
                       : 'Cancellation scene carried in every mode'}
                   </p>
@@ -259,7 +283,7 @@ export function NoiseControl() {
                         key={sc.id}
                         disabled={disabled}
                         aria-pressed={on}
-                        onClick={() => void app.setAnc(app.ancMode, undefined, sc.id).catch(() => {})}
+                        onClick={() => void app.setAnc(app.profile.id === 'p30i' ? 'anc' : app.ancMode, undefined, sc.id).catch(() => {})}
                         className={`rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${
                           on
                             ? 'border-accent bg-accent/15 text-accent-soft'
