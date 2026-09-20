@@ -159,7 +159,7 @@ export const TARGET_MODELS: readonly ModelRegistryEntry[] = [
     identification: {
       nameAliases: ['R50i NC', 'P30i', 'A3959', 'soundcore R50i NC', 'soundcore P30i'],
       evidence:
-        'OpenSCQ30 i18n table "soundcore-a3959 = Soundcore P30i / R50i NC" + a3959 device definition; matched by ranked whole-token name matching ("R50i NC" outranks "R50i"), then confirmed by the 01:01 state layout (sound-modes block at 64, 90-byte payload, surround 74 / dual 73 / gaming 77)',
+        'OpenSCQ30 i18n table "soundcore-a3959 = Soundcore P30i / R50i NC" + a3959 device definition; matched by ranked whole-token name matching ("R50i NC" outranks "R50i"), then confirmed by the 01:01 state layout (sound-modes block at 64, 91-byte payload, surround 74 / dual 73 / gaming 78)',
     },
     physicalValidation: 'PENDING',
     commands: {
