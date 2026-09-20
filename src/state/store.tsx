@@ -1085,7 +1085,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         await write(buildGameMode(profile, on), `Gaming ${on ? 'on' : 'off'}`);
         // Task 19 — no fake success: only models that mirror the gaming flag
-        // in their state update (A3949 byte 65; A3959 byte 77 with the
+        // in their state update (A3949 byte 65; A3959 byte 78 with the
         // firmware gate) get a device-confirmed state. For every other model
         // the honest wording is logged instead of implying confirmation.
         if (profile.state.gaming == null) {

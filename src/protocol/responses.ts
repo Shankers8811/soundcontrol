@@ -89,7 +89,7 @@ export interface DeviceToggleMirror {
  * state_update.rs parse chains (see src/protocol/devices.ts):
  *
  *   A3949: gaming at 65 (no surround/dual — the model has neither feature).
- *   A3959: dual at 73, surround at 74, gaming at 77 — the gaming byte only
+ *   A3959: dual at 73, surround at 74, gaming at 78 (Phase 20) — the gaming byte only
  *          when both buds run firmware >= 01.60 (OpenSCQ30 firmware gate).
  *
  * A byte outside the payload, or an untrustworthy one, yields null — the

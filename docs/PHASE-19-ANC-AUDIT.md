@@ -66,11 +66,11 @@ Paths below are relative to `lib/src/devices/soundcore/` at that revision. This 
 | 5 | A3959 handler exposes independent sensitivity **0..10** | set to derived adaptive 1/2/3 or zero | **Discrepancy.** Preserve observed sensitivity; no new sensitivity UI or guessed value. |
 | 6 | A3959 handler explicitly offers common scene Transport=0/Outdoor=1/Indoor=2; A3959 struct requires MultiScene for changing it | same enum values, but always Manual/Adaptive selector | Scene mappings have A3959-specific source evidence, not just shared enum names. Scene changes now use MultiScene transitions; manual actions preserve the scene byte. Acoustic meanings still need comparison. |
 
-`buildP30iAnc` still accepts construction-only intents without observed state for protocol tools/tests (zero placeholders). **The real A3959 ANC action refuses to send until a fresh, valid 90-byte `01:01` state yields its seven-byte sound-mode block.** Missing/invalid state is a timeout, never guessed defaults.
+`buildP30iAnc` still accepts construction-only intents without observed state for protocol tools/tests (zero placeholders). **The real A3959 ANC action refuses to send until a fresh, valid `01:01` state yields its seven-byte sound-mode block** (Phase 20: a 91-byte payload with that block, and the read-only sensitivity byte is never range-checked — see the addendum above). Missing/invalid state is a timeout, never guessed defaults.
 
 ### Inbound evidence, independent of the builder
 
-`a3959/modules/sound_modes.rs` registers `add_partial_sound_modes_v2_with_migration`. `common/modules/sound_modes_v2/packet_handler.rs` explicitly registers **`06:01`** and parses A3959 `SoundModes::take`. `a3959/packets/inbound/state_update.rs` parses the same structure after the first 64 payload bytes of the 90-byte state.
+`a3959/modules/sound_modes.rs` registers `add_partial_sound_modes_v2_with_migration`. `common/modules/sound_modes_v2/packet_handler.rs` explicitly registers **`06:01`** and parses A3959 `SoundModes::take`. `a3959/packets/inbound/state_update.rs` parses the same structure after the first 64 payload bytes of the state (91 bytes in total — Phase 20 correction).
 
 The new parser requires seven bytes and validates ambient enums, manual/adaptive nibbles, automation, wind bitmask, sensitivity and scene bounds. It rejects truncated/unknown shapes instead of silently calling them “ANC.” This is a source-derived conservative parser; unusual real firmware bytes must be captured and audited rather than silently coerced.
 
