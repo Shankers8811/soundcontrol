@@ -1,6 +1,14 @@
 # Phase 19 — A3959 ANC failure audit
 
-Date: 2026-09-19. Device: **R50i NC / P30i, A3959 only**. PR: [#28](https://github.com/Shankers8811/soundcontrol/pull/28).
+Date: 2026-09-19. Device: **R50i NC / P30i, A3959 only**.
+
+> **Phase 20 addendum:** this audit's byte-level reasoning was re-checked against
+> a *recorded real A3959 `01:01` response* (91-byte payload, firmware `01.64`,
+> read-only sensitivity byte = `0xFF`). Two of its own conclusions were wrong and
+> are corrected in [`PHASE-20-FINAL-REPORT.md`](../PHASE-20-FINAL-REPORT.md) §2:
+> the validator rejected that real device, and the trailing offsets were one byte
+> early (gaming is at payload **78**, not 77). The nibble order used here
+> (`manual << 4 | adaptive`) is confirmed correct. PR: [#28](https://github.com/Shankers8811/soundcontrol/pull/28).
 
 **The user's hardware report is authoritative:** Android Soundcore changes ANC audibly; the desktop UI changes but physical ANC does not, even during continuous playback. Phase 18 status B is retained; its description “protocol support complete” is not evidence of physical correctness. No earbuds, Windows Bluetooth adapter, user firmware version, or Android HCI recording are available in this checkout/session. No new physical test was performed here.
 

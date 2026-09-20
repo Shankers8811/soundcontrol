@@ -146,6 +146,25 @@ firmware 10 + serial 16, then per-model blocks: A3959 eq 12 + unknown 10 + 1
 buttons 16 + cycle 1 = 126, case battery 6 bytes later at 139). Liberty 3
 Pro (A3952): sound modes at 120, case battery at 129.
 
+**A3959 trailing layout — Phase 20 correction (91-byte payload).** Everything
+after the sound-mode block was one byte early in earlier revisions.
+Cross-checked against a *recorded real A3959 `01:01` response*, whose labelled
+fields total exactly 91 bytes (`tests/fixtures/a3959-recorded-state.json`,
+OpenSCQ30 device-faker recording, serial redacted):
+
+```
+63 ambient_cycle(1) · 64..70 sound_modes(7) · 71 unknown(1) · 72 touch_tone(1)
+73 dual_connections(1) · 74 surround_sound(1) · 75..76 auto_power_off(2)
+77 low_battery_prompt(1) · 78 gaming_mode(1) · 79..90 unknown(12)
+```
+
+Two consequences the app enforces: the A3959 mirror needs a **79-byte** payload
+to trust the gaming byte (at 78, firmware ≥ 01.60), and the recorded block shows
+the **read-only adaptive-sensitivity byte (payload 69) as `0xFF`** — the
+family's unknown/unset marker, outside the documented `0..10` range. That byte
+is never written and no longer makes a state frame invalid: refusing to command
+the earbuds because of a value we do not control was a Phase 19 defect.
+
 The case offsets are kept as wire facts, but SoundControl deliberately never
 **displays** a case level: several Soundcore models do not report one (the
 official app hides it there as well) and over-ears have no case, so a visible

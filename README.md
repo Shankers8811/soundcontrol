@@ -213,19 +213,35 @@ section is the procedure that can settle it; only the owner can promote the
 physical result, and only as `PHYSICAL ACOUSTIC EFFECT CONFIRMED BY USER`.
 
 ### App icon (SC monogram)
-Every shipped icon raster — window, taskbar, desktop shortcut, installer and
-browser-tab favicon — is rendered from one vector source,
+Every shipped icon — the installed exe, desktop and Start-menu shortcuts, the
+taskbar entry, the NSIS installer/uninstaller/header, the window icon, and the
+browser-tab favicon — comes from one vector source,
 `assets/icon/sc-monogram.svg`:
 
 ```bash
 npm i --no-save @resvg/resvg-js   # generation-time tool only
-node scripts/generate-icons.mjs   # rewrites public/icon-*.png + favicon-64.png
+node scripts/generate-icons.mjs   # rewrites public/icon-*.png, favicon-64.png
+                                  # and build/icon.ico (via scripts/generate-ico.mjs)
+
+npm run icons                     # just rebuild build/icon.ico — no rasterizer
+                                  # needed; runs automatically before build:win
+npm run test:icons                # structure + authenticity + packaging wiring
 ```
 
-The generated PNGs are committed, so builds, CI and packaging never need the
-rasterizer; it is deliberately not a `package.json` dependency. Regenerate
-only when the vector source changes and commit all sizes together so the
-icon set stays pixel-consistent.
+`build/icon.ico` is a real multi-size Windows icon (16, 32, 48, 64, 128, 256 —
+byte-identical to the monogram PNGs of those sizes, verified by
+`scripts/test_icons.mjs`) and is what `package.json → build.win.icon` plus the
+three `nsis.*Icon` fields point at. Windows shows the 16/32px entries, so a
+512px PNG alone would have been scaled by Explorer; the explicit `.ico` is why
+the taskbar and shortcuts show the monogram instead of Electron artwork.
+`scripts/verify-exe-icon.mjs` additionally reads the icon **resource out of the
+packaged binary** on the Windows runner (`smoke-windows.yml`), so the claim is
+checked against the shipped exe, not just the source file.
+
+The generated PNGs and the `.ico` are committed, so builds, CI and packaging
+never need the rasterizer; it is deliberately not a `package.json` dependency.
+Regenerate only when the vector source changes and commit all sizes together so
+the icon set stays pixel-consistent.
 
 ### Build the renderer
 ```bash

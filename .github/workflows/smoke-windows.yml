@@ -45,6 +45,36 @@ jobs:
         env:
           SOUNDCONTROL_PYTHON_REQUIRED: '1'
         run: npm run build:win -- --publish never
+      # Phase 20: the icon a user actually sees on the exe, its desktop/Start
+      # menu shortcut and the taskbar comes from the PE resource. Extract it
+      # from the packaged app AND the installer and compare both with the
+      # committed monogram, so "authentic product icon, not default Electron
+      # artwork" is evidence rather than a claim. Runs before the install
+      # smoke tests, which reuse the same installer artifact.
+      - name: Verify the packaged exe + installer carry the authentic icon
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName System.Drawing
+          $targets = @{
+            'app'       = 'release\win-unpacked\SoundControl.exe'
+            'installer' = (Get-ChildItem 'release\*.exe' | Sort-Object Length -Descending | Select-Object -First 1).FullName
+          }
+          $failed = $false
+          foreach ($name in $targets.Keys) {
+            $exe = $targets[$name]
+            if (-not (Test-Path $exe)) { throw "icon check: $name executable not found at $exe" }
+            $png = "icon-from-$name.png"
+            $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($exe)
+            if ($null -eq $icon) { throw "icon check: $name ($exe) has no associated icon resource" }
+            $bitmap = $icon.ToBitmap()
+            $bitmap.Save((Join-Path $PWD $png), [System.Drawing.Imaging.ImageFormat]::Png)
+            Write-Host "ICON_SOURCE $name -> $exe"
+            node scripts/verify-exe-icon.mjs $png public/icon-32.png
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
+          }
+          if ($failed) { throw 'packaged executable does not show the authentic product icon' }
+          Write-Host 'ICON_GATE_PASS app exe and installer both carry the monogram icon'
       - name: Verify the installer upgrades an existing app
         shell: pwsh
         run: ./scripts/smoke-windows-upgrade.ps1
