@@ -30,7 +30,14 @@ import { presetById, type EqPreset } from '../protocol/presets';
 import { requiredStateLength, targetModelForProfile, withDeviceBoundary } from '../protocol/modelRegistry';
 import { createSessionGuard, parseDeviceToggles } from '../protocol/responses';
 import { AncExchange } from '../protocol/ancExchange';
-import { planP30iAnc, p30iReportMatches, validP30iSoundModes } from '../protocol/p30i';
+import {
+  P30I_SENSITIVITY_DOCUMENTED_MAX,
+  p30iReportMatches,
+  p30iSensitivityInDocumentedRange,
+  planP30iAnc,
+  validP30iSoundModes,
+} from '../protocol/p30i';
+import { runP30iAncAction } from '../protocol/p30iSequence';
 import { diagnosticFrame } from '../protocol/diagnosticPrivacy';
 import { connectBridge } from '../transports/bridge';
 import {
@@ -122,6 +129,7 @@ interface AppState {
   ancStatus: string;
   ancHasReport: boolean;
   readAncState: () => Promise<void>;
+  readFirmware: () => Promise<void>;
   recordAncObservation: (effect: string) => void;
   ancMode: AncMode;
   ancLevel: number;
@@ -910,70 +918,143 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [ancLevel, ancMode, ancScene, transVocal, windNoise],
   );
 
-  const queryAncState = useCallback(async () => {
+  /**
+   * Read the device's CURRENT sound-mode block. The frame must actually
+   * contain the block (payload >= 71 bytes) — Phase 19 additionally demanded a
+   * full 100-byte frame and a 0..10 sensitivity byte, both of which a real
+   * A3959 recording violates (0xFF in that read-only byte). A field we never
+   * write must not make the earbuds uncommandable.
+   */
+  const queryAncState = useCallback(async (note = 'ANC state request (01:01)') => {
     const t = transportRef.current;
     if (!t || profileRef.current.id !== 'p30i') throw new Error('Connect the A3959 / P30i profile first');
+    const blockOf = (f: Uint8Array): Uint8Array | null => {
+      if (f[5] !== 0x01 || f[6] !== 0x01) return null;
+      if (f.length < 9 + 71) return null;
+      // Frame offset 73 == payload offset 64 (5-byte header + cat + type + len u16).
+      const block = f.slice(73, 80);
+      return validP30iSoundModes(block) ? block : null;
+    };
     const reply = await ancExchange.current.run(
-      () => write(INIT, 'ANC diagnostic state request', true),
-      f => f[5] === 1 && f[6] === 1 && f.length >= 100 && validP30iSoundModes(f.slice(73, 80)),
+      () => write(INIT, note, true),
+      (f) => blockOf(f) !== null,
       '01:01 A3959 state',
     );
     if (transportRef.current !== t) throw new Error('Device session changed');
-    return reply.slice(73, 80);
-  }, [write]);
+    const block = blockOf(reply);
+    if (!block) throw new Error('01:01 reply did not contain a valid A3959 sound-mode block');
+    if (!p30iSensitivityInDocumentedRange(block)) {
+      pushLog(
+        'sys',
+        '',
+        `RX_SOUND_MODE_NOTE byte5=0x${block[5].toString(16).padStart(2, '0').toUpperCase()} is outside the documented 0..${P30I_SENSITIVITY_DOCUMENTED_MAX} sensitivity range — passed through verbatim (never rewritten, never used to decide a mode)`,
+      );
+    }
+    return block;
+  }, [pushLog, write]);
 
   const readAncState = useCallback(async () => {
     if (ancInFlight.current) throw new Error('ANC action already in progress');
     ancInFlight.current = true; setBusy('anc');
     const t = transportRef.current;
-    try { await queryAncState(); }
+    try {
+      const block = await queryAncState('ANC diagnostic state read (01:01)');
+      pushLog(
+        'sys',
+        '',
+        `DEVICE_STATE_READ FRAME_BLOCK=${Array.from(block).map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(' ')} — device-reported state; physical acoustic effect still unverified`,
+      );
+    }
     catch (err) { if (transportRef.current === t) setAncStatus(String(err)); pushLog('sys', '', String(err)); throw err; }
     finally { ancInFlight.current = false; setBusy(null); }
   }, [pushLog, queryAncState]);
+
+  /** Task 11: read the firmware the ANDROID comparison must be recorded against. */
+  const readFirmware = useCallback(async () => {
+    const t = transportRef.current;
+    if (!t) throw new Error('Connect a device first');
+    const meta = t.diagnostics?.();
+    pushLog(
+      'sys',
+      '',
+      `FW_QUERY MODEL=${profileRef.current.sku} PROFILE=${profileRef.current.id} FRAME=${toHex(DEVICE_INFO)} RFCOMM_CHANNEL=${meta?.channel ?? 'UNKNOWN'} SESSION=${meta?.session ?? 'UNAVAILABLE'} — 01:05 firmware + serial; record the firmware for the same-earbuds Android comparison`,
+    );
+    await write(DEVICE_INFO, 'Firmware + serial query');
+  }, [pushLog, write]);
 
   const sendAnc = useCallback(async (intent: AncIntent, note: string) => {
     if (ancInFlight.current) throw new Error('ANC action already in progress');
     ancInFlight.current = true; setBusy('anc');
     const t = transportRef.current;
-    const actionMeta = t?.diagnostics?.();
-    pushLog('sys', '', `ANC_ACTION MODEL=${profileRef.current.sku} PROFILE=${profileRef.current.id} MODE=${intent.mode} LEVEL=${intent.level} SCENE=${intent.scene} WIND=${intent.wind} FRAME=NOT_CONSTRUCTED RFCOMM_CHANNEL=${actionMeta?.channel ?? 'UNKNOWN'} SESSION=${actionMeta?.session ?? 'UNAVAILABLE'} — request; fresh state required before A3959 write`);
+    const profile = profileRef.current;
     try {
-      let before: Uint8Array | null = null;
-      if (profileRef.current.id === 'p30i') {
-        before = await queryAncState();
-        intent.p30iState = before;
-        // Preserve settings unrelated to this action from the fresh device report.
-        if (!note.startsWith('Wind')) intent.wind = !!(before[4] & 1);
-        else {
-          intent.mode = before[0] === 0 ? (before[3] === 1 ? 'adaptive' : 'anc') : before[0] === 1 ? 'transparency' : 'normal';
-          intent.p30iAutomation = before[3];
-        }
-        if (!note.includes(' L')) intent.level = before[1] >> 4;
-        if (!note.includes('Scene')) intent.scene = before[6] === 0 ? 'transport' : before[6] === 1 ? 'outdoor' : 'indoor';
+      // Every non-A3959 layout keeps the previous single-frame behaviour: only
+      // the A3959 has documented dependency rules and a state-preserving frame.
+      if (profile.id !== 'p30i') {
+        const pkt = buildAnc(profile.ancLayout, intent);
+        if (!pkt) throw new Error(`${profile.name} (${profile.sku}) has no sound-mode command`);
+        setAncStatus('Sending command…');
+        await write(pkt, note);
+        setAncStatus('Command sent — device confirmation readback is only implemented for the A3959');
+        return;
       }
-      const pkt = buildAnc(profileRef.current.ancLayout, intent);
-      if (!pkt) throw new Error('This model has no sound-mode command');
-      const steps = before ? planP30iAnc(before, pkt.slice(9, -1)) : [pkt];
+
+      const sceneFromByte = (b: number): AncScene => (b === 0 ? 'transport' : b === 1 ? 'outdoor' : 'indoor');
       setAncStatus('Command prepared — waiting for device confirmation');
-      const meta = t?.diagnostics?.();
-      for (const step of steps) {
-        if (transportRef.current !== t) throw new Error('Device session changed');
-        pushLog('sys', '', `ANC_ACTION MODEL=${profileRef.current.sku} PROFILE=${profileRef.current.id} MODE=${intent.mode} LEVEL=${intent.level} SCENE=${intent.scene} WIND=${intent.wind} FRAME=${toHex(step)} RFCOMM_CHANNEL=${meta?.channel ?? 'UNKNOWN'} SESSION=${meta?.session ?? 'UNAVAILABLE'} — source-derived transition, physical effect unverified`);
-        if (before) {
-          await ancExchange.current.run(() => write(step, note, true), f => f[5] === 6 && f[6] === 0x81, '06:81 reply');
-          pushLog('sys', '', 'Device 06:81 reply received — not a sound-mode report or acoustic confirmation');
-        } else await write(step, note, true);
+      const result = await runP30iAncAction(
+        {
+          readState: (phase) => queryAncState(phase === 'pre' ? 'ANC pre-read (01:01)' : 'ANC read-back (01:01)'),
+          buildTarget: (current) => {
+            const it: AncIntent = { ...intent, p30iState: current };
+            // Preserve everything this particular action does not change.
+            if (!note.startsWith('Wind')) it.wind = (current[4] & 1) !== 0;
+            else it.p30iAutomation = current[3];
+            if (!note.includes(' L')) it.level = current[1] >> 4;
+            if (!note.includes('Scene')) it.scene = sceneFromByte(current[6]);
+            const pkt = buildAnc('tws-p30i', it);
+            if (!pkt) throw new Error('A3959 sound-mode frame could not be built');
+            return pkt.slice(9, -1);
+          },
+          write: (frame) => write(frame, note, true),
+          // The reply waiter is registered synchronously next to the write, so
+          // an acknowledgement that arrives early cannot be missed.
+          awaitReply: () =>
+            ancExchange.current
+              .run(() => Promise.resolve(), (f) => f[5] === 0x06 && f[6] === 0x81, '06:81 reply')
+              .then(() => undefined),
+          settled: () => transportRef.current === t,
+          meta: () => {
+            const m = t?.diagnostics?.();
+            return { channel: m?.channel ?? null, session: m?.session ?? null };
+          },
+          log: (line) => pushLog('sys', '', line),
+        },
+        {
+          mode: intent.mode,
+          level: intent.level,
+          scene: intent.scene,
+          wind: intent.wind,
+          label: note,
+        },
+        planP30iAnc,
+        p30iReportMatches,
+      );
+
+      if (toHex(result.before) !== toHex(result.after)) {
+        pushLog(
+          'sys',
+          '',
+          `DEVICE_STATE_CHANGED before=${toHex(result.before)} after=${toHex(result.after)} — the device's reported bytes changed; acoustic effect still unverified`,
+        );
       }
-      setAncStatus('Command sent — waiting for device confirmation');
-      if (before) {
-        const actual = await queryAncState();
-        const matches = p30iReportMatches(actual, pkt.slice(9, -1));
-        const status = matches ? 'DEVICE REPORT CONFIRMED — physical acoustic effect unverified' : 'DEVICE REPORT MISMATCH — device state wins; requested state not confirmed';
-        setAncStatus(status); pushLog('sys', '', status);
-      }
+      const status = result.confirmed
+        ? `DEVICE REPORT CONFIRMED (${result.steps} transition${result.steps === 1 ? '' : 's'}) — physical acoustic effect unverified`
+        : 'DEVICE REPORT MISMATCH — the device state wins; the requested state was not confirmed';
+      setAncStatus(status);
+      pushLog('sys', '', status);
     } catch (err) {
       if (transportRef.current === t) setAncStatus(`ANC unconfirmed: ${String(err)}`);
-      pushLog('sys', '', `ANC_ERROR ${String(err)} — no automatic retry; use Read state`);
+      pushLog('sys', '', `ANC_ERROR ${String(err)} — no automatic retry; use Read state to see what the device actually reports`);
       throw err;
     } finally { ancInFlight.current = false; setBusy(null); }
   }, [pushLog, queryAncState, write]);
@@ -1219,6 +1300,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ancHasReport,
       ancStatus,
       readAncState,
+      readFirmware,
       recordAncObservation,
       ancMode,
       ancLevel,

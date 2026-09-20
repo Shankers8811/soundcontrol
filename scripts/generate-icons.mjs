@@ -17,6 +17,10 @@
  *   icon-512/256/128/64/48/32/16.png  — app, exe, installer, taskbar,
  *                                       shortcut, tray source, favicon
  *   favicon-64.png                    — browser tab icon (index.html)
+ *   build/icon.ico                    — Windows exe / shortcut / taskbar /
+ *                                       NSIS installer icon, built from the
+ *                                       PNGs above by scripts/generate-ico.mjs
+ *                                       (no extra dependency)
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -59,4 +63,15 @@ for (const size of SIZES) {
 const favicon = readFileSync(join(ROOT, 'public', 'icon-64.png'));
 writeFileSync(join(ROOT, 'public', 'favicon-64.png'), favicon);
 console.log('  wrote public/favicon-64.png (copy of icon-64.png)');
-console.log('done — commit the PNGs; no runtime dependency added.');
+
+// Windows needs a real multi-size .ico for the exe, shortcuts, taskbar and the
+// NSIS installer; build it from the PNGs just rendered. `npm run icons` does
+// only this step, so CI can rebuild the .ico without the SVG rasterizer.
+const { buildIco, ICO_SIZES } = await import('./generate-ico.mjs');
+const { writeFileSync, mkdirSync } = await import('node:fs');
+const { join } = await import('node:path');
+mkdirSync(join(ROOT, 'build'), { recursive: true });
+const ico = buildIco();
+writeFileSync(join(ROOT, 'build', 'icon.ico'), ico);
+console.log(`  wrote build/icon.ico (${ICO_SIZES.join(', ')} — ${ico.length} bytes)`);
+console.log('done — commit the PNGs and build/icon.ico; no runtime dependency added.');

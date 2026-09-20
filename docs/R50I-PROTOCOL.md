@@ -68,7 +68,7 @@ command registry and the model gate before transmission; see
 *(OpenSCQ30 a3949/a3959 `packets/inbound/state_update.rs`)* — the layouts
 DIFFER, which is itself identification evidence:
 
-| Offset | A3949 (67-byte payload) | A3959 (90-byte payload) |
+| Offset | A3949 (67-byte payload) | A3959 (91-byte payload) |
 |---|---|---|
 | 0–1 | TWS status | TWS status |
 | 2 / 3 | battery left / right (**scale 0..5**, `0xFF` = absent) | battery left / right (**scale 0..10**) |
@@ -81,14 +81,25 @@ DIFFER, which is itself identification evidence:
 | 55–62 | buttons(6 × 1 byte) | unknown(1) + buttons(8 × 1 byte) |
 | 63–64 | unknown(4) | ambient_cycle(1) at 63 |
 | 64–70 | — | **sound modes (7 bytes, §5)** |
-| 65 | **gaming flag** | touch_tone 72, **dual flag 73**, **surround flag 74**, auto_power_off 75, low_battery_prompt 76 |
-| 66 | touch_tone | **gaming flag 77** — only trustworthy when min(both firmware) ≥ **01.60** *(OpenSCQ30 firmware gate)* |
-| 78–89 | — | unknown(12) — **UNKNOWN — NOT VERIFIED** |
+| 65 | **gaming flag** | unknown(1) at 71, touch_tone 72, **dual flag 73**, **surround flag 74**, auto_power_off 75–76 (enabled + duration) |
+| 66 | touch_tone | low_battery_prompt 77 |
+| — | — | **gaming flag 78** — only trustworthy when min(both firmware) ≥ **01.60** *(OpenSCQ30 firmware gate)* |
+| 79–90 | — | unknown(12) — **UNKNOWN — NOT VERIFIED** |
+
+**Phase 20 correction:** this table previously said 90 bytes with
+`low_battery_prompt` at 76 and gaming at 77 — one byte early from
+`auto_power_off` onward (`auto_power_off` is two bytes). The corrected map is
+cross-checked against a **recorded real A3959 `01:01` response**, whose labelled
+fields total exactly 91 bytes (`tests/fixtures/a3959-recorded-state.json`).
+Consequences for the app: the gaming mirror is only trustworthy from a payload
+of **79** bytes, and a 78-byte payload no longer satisfies the A3959 layout.
 
 *(implemented)*: a state frame shorter than the model's documented layout is
 rejected whole (never partially parsed); gaming/surround/dual flags update
 the UI as **device-confirmed** state where the model mirrors them; the A3959
-gaming byte is ignored below firmware 01.60.
+gaming byte is ignored below firmware 01.60. The recorded response also shows
+the read-only adaptive-sensitivity byte as `0xFF` ("unknown"), which is why the
+A3959 sound-mode block is never rejected on that byte's value (Phase 20).
 
 ## 4. Command matrix
 

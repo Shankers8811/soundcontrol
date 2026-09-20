@@ -69,12 +69,12 @@ quiet minute, and record the observation honestly.
 
 | # | Feature | Expected |
 |---|---|---|
-| C1 | ANC on (level 3) | Frame `06:81` TX, byte0 `00`, manual high nibble `3` (low nibble preserved from actual device state); device mirrors sound modes (`06:01`/state) and the UI shows the confirmed mode |
+| C1 | ANC on (level 3) | Frame `06:81` TX, byte0 `00`, manual high nibble `3`, low nibble (read-only adaptive strength) preserved from the device's own state — never synthesized from the level; device mirrors sound modes (`06:01`/state) and the UI shows the confirmed mode |
 | C2 | Transparency | byte0 `01`; no vocal sub-mode control is offered (not supported on this model) |
 | C3 | Normal | byte0 `02` |
 | C4 | Wind-noise toggle | byte4 bit0 follows the toggle in the `06:81` payload |
 | C5 | EQ factory preset + **custom curve** | `02:83` factory preset; custom drag commits a `FE FE` frame (this model supports custom presets per OpenSCQ30 — VERIFY on hardware) |
-| C6 | Gaming mode | `01:87`; state byte 77 confirms — **only when both buds report firmware ≥ 01.60** (record the firmware shown; below 01.60 the app correctly says confirmation unavailable) |
+| C6 | Gaming mode | `01:87`; state byte **78** confirms — **only when both buds report firmware ≥ 01.60** (record the firmware shown; below 01.60 the app correctly says confirmation unavailable). Phase 20: the byte is 78, not 77 — the corrected 91-byte A3959 layout is verified against a recorded real state response |
 | C7 | Dual connection | `0B:84`; state byte 73 confirms |
 | C8 | 3D Surround | `02:86`; state byte 74 confirms |
 | C9 | LDAC / factory reset | LDAC toggle **not shown** (no LDAC on this model); Factory reset shows the honest "not offered" note |
@@ -144,7 +144,10 @@ source-derived candidate correction, not a claimed hardware fix.
    start/stop audio, change volume/mute, select endpoints, EQ Windows, change
    spatial audio/enhancements, or manipulate the mixer. Playback is only a test
    signal. Take the read-only Windows audio baseline **after** playback starts.
-7. Open Noise Control → **A3959 hardware diagnostics**. Also open Settings →
+7. Open Noise Control → **A3959 hardware diagnostics**. To know what *should* appear
+   for your earbuds' current reported state, run `npm run anc:frames` on the
+   computer (read-only tool) — it prints the exact `06:81` frame for every action
+   against a stated baseline block, including the recorded-evidence default. Also open Settings →
    Diagnostics / Hex Console when needed. Save the log for this session. Capture
    `ANC_ACTION`, `TX_ACCEPTED`, `TX_SENT`, `RX_RECEIVED`, `RX_FRAME`,
    `RX_SOUND_MODE_MIRROR`, `DEVICE_STATE_CHANGED`, timeouts/errors and the final

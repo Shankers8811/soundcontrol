@@ -30,14 +30,22 @@ const P30I_STATE: StateOffsets = {
   eqPresetId: 32,
   eqBands: { at: 34, count: 10 },
   soundModes: 64,
-  // Trailing block (OpenSCQ30 a3959 state_update.rs, Phase 18): buttons(8)
-  // at 55…62, ambient_cycle 63, sound_modes 64…70, unknown 71, touch_tone
-  // 72, dual_connections_enabled 73, surround_sound 74, auto_power_off 75,
-  // low_battery_prompt 76, gaming_mode 77 (only when min firmware >= 01.60),
-  // unknown(12) → payload is 90 bytes.
+  // Trailing block — re-derived in Phase 20 from the OpenSCQ30 a3959
+  // state_update.rs parse chain (each field's own `bytes()` length) AND
+  // cross-checked against a RECORDED real A3959 state response, which totals
+  // exactly 91 payload bytes (tests/fixtures/a3959-recorded-state.json):
+  //
+  //   55…62 buttons(8 × 1)  ·  63 ambient_cycle(1)  ·  64…70 sound_modes(7)
+  //   71 unknown(1)  ·  72 touch_tone(1)  ·  73 dual_connections_enabled(1)
+  //   74 surround_sound(1)  ·  75…76 auto_power_off(2: enabled + duration)
+  //   77 low_battery_prompt(1)  ·  78 gaming_mode(1, firmware >= 01.60)
+  //   79…90 unknown(12)   →  payload is 91 bytes
+  //
+  // Phase 18 had gaming at 77 and a 90-byte payload, i.e. one byte early on
+  // everything after auto_power_off (auto_power_off is two bytes, not one).
   dualConnections: 73,
   surround: 74,
-  gaming: 77,
+  gaming: 78,
   gamingMinFirmware: '01.60',
 };
 
@@ -151,7 +159,7 @@ export const DEVICES: DeviceProfile[] = [
     eqCommand: '02:83',
     customEq: true,
     state: P30I_STATE,
-    source: `${OPENSCQ30} (a3959): dual_battery(10), a3959_sound_modes (NC=0/Transparency=1/Normal=2, manual + read-only adaptive strength, independent sensitivity, multi-scene, wind; Phase 19 source-derived transitions, user-reported physical failure unresolved), equalizer_with_drc_tws with custom preset 0xFEFE, gaming_mode (state byte 77, firmware >= 01.60), dual_connections (73), surround_sound (74)`,
+    source: `${OPENSCQ30} (a3959): dual_battery(10), a3959_sound_modes (NC=0/Transparency=1/Normal=2, manual + read-only adaptive strength, independent sensitivity, multi-scene, wind; Phase 19 source-derived transitions, user-reported physical failure unresolved), equalizer_with_drc_tws with custom preset 0xFEFE, gaming_mode (payload byte 78, firmware >= 01.60; Phase 20 correction — was documented as 77), dual_connections (73), surround_sound (74)`,
     verified: true,
   },
   {

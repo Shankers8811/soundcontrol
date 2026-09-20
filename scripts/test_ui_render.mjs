@@ -432,7 +432,15 @@ check('favicon-64.png exists and matches icon-64.png', existsSync(fav) && readFi
 check('index.html references the shipped favicon', readFileSync(join(ROOT, 'index.html'), 'utf8').includes('favicon-64.png'));
 check('vector source of truth is committed', existsSync(join(ROOT, 'assets', 'icon', 'sc-monogram.svg')));
 const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
-check('electron packaging points at the monogram icon', (pkg.build?.win?.icon ?? pkg.build?.icon) === 'public/icon-512.png');
+// Phase 20: the exe/shortcuts/taskbar and the NSIS installer now take a real
+// multi-size .ico built from these monogram PNGs (scripts/generate-ico.mjs),
+// because Windows shows the 16/32px entries, not the 512px source.
+check('electron packaging points at the multi-size monogram .ico', pkg.build?.win?.icon === 'build/icon.ico');
+check('the .ico is committed so a Windows build never ships Electron artwork', existsSync(join(ROOT, 'build', 'icon.ico')) && statSync(join(ROOT, 'build', 'icon.ico')).size > 1000);
+check('the installer/uninstaller/header icons use the same file',
+  pkg.build?.nsis?.installerIcon === 'build/icon.ico' &&
+  pkg.build?.nsis?.uninstallerIcon === 'build/icon.ico' &&
+  pkg.build?.nsis?.installerHeaderIcon === 'build/icon.ico');
 check('icon renderer needs no package.json dependency', !pkg.dependencies?.['@resvg/resvg-js'] && !pkg.devDependencies?.['@resvg/resvg-js']);
 
 /* ------------------------------------------------------------- verdict */
