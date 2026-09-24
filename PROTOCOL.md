@@ -193,6 +193,13 @@ From OpenSCQ30 `a3959/structures/sound_modes.rs`:
 6  multi-scene scene            00 Transport · 01 Outdoor · 02 Indoor
 ```
 
+Android Soundcore RFCOMM captures for A3959 use `0x5` as the manual
+sub-level and `0x1` as the adaptive sub-level. Mode changes retain a
+level-5 baseline, so the observed Adaptive vector is `00 51 00 01 01 00
+[scene]`; manual level 5 is `00 55 00 00 01 00 [scene]`. The desktop packet
+builder follows these captured values rather than the older inferred
+level-dependent adaptive mapping.
+
 This model has **no transparency sub-mode byte** (OpenSCQ30 changelog:
 "R50i NC should not have transparency modes"), so the app hides that option.
 
