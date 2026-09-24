@@ -298,9 +298,16 @@ export function buildGameMode(profile: DeviceProfile, on: boolean): Uint8Array {
 /**
  * 3D Surround Sound — `02:86`, OpenSCQ30 `SET_SURROUND_SOUND_COMMAND`.
  * (Previously labelled "3D Spatial Audio"; the frame is the surround toggle.)
+ *
+ * Real Android HCI capture (Pixel 8 → R50i NC) reveals the protocol includes
+ * two undocumented padding/extended-type bytes before the state toggle:
+ *   `02 86 0b 00 [01=on / 00=off]`
+ *
+ * The `0b` byte appears to be a sub-type or extended opcode; `00` is padding.
+ * Without these bytes, the device does not enable the 3D Surround audio effect.
  */
 export function buildSurroundSound(on: boolean): Uint8Array {
-  return frame(0x02, 0x86, [on ? 0x01 : 0x00]);
+  return frame(0x02, 0x86, [0x0b, 0x00, on ? 0x01 : 0x00]);
 }
 
 /** Factory reset — `01:85`, the only device OpenSCQ30 maps it to (Motion+). */
