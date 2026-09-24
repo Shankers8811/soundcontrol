@@ -348,6 +348,17 @@ export function parseSoundModes(
   };
   const manual = (payload[1] >> 4) & 0x0f;
   if (manual >= 1 && manual <= 5) report.level = manual;
+  // TWS sound-mode mirrors carry the automation selector at byte 3:
+  // 01 means Adaptive ANC. Preserve that device-confirmed state instead of
+  // reducing every ANC mirror to manual ANC.
+  if (
+    b0 === 0x00 &&
+    (layout === 'tws-p30i' || layout === 'tws-l4nc' || layout === 'tws-l3pro') &&
+    payload.length >= 4 &&
+    payload[3] === 0x01
+  ) {
+    report.mode = 'adaptive';
+  }
   if (layout === 'tws-l4nc' && payload.length >= 5) {
     report.transVocal = (payload[2] & 0x01) !== 0;
     report.wind = (payload[4] & 0x01) !== 0;
