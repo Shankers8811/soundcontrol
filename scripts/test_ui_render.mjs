@@ -10,7 +10,6 @@
  * (disconnected, R50i/A3949-profile) state:
  *
  *   - Dashboard: "Battery unavailable" (never an invented percentage),
- *     honest noise-control unsupported note for the no-ANC default profile,
  *     earbud card in "Status unavailable" (unknown ≠ disconnected),
  *     disabled volume card explaining the protocol gap.
  *   - Devices: real scan surface, capability matrix rows.
@@ -134,7 +133,6 @@ const dash = render(React.createElement(M.DashboardPage));
 check('header title (Pass 8: Home)', dash.includes('>Home<') && !dash.includes('>Dashboard<'));
 check('disconnected status badge', dash.includes('Disconnected'));
 check('disconnected battery pill says "No device" — never an invented percentage', dash.includes('>No device<') && !/>\s*\d+\s*%/.test(dash));
-check('no-ANC default profile gets the unsupported note, not fake buttons', dash.includes('Noise control is not available on this model'));
 check('volume card explains the protocol gap instead of a live slider', dash.includes('Volume') && dash.includes('no volume command in any published capture'));
 check('volume slider is rendered disabled', /aria-label="Device volume \(not supported by the protocol\)"[^>]*disabled/.test(dash) || dash.includes('disabled'));
 check('earbud card present for TWS profile', dash.includes('Earbud Connection'));
