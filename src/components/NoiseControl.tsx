@@ -242,7 +242,7 @@ export function NoiseControl() {
                 <Toggle
                   label="Adaptive noise cancelling"
                   checked={app.ancMode === 'adaptive'}
-                  disabled={disabled || !isAnc}
+                  disabled={disabled}
                   onChange={(on) => void app.setAnc(on ? 'adaptive' : 'anc').catch(() => {})}
                 />
               </div>
