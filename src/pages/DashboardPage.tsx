@@ -2,7 +2,6 @@ import { useApp } from '../state/store';
 import { batteryPercent } from '../state/derive';
 import { EarbudStatusCard } from '../components/EarbudStatusCard';
 import { IconBattery, IconBolt, IconBt, IconDevices } from '../components/Icons';
-import { NoiseControl } from '../components/NoiseControl';
 import { QuickActions } from '../components/QuickActions';
 import { VolumeControl } from '../components/VolumeControl';
 import { Button, Card, InfoRow, PageHeader, StatusBadge } from '../components/ui';
@@ -207,7 +206,6 @@ export function DashboardPage() {
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
           <div className="space-y-4 xl:col-span-7">
-            <NoiseControl />
             <QuickActions />
           </div>
 

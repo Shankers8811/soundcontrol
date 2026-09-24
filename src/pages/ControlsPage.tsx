@@ -19,7 +19,7 @@ import type { ReactNode } from 'react';
  * device operations.
  *
  * The page leads with the existing NoiseControl component (ANC modes, level
- * and scenes — the same component Home renders, single implementation), then
+ * and scenes), then
  * the model's real feature switches. Every toggle here sends a documented,
  * captured frame (01:87/10:85 gaming, 02:86 surround, 0B:84 dual,
  * 01:7F/01:FF LDAC) and rolls back if the write fails. Gesture remapping is
@@ -102,9 +102,8 @@ export function ControlsPage() {
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <div className="space-y-4 xl:col-span-7">
           {/* --------------------------------------------- noise control */}
-          {/* The same real ANC component Home shows — modes, level, scenes,
-              capability gating and rollback are all inherited, nothing is
-              duplicated or re-implemented here. */}
+          {/* Modes, level, scenes, capability gating and rollback all live in
+              the shared component; this page is its single presentation. */}
           <NoiseControl />
 
           {/* ---------------------------------------------------- features */}
