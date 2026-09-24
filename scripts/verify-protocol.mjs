@@ -346,9 +346,12 @@ const p30iMax = buildP30iAnc({ mode: 'anc', level: 5, scene: 'outdoor', transVoc
 ok('P30i ANC payload is 7 bytes', p30iMax.length === 17, `${p30iMax.length}`);
 ok('P30i byte0 == byte2 (ambient repeated)', p30iMax[9] === p30iMax[11]);
 ok('P30i manual level in the high nibble', (p30iMax[10] >> 4) === 5, `0x${p30iMax[10].toString(16)}`);
+ok('P30i manual sub-level matches Android (5)', (p30iMax[10] & 0x0f) === 5, `0x${p30iMax[10].toString(16)}`);
 ok('P30i automation = manual', p30iMax[12] === 0x00);
 const p30iAdaptive = buildP30iAnc({ mode: 'adaptive', level: 3, scene: 'outdoor', transVocal: false, wind: false });
 ok('P30i automation = adaptive', p30iAdaptive[12] === 0x01);
+ok('P30i adaptive vector matches Android (0x51)', p30iAdaptive[10] === 0x51);
+ok('P30i adaptive sensitivity matches Android (0)', p30iAdaptive[14] === 0x00);
 const p30iWind = buildP30iAnc({ mode: 'anc', level: 2, scene: 'outdoor', transVocal: false, wind: true });
 ok('P30i wind bit', (p30iWind[13] & 0x01) === 1);
 
