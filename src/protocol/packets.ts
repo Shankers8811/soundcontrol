@@ -140,14 +140,19 @@ function adaptiveFromLevel(level: number): number {
 export function buildP30iAnc(intent: AncIntent): Uint8Array {
   const ambient = intent.mode === 'anc' || intent.mode === 'adaptive' ? 0x00 : intent.mode === 'transparency' ? 0x01 : 0x02;
   const adaptive = intent.mode === 'adaptive';
-  const nibble = manualAdaptiveByte(intent.level, adaptive ? adaptiveFromLevel(intent.level) : 0);
+  // Android's A3959 frames use an adaptive sub-level of 1 and a manual
+  // sub-level of 5. Mode changes also retain the Android app's level-5
+  // baseline; manual level buttons then replace only the high nibble.
+  const nibble = adaptive
+    ? manualAdaptiveByte(5, 1)
+    : manualAdaptiveByte(intent.mode === 'anc' ? intent.level : 5, intent.mode === 'anc' ? 5 : 1);
   return frame(0x06, 0x81, [
     ambient,
     nibble,
     ambient,
     adaptive ? 0x01 : 0x00,
     intent.wind ? 0x01 : 0x00,
-    adaptive ? adaptiveFromLevel(intent.level) : 0x00,
+    0x00,
     CLASSIC_SCENE[intent.scene],
   ]);
 }
