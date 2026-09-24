@@ -353,6 +353,12 @@ eq('l4nc: manual level 3 + wind on', parseSoundModes([0x00, 0x30, 0x00, 0x00, 0x
 eq('p30i: adaptive nibble below 1 is not a level', parseSoundModes([0x02, 0x00, 0x00, 0x00, 0x00], 'tws-p30i'), {
   mode: 'normal', wind: false,
 });
+eq('p30i: automation byte confirms adaptive ANC', parseSoundModes([0x00, 0x53, 0x00, 0x01, 0x00], 'tws-p30i'), {
+  mode: 'adaptive', level: 5, wind: false,
+});
+eq('l4nc: automation byte confirms adaptive ANC', parseSoundModes([0x00, 0x32, 0x00, 0x01, 0x00], 'tws-l4nc'), {
+  mode: 'adaptive', level: 3, transVocal: false, wind: false,
+});
 // TEST 12 input — a malformed mirror must be REJECTED, so the last confirmed
 // mode survives (the store only moves ANC state on a non-null report).
 eq('garbage mode byte → null (confirmed state untouched)', parseSoundModes([0x07, 0x00, 0x00, 0x00], 'classic'), null);
