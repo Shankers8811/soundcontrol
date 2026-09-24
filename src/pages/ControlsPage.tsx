@@ -37,6 +37,7 @@ function FeatureToggle({
   busyKey,
   onChange,
   wire,
+  confirmed,
 }: {
   icon: ReactNode;
   title: string;
@@ -45,6 +46,7 @@ function FeatureToggle({
   busyKey: 'gaming' | 'surround' | 'dual' | 'ldac';
   onChange: (on: boolean) => Promise<void>;
   wire: string;
+  confirmed: boolean;
 }) {
   const app = useApp();
   const busy = app.busy === busyKey;
@@ -65,12 +67,17 @@ function FeatureToggle({
         <p className="mt-0.5 text-xs leading-snug text-mute">{sub}</p>
       </div>
       <Toggle
-        label={title}
+        label={`${title}: ${checked ? 'On' : 'Off'}`}
         checked={checked}
         disabled={!app.connected || app.busy !== null}
         onChange={(on) => void onChange(on).catch(() => {})}
       />
-      {busy && <span className="text-[10px] font-semibold text-warn blink">sending…</span>}
+      <div className="w-14 shrink-0 text-right">
+        <span className={`block text-[10px] font-semibold ${checked ? 'text-accent-soft' : 'text-mute'}`}>
+          {busy ? 'sending…' : checked ? 'On' : 'Off'}
+        </span>
+        <span className="block text-[9px] text-faint">{confirmed ? 'device state' : 'write only'}</span>
+      </div>
     </div>
   );
 }
@@ -126,6 +133,7 @@ export function ControlsPage() {
                     checked={app.gaming}
                     busyKey="gaming"
                     onChange={app.setGaming}
+                    confirmed={app.profile.state.gaming !== null}
                   />
                 )}
                 {caps.supportsSurround && (
@@ -137,6 +145,7 @@ export function ControlsPage() {
                     checked={app.surround}
                     busyKey="surround"
                     onChange={app.setSurroundSound}
+                    confirmed={app.profile.state.surround !== null}
                   />
                 )}
                 {caps.supportsDual && (
@@ -148,6 +157,7 @@ export function ControlsPage() {
                     checked={app.dual}
                     busyKey="dual"
                     onChange={app.setDual}
+                    confirmed={app.profile.state.dualConnections !== null}
                   />
                 )}
                 {caps.supportsLdac && (
@@ -159,6 +169,7 @@ export function ControlsPage() {
                     checked={app.ldac}
                     busyKey="ldac"
                     onChange={app.setLdac}
+                    confirmed={false}
                   />
                 )}
                 {!app.connected && (
