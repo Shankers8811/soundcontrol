@@ -191,6 +191,13 @@ export function NoiseControl() {
             Connect a device to change its noise-control mode.
           </p>
         )}
+        {app.connected && app.profile.kind === 'earbuds' && (
+          <p className="mt-3 text-center text-[11px] text-faint">
+            Desktop control remains available when either earbud is connected. The command is sent
+            to the connected Soundcore control link; the other side may remain in its previous
+            state until it reconnects.
+          </p>
+        )}
 
         {/* Sub-options — only the bytes this model's layout really carries. */}
         {(sub.level || sub.adaptive || sub.scenes || sub.wind || sub.transVocal) && (
