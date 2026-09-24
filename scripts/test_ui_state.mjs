@@ -359,6 +359,10 @@ eq('garbage mode byte → null (confirmed state untouched)', parseSoundModes([0x
 eq('short payload → null', parseSoundModes([0x00], 'classic'), null);
 eq('layouts without ANC never parse', parseSoundModes([0x00, 0x00, 0x00, 0x00], 'none'), null);
 
+console.log('\n[3d] single-earbud ANC capability');
+const p30i = DEVICES.find((d) => d.id === 'p30i');
+eq('P30i ANC remains supported without both-side telemetry', deriveCapabilities(p30i).supportsNoiseControl, true);
+
 /* ======================= 4. connection phase ============================ */
 
 console.log('\n[4] connection phase precedence');
