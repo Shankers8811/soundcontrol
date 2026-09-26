@@ -79,7 +79,13 @@ installer. Three gates enforce that:
 
 1. **Credentials gate (before the build).** If `WIN_CSC_LINK` or
    `WIN_CSC_KEY_PASSWORD` secrets are missing, the job fails immediately with
-   instructions — it does not build an unsigned installer.
+   instructions — it does not build an unsigned installer. The step prints a
+   per-secret inventory (each candidate name marked `[set]`/`[MISSING]` with
+   its byte size — never a value), names exactly which secret is absent, and
+   writes the same to the job summary. It also calls out the case where the
+   secrets *do* exist but are invisible to the run, which happens for
+   `pull_request` runs from a fork and for actors whose token cannot read
+   repository secrets.
 2. **Certificate validation (after staging, before the build).** The staged
    `.p12` is loaded with the secret password (never printed) and must carry a
    private key, the **Code Signing EKU** (1.3.6.1.5.5.7.3.3), a current
@@ -248,6 +254,16 @@ npm run build:win -- --publish never --config.win.forceCodeSigning=true
   run log without failing.
 * **A release is only published after the verification gate passes.** No
   step in the release workflow can publish an unsigned or tampered installer.
+* **The published asset must be named `SoundControl-Setup.exe`.** A final
+  post-publish step asserts that name, because `src/lib/downloads.ts` (the
+  in-app download button), `README.md` and `PUBLISH.md` all deep-link
+  `/releases/latest/download/SoundControl-Setup.exe` — any other asset name
+  makes that URL 404. If an existing release has a mis-named asset, run the
+  **Repair release installer asset name** workflow; see
+  [PUBLISH.md](../PUBLISH.md) → *“The asset name is a contract”*. That workflow
+  only copies an already-published installer to the canonical name and reports
+  its signature status truthfully — it cannot build or sign anything, so it is
+  not a route around the gates above.
 
 ## Verification commands
 

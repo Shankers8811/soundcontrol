@@ -30,6 +30,57 @@ The installer link is:
 
 `https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup.exe`
 
+## The asset name is a contract — keep it exact
+
+That link only resolves if the release carries an asset named **exactly**
+`SoundControl-Setup.exe`. The name is hard-coded in three places:
+
+| Consumer | Location |
+|---|---|
+| In-app download button | `src/lib/downloads.ts` → `WINDOWS_DOWNLOAD_URL` |
+| README download badge/link | `README.md` |
+| This document | `PUBLISH.md` |
+
+Any other name — electron-builder's default `SoundControl Setup 1.0.7.exe`, a
+dot-separated `SoundControl.Setup.1.0.7.exe`, or anything hand-uploaded —
+makes the URL return **404** and silently breaks the download button for every
+installed client, while the release page itself still looks fine.
+
+The release workflow therefore ends with a **"Verify the canonical installer
+asset name"** step that fails the run if the published release does not expose
+`SoundControl-Setup.exe`.
+
+### Repairing a release whose asset has the wrong name
+
+Run the **Repair release installer asset name** workflow
+(`.github/workflows/repair-release-asset-name.yml`) — Actions → that workflow →
+*Run workflow*:
+
+| Input | Meaning |
+|---|---|
+| `tag` | the release to fix, e.g. `v1.0.7` |
+| `dry_run` | report what would change, upload nothing |
+| `remove_mismatched_exe` | also delete the other `.exe` assets, leaving only the canonical one |
+
+It copies the already-published installer to the canonical name and verifies
+the stable link resolves. It **never modifies the bytes** — it validates that
+the asset really is a Windows PE/NSIS installer, records its SHA-256, and
+reports its Authenticode status honestly. It builds nothing and cannot publish
+a *new* installer: only `release-windows.yml`, with its signing gates, does
+that. If a release has several candidate installers it refuses to guess and
+fails instead.
+
+Equivalent by hand, if you prefer:
+
+```bash
+gh release download v1.0.7 --pattern '*.exe' --dir /tmp/sc
+mv "/tmp/sc/SoundControl.Setup.1.0.7.exe" /tmp/sc/SoundControl-Setup.exe
+gh release upload v1.0.7 /tmp/sc/SoundControl-Setup.exe --clobber
+# confirm the stable link now resolves:
+curl -sS -o /dev/null -w '%{http_code}\n' -L -r 0-0 \
+  https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup.exe
+```
+
 ## Code signing (required for releases)
 
 Releases must be Authenticode-signed — the release workflow fails without
@@ -69,6 +120,14 @@ configuring them.
 ## Verify a release
 
 - Confirm the release contains only `SoundControl-Setup.exe`.
+- Confirm the stable download link resolves (must be `200`/`206`, not `404`):
+
+  ```bash
+  curl -sS -o /dev/null -w '%{http_code}\n' -L -r 0-0 \
+    https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup.exe
+  ```
+
+  A `404` here means the asset is mis-named — run the repair workflow above.
 - Install it on a clean Windows machine.
 - Pair a Soundcore device in **Settings → Bluetooth & devices**.
 - Confirm **Add Windows device → Refresh paired devices** lists it.
