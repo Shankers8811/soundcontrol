@@ -85,19 +85,101 @@ jobs:
       # CI builds (build-windows.yml) remain allowed to be unsigned because
       # their artifacts are not distributed.
       - name: Require Authenticode signing credentials
+        # Each candidate secret name is passed SEPARATELY (no `||` collapsing in
+        # the expression) so the step can report precisely which name is set,
+        # which is missing, and whether only a legacy alias is populated. Only
+        # presence booleans are ever printed — never a value.
         env:
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK || secrets.WINDOWS_CERTIFICATE_BASE64 }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD || secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          SC_CANONICAL_LINK: ${{ secrets.WIN_CSC_LINK }}
+          SC_CANONICAL_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          SC_LEGACY_LINK: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          SC_LEGACY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          SC_EXPECTED_PUBLISHER: ${{ vars.WINDOWS_EXPECTED_PUBLISHER }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "$WIN_CSC_LINK" ] || [ -z "$WIN_CSC_KEY_PASSWORD" ]; then
-            echo "::error::Production Windows releases must be Authenticode-signed, but no signing credentials are configured."
-            echo "::error::Add the repository secrets WIN_CSC_LINK (base64 of the .pfx/.p12) and WIN_CSC_KEY_PASSWORD (certificate password)."
-            echo "::error::See docs/WINDOWS-CODE-SIGNING.md for certificate options and the exact setup steps."
-            exit 1
+          # Report one secret's presence without ever echoing its value.
+          # $1 = human-readable secret name, $2 = value (may be empty).
+          report() {
+            if [ -n "$2" ]; then
+              printf '  [set]     %s (%s bytes)\n' "$1" "$(printf '%s' "$2" | wc -c | tr -d ' ')"
+            else
+              printf '  [MISSING] %s\n' "$1"
+            fi
+          }
+          link=''
+          link_name=''
+          if [ -n "$SC_CANONICAL_LINK" ]; then
+            link="$SC_CANONICAL_LINK"; link_name='WIN_CSC_LINK'
+          elif [ -n "$SC_LEGACY_LINK" ]; then
+            link="$SC_LEGACY_LINK"; link_name='WINDOWS_CERTIFICATE_BASE64 (legacy alias)'
           fi
-          echo "Signing credentials are configured — the release build will be signed and verified."
+          password=''
+          password_name=''
+          if [ -n "$SC_CANONICAL_PASSWORD" ]; then
+            password="$SC_CANONICAL_PASSWORD"; password_name='WIN_CSC_KEY_PASSWORD'
+          elif [ -n "$SC_LEGACY_PASSWORD" ]; then
+            password="$SC_LEGACY_PASSWORD"; password_name='WINDOWS_CERTIFICATE_PASSWORD (legacy alias)'
+          fi
+          echo 'Signing credential inventory (names and sizes only — values are never printed):'
+          report 'WIN_CSC_LINK                 (canonical)' "$SC_CANONICAL_LINK"
+          report 'WIN_CSC_KEY_PASSWORD         (canonical)' "$SC_CANONICAL_PASSWORD"
+          report 'WINDOWS_CERTIFICATE_BASE64   (legacy alias)' "$SC_LEGACY_LINK"
+          report 'WINDOWS_CERTIFICATE_PASSWORD (legacy alias)' "$SC_LEGACY_PASSWORD"
+          if [ -n "$link" ] && [ -n "$password" ]; then
+            echo "Signing credentials are configured via ${link_name} + ${password_name}."
+            echo 'The release build will be Authenticode-signed and verified before publishing.'
+            if [ -n "$SC_EXPECTED_PUBLISHER" ]; then
+              echo 'WINDOWS_EXPECTED_PUBLISHER is set — the gates will pin the signer identity.'
+            else
+              echo '::notice::WINDOWS_EXPECTED_PUBLISHER is not set. Recommended: add that repository variable to pin the signer identity (docs/WINDOWS-CODE-SIGNING.md).'
+            fi
+            exit 0
+          fi
+          # ---- Failure path: say exactly what to do, and why this is deliberate. ----
+          missing=''
+          [ -z "$link" ]     && missing="${missing}WIN_CSC_LINK "
+          [ -z "$password" ] && missing="${missing}WIN_CSC_KEY_PASSWORD "
+          echo "::error::Production Windows releases must be Authenticode-signed, but no usable signing credentials are available to this job."
+          echo "::error::Missing secret(s): ${missing% }. Add them under Settings → Secrets and variables → Actions."
+          if [ -z "$link" ] && [ -n "$SC_LEGACY_LINK$SC_LEGACY_PASSWORD" ]; then
+            echo '::error::A legacy alias is only partially populated — both the certificate and its password must come from the same pair.'
+          fi
+          # Secrets are NOT injected into workflows triggered from a fork, and a
+          # read-only token cannot see them either. Distinguish that case so the
+          # maintainer does not hunt for a secret that is actually configured.
+          echo '::notice::If these secrets ARE configured, this job still cannot see them when the run is triggered from a fork (pull_request from a fork) or by an actor/token without access to repository secrets.'
+          {
+            echo '## ❌ Release blocked — Authenticode signing credentials unavailable'
+            echo ''
+            echo 'No signed installer can be published, so the job stopped **before** building.'
+            echo 'This is the credentials gate working as designed, not a build defect.'
+            echo ''
+            echo '| Secret | Status |'
+            echo '|---|---|'
+            for pair in \
+              "WIN_CSC_LINK|$SC_CANONICAL_LINK" \
+              "WIN_CSC_KEY_PASSWORD|$SC_CANONICAL_PASSWORD" \
+              "WINDOWS_CERTIFICATE_BASE64 (legacy)|$SC_LEGACY_LINK" \
+              "WINDOWS_CERTIFICATE_PASSWORD (legacy)|$SC_LEGACY_PASSWORD"; do
+              name="${pair%%|*}"
+              value="${pair#*|}"
+              if [ -n "$value" ]; then state='set'; else state='**MISSING**'; fi
+              echo "| \`$name\` | $state |"
+            done
+            echo ''
+            echo '**To unblock:** obtain a code-signing certificate from a CA in the Microsoft'
+            echo 'trusted root program, store its base64 as `WIN_CSC_LINK` and its password as'
+            echo '`WIN_CSC_KEY_PASSWORD`, then re-run this job.'
+            echo ''
+            echo "See [\`docs/WINDOWS-CODE-SIGNING.md\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/WINDOWS-CODE-SIGNING.md)"
+            echo '→ *“Maintainer setup — from zero to a signed release”* and'
+            echo '“When signing credentials are unavailable”.'
+            echo ''
+            echo 'A self-signed certificate is not a workaround: the validation gate rejects'
+            echo 'untrusted chains, and Windows would still show “Unknown publisher”.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
       # Decode the certificate from the secret into cert.p12 and hand it to
       # electron-builder through its supported env vars. Nothing is printed:
       # no secret values, no certificate contents. cert.p12 is deleted by the
@@ -257,6 +339,35 @@ jobs:
             || gh release edit "$RELEASE_TAG" --latest
           gh release upload "$RELEASE_TAG" release-assets/*.exe --clobber
           gh release view "$RELEASE_TAG"
+      # The whole distribution contract depends on ONE stable filename:
+      # src/lib/downloads.ts, README.md and PUBLISH.md all deep-link
+      # /releases/latest/download/SoundControl-Setup.exe, and that URL 404s if
+      # the release's asset is named anything else (electron-builder's default
+      # ${productName} Setup ${version}.exe, or a hand-uploaded name). Assert
+      # the contract here, after publishing, so a rename anywhere in the chain
+      # fails the release run instead of silently shipping a dead download
+      # button. Checked through the API (asset list), not the CDN.
+      - name: Verify the canonical installer asset name
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release-tag.outputs.tag }}
+          CANONICAL_ASSET: SoundControl-Setup.exe
+        run: |
+          set -euo pipefail
+          assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          echo "Assets on release $RELEASE_TAG:"
+          printf '%s\n' "$assets" | sed 's/^/  - /'
+          if ! printf '%s\n' "$assets" | grep -Fxq "$CANONICAL_ASSET"; then
+            echo "::error::Release $RELEASE_TAG has no asset named $CANONICAL_ASSET."
+            echo "::error::The in-app download button and README link (/releases/latest/download/$CANONICAL_ASSET) would 404."
+            echo "::error::Run the 'Repair release installer asset name' workflow for tag $RELEASE_TAG to publish the canonical name."
+            exit 1
+          fi
+          if [ "$(printf '%s\n' "$assets" | grep -c '\.exe$')" -gt 1 ]; then
+            echo "::warning::Release $RELEASE_TAG exposes more than one .exe asset. Extra installers are not removed automatically — the canonical $CANONICAL_ASSET is the one clients download."
+          fi
+          echo "Canonical asset $CANONICAL_ASSET is present — the stable download link resolves."
       - name: Attach build folder to the workflow run
         uses: actions/upload-artifact@v4
         with:

@@ -52,3 +52,13 @@ jobs:
         run: npm run test:e2e
       - name: Main-process lifecycle (real helper kill/restart races, stubbed Electron)
         run: npm run test:lifecycle
+      # The release pipeline's own bash logic, tested without a Windows runner:
+      # extracts the real `run:` blocks from release-windows.yml and
+      # repair-release-asset-name.yml and drives them through synthetic
+      # environments and stubbed `gh`/`curl`. Proves the signing-credential gate
+      # names the exact missing secret, that the canonical-asset-name verifier
+      # rejects a mis-named installer, and that the asset-name repair handles
+      # every branch (already canonical, ambiguous, dry run, download/upload
+      # failure, non-PE payload). No secret values are involved.
+      - name: Release CI gate self-tests (signing gate + canonical asset name)
+        run: npm run test:ci

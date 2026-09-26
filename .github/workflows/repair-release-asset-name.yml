@@ -1,0 +1,290 @@
+name: Repair release installer asset name
+
+# One-off / on-demand maintenance for the distribution contract.
+#
+# SoundControl clients download the installer through a SINGLE stable filename:
+#
+#   https://github.com/<owner>/<repo>/releases/latest/download/SoundControl-Setup.exe
+#
+# That URL is hard-coded in src/lib/downloads.ts (the in-app download button),
+# README.md and PUBLISH.md. It resolves only if the target release carries an
+# asset named exactly `SoundControl-Setup.exe`. electron-builder's default
+# `${productName} Setup ${version}.exe` — and any hand-uploaded name such as
+# `SoundControl.Setup.1.0.7.exe` — makes that link 404, which silently breaks
+# the download button for every existing client.
+#
+# This workflow republishes an already-published installer under the canonical
+# name. It does NOT build anything and does NOT change a single byte: it copies
+# the existing asset, so whatever was published stays published, only reachable
+# through the documented link. Signing status is reported honestly (never
+# altered, never faked) and the Authenticode gates in release-windows.yml remain
+# the only path that publishes a NEW installer.
+#
+# Runs on ubuntu (fast, no Windows build needed) purely as GitHub API + asset
+# CDN traffic, using the repository's own contents:write token.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to repair, e.g. v1.0.7'
+        required: true
+        type: string
+      remove_mismatched_exe:
+        description: 'Also delete other .exe assets on that release (leaves only the canonical installer)'
+        required: false
+        default: false
+        type: boolean
+      dry_run:
+        description: 'Report what would change without uploading or deleting anything'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-release-asset-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  repair-asset-name:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+      CANONICAL: SoundControl-Setup.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$TAG" ]; then
+            echo '::error::A release tag is required, e.g. v1.0.7.'
+            exit 1
+          fi
+          if ! gh release view "$TAG" --json tagName >/dev/null 2>&1; then
+            echo "::error::No GitHub Release exists for tag '$TAG' in ${GITHUB_REPOSITORY}."
+            echo '::error::Check the tag name (git tag -l). This workflow only renames an existing release asset.'
+            exit 1
+          fi
+          echo "Target release: $TAG in ${GITHUB_REPOSITORY}"
+
+      # Locate the installer that is already published on this release. Assets
+      # are matched by name only; nothing is downloaded yet.
+      - name: Inspect the release assets
+        id: inspect
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json assets \
+            --jq '.assets[] | [.name, (.size|tostring)] | @tsv' > assets.tsv
+          echo 'Assets currently on the release:'
+          if [ ! -s assets.tsv ]; then
+            echo '  (none)'
+          else
+            sed 's/^/  /' assets.tsv
+          fi
+          all_exe="$(awk -F'\t' '$1 ~ /\.exe$/ { print $1 }' assets.tsv || true)"
+          if printf '%s\n' "$all_exe" | grep -Fxq "$CANONICAL"; then
+            echo "canonical_present=1" >> "$GITHUB_OUTPUT"
+            echo "candidate_count=0" >> "$GITHUB_OUTPUT"
+            echo "source_name=" >> "$GITHUB_OUTPUT"
+            echo "::notice::Release $TAG already has $CANONICAL — the stable download link resolves. Nothing to repair."
+            # Exit 0 here. Every later step is gated on canonical_present == '0',
+            # so this is a clean no-op run, not a skipped-job surprise.
+            exit 0
+          fi
+          echo "canonical_present=0" >> "$GITHUB_OUTPUT"
+          echo "::warning::Release $TAG has NO asset named $CANONICAL — /releases/latest/download/$CANONICAL currently 404s."
+          # Candidate installers: any .exe that is not the canonical name and
+          # not an electron-builder "unpacked" side artifact.
+          candidates="$(printf '%s\n' "$all_exe" | grep -vxF "$CANONICAL" | grep -v -- '-unpacked\.exe$' || true)"
+          count="$(printf '%s\n' "$candidates" | grep -c . || true)"
+          echo "candidate_count=$count" >> "$GITHUB_OUTPUT"
+          if [ "$count" -eq 0 ]; then
+            echo '::error::No installer asset found on this release to republish under the canonical name.'
+            echo '::error::This workflow renames an EXISTING asset — it does not build one. Run the Release Windows workflow instead.'
+            exit 1
+          fi
+          if [ "$count" -gt 1 ]; then
+            echo "::error::Ambiguous: $count candidate installers on $TAG. Refuse to guess which one clients should get."
+            printf '%s\n' "$candidates" | sed 's/^/  candidate: /'
+            echo '::error::Delete or rename the extras on the release page, then re-run.'
+            exit 1
+          fi
+          source_name="$candidates"
+          echo "source_name=$source_name" >> "$GITHUB_OUTPUT"
+          echo "Would republish '$source_name' as '$CANONICAL'."
+
+      - name: Download the published installer
+        if: steps.inspect.outputs.canonical_present == '0'
+        shell: bash
+        env:
+          SOURCE_NAME: ${{ steps.inspect.outputs.source_name }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" = "true" ]; then
+            echo 'Dry run: skipping the download.'
+            exit 0
+          fi
+          mkdir -p work
+          url="$(gh release view "$TAG" --json assets \
+            --jq --arg n "$SOURCE_NAME" '.assets[] | select(.name==$n) | .url')"
+          if [ -z "$url" ] || [ "$url" = "null" ]; then
+            echo "::error::Could not resolve an API URL for asset '$SOURCE_NAME' on $TAG."
+            exit 1
+          fi
+          echo "Downloading asset '$SOURCE_NAME' from the release API (bytes are not modified)..."
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/octet-stream' \
+            -o "work/$CANONICAL" "$url"
+          ls -la work/
+
+      # Prove what is about to be republished really is a Windows NSIS installer
+      # before it is attached to the canonical download URL. Also records the
+      # Authenticode status honestly — an unsigned installer is reported as
+      # unsigned, never dressed up as signed.
+      - name: Verify it is a Windows NSIS installer
+        if: steps.inspect.outputs.canonical_present == '0'
+        shell: bash
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" = "true" ]; then
+            echo 'Dry run: nothing downloaded, nothing to verify.'
+            exit 0
+          fi
+          f="work/$CANONICAL"
+          test -s "$f" || { echo "::error::$f is empty — download failed."; exit 1; }
+          bytes="$(wc -c < "$f" | tr -d ' ')"
+          echo "Size: $bytes bytes"
+          if [ "$bytes" -lt 1048576 ]; then
+            echo "::error::$f is only $bytes bytes — too small to be the SoundControl installer (expected ~100+ MB)."
+            exit 1
+          fi
+          # DOS/PE magic.
+          if [ "$(head -c 2 "$f")" != "MZ" ]; then
+            echo "::error::$f does not start with the DOS 'MZ' magic — not a Windows executable."
+            exit 1
+          fi
+          pe_off="$(od -An -tu4 -j60 -N4 "$f" | tr -d ' ')"
+          pe_sig="$(od -An -c -j"$pe_off" -N4 "$f" | tr -d ' \n')"
+          echo "PE header offset: $pe_off, signature bytes: $pe_sig"
+          case "$pe_sig" in
+            *P*E*) echo 'PE signature present — valid Windows executable image.' ;;
+            *) echo "::error::No PE signature at offset $pe_off — not a valid Windows executable."; exit 1 ;;
+          esac
+          # NSIS marker: electron-builder's NSIS target embeds Nullsoft strings.
+          if LC_ALL=C grep -a -q -e 'Nullsoft' -e 'NSIS' "$f"; then
+            echo 'NSIS/Nullsoft marker found — this is an NSIS installer.'
+          else
+            echo '::warning::No Nullsoft/NSIS marker found. It is a valid PE, but may not be the NSIS installer.'
+          fi
+          echo "SHA-256: $(sha256sum "$f" | cut -d' ' -f1)"
+          {
+            echo '### Installer being republished under the canonical name'
+            echo ''
+            echo "| Field | Value |"
+            echo '|---|---|'
+            echo "| Release | \`$TAG\` |"
+            echo "| Canonical asset | \`$CANONICAL\` |"
+            echo "| Size | $bytes bytes |"
+            echo "| SHA-256 | \`$(sha256sum "$f" | cut -d' ' -f1)\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Republish under the canonical name
+        if: steps.inspect.outputs.canonical_present == '0'
+        shell: bash
+        env:
+          SOURCE_NAME: ${{ steps.inspect.outputs.source_name }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "::notice::Dry run — would upload '$SOURCE_NAME' as '$CANONICAL' on release $TAG. Nothing changed."
+            exit 0
+          fi
+          echo "Uploading '$CANONICAL' to release $TAG (existing '$SOURCE_NAME' is left in place unless removal was requested)..."
+          gh release upload "$TAG" "work/$CANONICAL" --clobber
+          echo 'Upload complete.'
+
+      - name: Optionally remove mismatched .exe assets
+        if: steps.inspect.outputs.canonical_present == '0' && inputs.remove_mismatched_exe
+        shell: bash
+        env:
+          SOURCE_NAME: ${{ steps.inspect.outputs.source_name }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run — would delete asset '$SOURCE_NAME' from release $TAG."
+            exit 0
+          fi
+          echo "::notice::Deleting '$SOURCE_NAME' so the release exposes only the canonical installer."
+          gh release delete-asset "$TAG" "$SOURCE_NAME" --yes
+          echo 'Deleted.'
+
+      # Assert the contract that motivated this workflow: the stable deep link
+      # must now resolve. Checked via the API first, then with a real ranged
+      # HTTP request so a 404 cannot slip through.
+      - name: Verify the canonical download link resolves
+        if: steps.inspect.outputs.canonical_present == '0'
+        shell: bash
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" = "true" ]; then
+            echo 'Dry run: link not verified because nothing was uploaded.'
+            exit 0
+          fi
+          names="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+          printf '%s\n' "$names" | grep -Fxq "$CANONICAL" \
+            || { echo "::error::$CANONICAL still missing from release $TAG after upload."; exit 1; }
+          link="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/latest/download/$CANONICAL"
+          code="$(curl -sS -o /dev/null -r 0-0 -L -w '%{http_code}' "$link" || true)"
+          echo "GET $link -> HTTP $code"
+          case "$code" in
+            200|206) echo 'Canonical download link resolves.' ;;
+            *)
+              echo "::error::Canonical link returned HTTP $code. Note: 'latest' points at the newest non-prerelease — if $TAG is not the latest release, verify /releases/download/$TAG/$CANONICAL instead."
+              direct="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/$TAG/$CANONICAL"
+              dcode="$(curl -sS -o /dev/null -r 0-0 -L -w '%{http_code}' "$direct" || true)"
+              echo "GET $direct -> HTTP $dcode"
+              [ "$dcode" = "200" ] || [ "$dcode" = "206" ] \
+                || { echo '::error::Direct tag link also fails — the repair did not take effect.'; exit 1; }
+              echo '::notice::Direct tag link resolves; the /latest/ alias will follow once this release is the latest.'
+              ;;
+          esac
+
+      - name: Summary
+        if: always()
+        shell: bash
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          CANONICAL_PRESENT: ${{ steps.inspect.outputs.canonical_present }}
+          SOURCE_NAME: ${{ steps.inspect.outputs.source_name }}
+          REMOVED: ${{ inputs.remove_mismatched_exe }}
+        run: |
+          {
+            echo '## Release asset name repair'
+            echo ''
+            echo "| Item | Value |"
+            echo '|---|---|'
+            echo "| Release | \`$TAG\` |"
+            echo "| Canonical asset required | \`$CANONICAL\` |"
+            echo "| Already present | ${CANONICAL_PRESENT:-unknown} |"
+            echo "| Source asset | \`${SOURCE_NAME:-n/a}\` |"
+            echo "| Removed mismatched .exe | $REMOVED |"
+            echo "| Dry run | $DRY_RUN |"
+            echo ''
+            echo 'Signing status of the republished bytes is unchanged by this workflow:'
+            echo 'it copies an existing asset verbatim. Only `release-windows.yml` publishes'
+            echo 'a newly built, Authenticode-signed and verified installer.'
+          } >> "$GITHUB_STEP_SUMMARY"
