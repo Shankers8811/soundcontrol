@@ -492,7 +492,7 @@ function MarketMetric({ value, label, tone }: { value: number; label: string; to
 }
 
 function CatalogStatusRow({ entry }: { entry: MarketCatalogEntry }) {
-  const protocol = entry.protocolStatus === 'implemented' ? 'protocol' : entry.protocolStatus === 'read-only' ? 'read-only' : 'catalog only';
+  const protocol = entry.protocolStatus === 'implemented' ? 'Protocol: supported' : entry.protocolStatus === 'read-only' ? 'Protocol: read-only' : 'Protocol: catalog only';
   const protocolStyle = entry.protocolStatus === 'implemented'
     ? 'border-accent/30 bg-accent/8 text-accent-soft'
     : entry.protocolStatus === 'read-only'
@@ -507,9 +507,9 @@ function CatalogStatusRow({ entry }: { entry: MarketCatalogEntry }) {
         <span className="ml-auto text-[10px] text-faint">{entry.regions.join(' / ')}</span>
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-faint">
-        <span>simulator: <b className={entry.simulatorCoverage === 'covered' ? 'text-accent-soft' : 'text-faint'}>{entry.simulatorCoverage}</b></span>
-        <span>unit tests: <b className={entry.unitTestCoverage === 'covered' ? 'text-accent-soft' : 'text-faint'}>{entry.unitTestCoverage}</b></span>
-        <span>physical: <b className="text-warn">{entry.physicalValidation}</b></span>
+        <span>Simulator: <b className={entry.simulatorCoverage === 'covered' ? 'text-accent-soft' : 'text-faint'}>{entry.simulatorCoverage}</b></span>
+        <span>Unit tests: <b className={entry.unitTestCoverage === 'covered' ? 'text-accent-soft' : 'text-faint'}>{entry.unitTestCoverage}</b></span>
+        <span>Physical validation: <b className="text-warn">{entry.physicalValidation}</b></span>
       </div>
       <p className="mt-1 text-[10px] leading-relaxed text-faint">Aliases: {entry.aliases.join(' · ')}</p>
       <p className="mt-1 text-[10px] leading-relaxed text-mute">{entry.protocolEvidence}</p>
