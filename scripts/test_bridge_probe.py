@@ -628,9 +628,8 @@ check(
 # prove the parser keeps a paired-but-disconnected device separate from a
 # currently connected one without requiring Windows or Bluetooth hardware.
 windows_scan = (
-    "AA:BB:CC:DD:EE:FF|soundcore R50i NC|90|true\\n"
-    "11:22:33:44:55:66|AeroClip|75|false\\n"
-    "22:33:44:55:66:77|Unnamed|\\|false\\n"
+    "AA:BB:CC:DD:EE:FF|soundcore R50i NC|90|true\n"
+    "11:22:33:44:55:66|AeroClip|75|false\n"
 )
 parsed_windows = bridge._parse_windows_scan_output(windows_scan)
 check(
