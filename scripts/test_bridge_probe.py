@@ -622,6 +622,55 @@ check(
     merged_linux_devices[1].get("name") == "AeroClip" and merged_linux_devices[1].get("connected") is False,
 )
 
+# --- Windows host discovery --------------------------------------------------
+# Production Windows enumeration uses the paired registry plus Get-PnpDevice
+# -PresentOnly. The latter is the host-side connected-state signal; these tests
+# prove the parser keeps a paired-but-disconnected device separate from a
+# currently connected one without requiring Windows or Bluetooth hardware.
+windows_scan = (
+    "AA:BB:CC:DD:EE:FF|soundcore R50i NC|90|true\\n"
+    "11:22:33:44:55:66|AeroClip|75|false\\n"
+    "22:33:44:55:66:77|Unnamed|\\|false\\n"
+)
+parsed_windows = bridge._parse_windows_scan_output(windows_scan)
+check(
+    "Windows parser reports connected=true from PresentOnly output",
+    parsed_windows[0]["connected"] is True and parsed_windows[0]["battery"] == 90,
+    str(parsed_windows),
+)
+check(
+    "Windows parser keeps paired-but-disconnected device false",
+    parsed_windows[1]["connected"] is False and parsed_windows[1]["battery"] == 75,
+    str(parsed_windows),
+)
+check(
+    "Windows parser does not invent connected state when the field is absent",
+    bridge._parse_windows_scan_output("AA:BB:CC:DD:EE:FF|R50i NC|90")[0]["connected"] is False,
+)
+real_check_output = bridge.subprocess.check_output
+windows_calls = []
+
+def fake_windows_check_output(cmd, **_kwargs):
+    windows_calls.append(cmd)
+    return windows_scan
+
+bridge.subprocess.check_output = fake_windows_check_output
+try:
+    discovered_windows = bridge._windows_paired_devices()
+finally:
+    bridge.subprocess.check_output = real_check_output
+
+check(
+    "Windows production discovery parses paired and present states",
+    discovered_windows[0]["connected"] is True and discovered_windows[1]["connected"] is False,
+    str(discovered_windows),
+)
+check(
+    "Windows production discovery explicitly queries PnP PresentOnly",
+    "-PresentOnly" in windows_calls[0],
+    str(windows_calls[0] if windows_calls else ""),
+)
+
 print(f"  {passed} checks")
 if failures:
     print(f"\n{len(failures)} FAILED:")
