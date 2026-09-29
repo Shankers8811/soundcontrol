@@ -89,6 +89,11 @@ export function connectSimulator(
   name: string;
   battery: { left: number; right: number };
 } {
+  if (!profile.verified) {
+    throw new Error(
+      `${profile.name} (${profile.sku}) has no independently documented packet layout, so no simulator fixture is provided`,
+    );
+  }
   const transport: Transport = {
     kind: 'sim',
     label: 'Hardware simulator',

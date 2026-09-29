@@ -109,6 +109,31 @@ const FRAME_INDEX: ReadonlyMap<string, EarbudCommandSpec> = new Map(
  */
 export const EARBUD_COMMAND_FRAME_KEYS: readonly string[] = [...FRAME_INDEX.keys()].sort();
 
+/**
+ * Wire lengths for the registered command families. A CAT:TYPE and checksum
+ * alone are not enough: several commands have fixed payload shapes, and
+ * `06:81` has only the documented 4/6/7/8-byte model layouts. Keeping this
+ * second structural gate here prevents a malformed or wrong-model frame from
+ * reaching even the model-aware capability check.
+ */
+const FRAME_LENGTHS: ReadonlyMap<string, readonly number[]> = new Map([
+  ['01:01', [10]],
+  ['01:03', [10]],
+  ['01:04', [10]],
+  ['01:05', [10]],
+  ['01:7F', [10]],
+  ['01:85', [10]],
+  ['01:87', [11]],
+  ['01:FF', [11]],
+  ['02:81', [20, 32]],
+  ['02:83', [32]],
+  ['02:86', [11]],
+  ['03:87', [124]],
+  ['06:81', [14, 16, 17, 18]],
+  ['0B:84', [11]],
+  ['10:85', [11]],
+]);
+
 /** Resolve the earbud command a `CAT:TYPE` frame key implements, if any. */
 export function commandForFrameKey(key: string): EarbudCommandSpec | undefined {
   return FRAME_INDEX.get(key.toUpperCase());
@@ -154,6 +179,13 @@ export function validateOutboundFrame(data: Uint8Array): OutboundFrameCheck {
   // added to the registry, it still may not be transmitted.
   if ((command as { target?: CommandTarget }).target !== 'earbud') {
     return { ok: false, reason: `command ${command.id} targets the Windows host — never transmitted` };
+  }
+  const allowedLengths = FRAME_LENGTHS.get(key);
+  if (!allowedLengths || !allowedLengths.includes(data.length)) {
+    return {
+      ok: false,
+      reason: `unsupported payload shape for ${key}: ${data.length} bytes (expected ${allowedLengths?.join(' or ') ?? 'none'})`,
+    };
   }
   return { ok: true, command };
 }

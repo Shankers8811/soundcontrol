@@ -39,6 +39,7 @@ import { Button, Card, InfoRow, PageHeader, SettingsRow, Toggle } from '../compo
  */
 
 const DESKTOP_ONLY_NOTE = 'Available in the SoundControl desktop app.';
+const SIMULATOR_DEVICES = DEVICES.filter((device) => device.verified);
 
 /** Capability summary chips — derived state, never invented. */
 function CapabilityChips({ items }: { items: Array<[string, boolean]> }) {
@@ -274,12 +275,13 @@ export function SettingsPage() {
         {import.meta.env.DEV && (
           <Card title="Developer tools" subtitle="Visible only in development builds — never in the packaged app">
             <p className="text-xs leading-relaxed text-mute">
-              Simulated devices exercise the full UI state machine (telemetry parsing, capability
-              gating, rollbacks) without Bluetooth hardware. They are clearly labelled “(sim)”
-              everywhere and cannot be reached from a production install.
+              Simulated devices exercise the documented UI state machine (telemetry parsing,
+              capability gating, rollbacks) without Bluetooth hardware. They are clearly labelled
+              “(sim)” everywhere and cannot be reached from a production install. Catalog-only
+              identities are intentionally omitted because their packet layouts are not documented.
             </p>
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {DEVICES.map((device) => (
+              {SIMULATOR_DEVICES.map((device) => (
                 <Button key={device.id} size="sm" disabled={app.connecting} onClick={() => void app.connectSim(device.id).catch(() => {})}>
                   <span className="truncate">{device.name}</span>
                   <span className="font-mono text-[9px] text-faint">{device.sku}</span>

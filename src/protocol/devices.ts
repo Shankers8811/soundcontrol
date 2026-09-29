@@ -189,7 +189,11 @@ function twsLevelState(overrides: Partial<StateOffsets> = {}): StateOffsets {
   };
 }
 
-/** Catalog identity without protocol-layout assumptions. */
+/**
+ * Transport shape only for universal presence reads. These are deliberately
+ * NOT a documented `01:01` telemetry layout; the store's `verified` gate
+ * refuses to parse them as state offsets.
+ */
 function catalogTwsState(): StateOffsets {
   return {
     batteryLeft: 2,
@@ -299,20 +303,33 @@ const LIFE_Q_STATE: StateOffsets = {
 };
 
 const C30I_STATE = twsLevelState({
-  batteryCase: 37,
-  eqPresetId: 52,
-  eqBands: { at: 54, count: 10 },
-  surround: 46,
-  dualConnections: 49,
+  // A3330/C30i's level-only head is followed by the case byte at 35. The
+  // late fields below are the offsets in the captured 01:01 state payload;
+  // do not shift them to match the outbound 02:83 frame shape.
+  batteryCase: 35,
+  eqPresetId: 50,
+  eqBands: { at: 52, count: 10 },
+  // OpenSCQ30 parses this readable flag, but exposes no surround write module.
+  surround: 44,
+  dualConnections: 47,
 });
 
 const AEROCLIP_STATE = twsLevelState({
-  batteryCase: 37,
-  eqPresetId: 52,
-  eqBands: { at: 54, count: 20 },
-  surround: 46,
-  dualConnections: 49,
+  // A3388/AeroClip has one ten-band EQ block in its state update. Its outbound
+  // 02:83 command is two-channel, but that command shape must not be reused
+  // as a state-payload length or the real 66-byte telemetry frame is rejected.
+  batteryCase: 35,
+  eqPresetId: 50,
+  eqBands: { at: 52, count: 10 },
+  // Readable in the state packet only; the A3388 module does not document
+  // SET_SURROUND_SOUND (02:86), so the profile capability remains false.
+  surround: 44,
+  dualConnections: 47,
 });
+
+// OpenSCQ30's D1101 parser places the dual-connections flag immediately after
+// the low-battery prompt at payload offset 53 (not 54).
+
 
 const V20I_STATE = twsLevelState({
   eqPresetId: 36,
@@ -334,7 +351,7 @@ const SPORT_X20_STATE = twsState({
 const C50I_STATE = twsLevelState({
   eqPresetId: 30,
   eqBands: { at: 32, count: 10 },
-  dualConnections: 54,
+  dualConnections: 53,
 });
 
 const P31I_STATE = twsState({
@@ -430,7 +447,10 @@ export const DEVICES: DeviceProfile[] = [
     scenes: false,
     ldac: false,
     dual: true,
-    surround: true,
+    // A3388 state telemetry contains a readable surround byte, but the
+    // OpenSCQ30 module deliberately does not register a surround writer:
+    // 02:86 is not acknowledged and must never be advertised or sent.
+    surround: false,
     wind: false,
     transparency: false,
     batteryMax: 10,
@@ -440,7 +460,7 @@ export const DEVICES: DeviceProfile[] = [
     eqCommand: '02:83-dual',
     customEq: true,
     state: AEROCLIP_STATE,
-    source: `${OPENSCQ30} (a3388): dual_battery_level_custom(max 10, offset 1), case_battery_level_custom(max 10, offset 1), two-channel 02:83 EQ, dual_connections and surround_sound`,
+    source: `${OPENSCQ30} (a3388): dual_battery_level_custom(max 10, offset 1), case_battery_level_custom(max 10, offset 1), one ten-band state EQ block with two-channel outbound 02:83, dual_connections; surround is parsed read-only and has no documented write module`,
     verified: true,
   },
   {
@@ -1106,9 +1126,10 @@ const RANKED_UNVERIFIED: Array<{ alias: string; note: string }> = UNVERIFIED_ALI
  *    OpenSCQ30 `request_battery_level.rs`) — presence only, never percent:
  *    `batteryMax: null` keeps the raw-level scale unproven, so the UI shows
  *    "Battery unavailable" instead of a precise-looking guess,
- *  - the shared TWS state-blob head (battery at 2/3) for spontaneous
- *    `01:01` updates — again presence-level information only; charging,
- *    EQ and sound-mode offsets stay null because no layout is proven.
+ *  - the protocol-universal `01:03` battery/presence shape (battery at 2/3)
+ *    for explicit reads. Catalog identities are NEVER parsed through the
+ *    profile-offset `01:01` state path; charging, EQ and sound-mode offsets
+ *    stay null because no layout is proven.
  *
  * Everything model-specific is disabled: no ANC controls (layout unknown —
  * sending a guessed `06:81` would silently set the wrong state), no EQ, no

@@ -218,6 +218,23 @@ export async function connectBridge(
   // Set by transport.close() so an intentional disconnect is never reported
   // to the UI as a dropped link.
   let closedByUs = false;
+  let connectionAnnounced = false;
+  let downNotified = false;
+
+  const indicatesLinkDown = (message: string): boolean => {
+    const text = message.toLowerCase();
+    return (
+      text.includes('rfcomm closed') ||
+      text.includes('not connected') ||
+      text.includes('connection lost') ||
+      text.includes('helper connection closed')
+    );
+  };
+  const notifyDown = (reason: string) => {
+    if (closedByUs || downNotified) return;
+    downNotified = true;
+    onDown?.(reason);
+  };
 
   const transport: Transport = {
     kind: 'bridge',
@@ -280,7 +297,16 @@ export async function connectBridge(
         return;
       }
       if (msg.type === 'sys' && (msg.message || msg.error)) {
-        onSys(msg.error ?? msg.message ?? '', Boolean(msg.error));
+        const reason = msg.error ?? msg.message ?? '';
+        onSys(reason, Boolean(msg.error));
+        // The Python helper keeps its WebSocket alive when only the RFCOMM
+        // socket dies, so a sys error is the link-down signal before the next
+        // tx happens. During the initial probe it is a failed connect; after
+        // the connected event it must clear the active device session.
+        if (msg.error && indicatesLinkDown(reason)) {
+          if (connectionAnnounced) notifyDown(reason);
+          else fail(reason);
+        }
         return;
       }
       if (msg.type === 'connected') {
@@ -288,6 +314,7 @@ export async function connectBridge(
         window.clearTimeout(timer);
         ws.removeEventListener('message', onMsg);
         ws.removeEventListener('close', onClose);
+        connectionAnnounced = true;
         ws.addEventListener('message', (e) => {
           try {
             const m = JSON.parse(String(e.data)) as {
@@ -300,13 +327,18 @@ export async function connectBridge(
             // Late diagnostics from the helper, e.g. the silent-link watchdog
             // firing seconds after the connect already resolved.
             if (m.type === 'sys' && (m.message || m.error)) {
-              onSys(m.error ?? m.message ?? '', Boolean(m.error));
+              const reason = m.error ?? m.message ?? '';
+              onSys(reason, Boolean(m.error));
+              if (m.error && indicatesLinkDown(reason)) notifyDown(reason);
             }
             // A command that failed on the helper side (e.g. "Not connected"
             // when the RFCOMM link died but this WebSocket is still up) must
             // reach the user — silently dropping it leaves the UI showing
             // "Connected" while every command does nothing.
-            if (m.type === 'error' && m.error) onSys(m.error, true);
+            if (m.type === 'error' && m.error) {
+              onSys(m.error, true);
+              if (indicatesLinkDown(m.error)) notifyDown(m.error);
+            }
           } catch {
             /* */
           }
@@ -315,11 +347,9 @@ export async function connectBridge(
         // (helper exit/crash/restart), tell the app so it can leave the
         // "Connected" state instead of failing silently on the next write.
         ws.addEventListener('close', () => {
-          if (!closedByUs) {
-            onDown?.(
-              'The Bluetooth helper connection closed unexpectedly — the helper may have exited or restarted. Reconnect your device.',
-            );
-          }
+          notifyDown(
+            'The Bluetooth helper connection closed unexpectedly — the helper may have exited or restarted. Reconnect your device.',
+          );
         });
         resolve();
       }

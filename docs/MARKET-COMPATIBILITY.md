@@ -54,7 +54,7 @@ The canonical SKU/profile table is [`src/protocol/devices.ts`](../src/protocol/d
 | SKU | Product | Market | Protocol | Simulator | Unit tests | Physical |
 | --- | --- | --- | --- | --- | --- | --- |
 | D1105 | AeroClip 2 | US | unknown | — | — | pending |
-| A3388 | AeroClip | US/EU | implemented; dual-channel EQ | yes | yes | pending |
+| A3388 | AeroClip | US/EU | implemented; dual-channel outbound EQ; surround state read-only | yes | yes | pending |
 | A3874 / A3874X | AeroFit 2 / AI Assistant alias | US/EU | unknown | — | — | pending |
 | A3875 | AeroFit 2 Pro | US/EU | unknown | — | — | pending |
 | A3871 | AeroFit Pro | US/EU | unknown | — | — | pending |
