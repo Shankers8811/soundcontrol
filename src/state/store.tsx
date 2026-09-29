@@ -30,7 +30,7 @@ import { presetById, type EqPreset } from '../protocol/presets';
 import { requiredStateLength, withDeviceBoundary } from '../protocol/modelRegistry';
 import { createSessionGuard, parseDeviceToggles } from '../protocol/responses';
 import { isTransportBusyError } from '../lib/transportErrors';
-import { connectBridge } from '../transports/bridge';
+import { connectBridge, scanBridgeDevicesDetailed } from '../transports/bridge';
 import {
   batteryLevel,
   deriveCapabilities,
@@ -542,6 +542,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // a Bluetooth link is never treated as "both earbuds connected".
       const seed = emptyBattery();
       if (nextProfile.batteryOffset) seed.batteryOffset = nextProfile.batteryOffset;
+      seed.hostPercent = typeof hostBattery === 'number' ? hostBattery : null;
       if (typeof bat === 'number') {
         // Host Bluetooth aggregate percent (scale null = already a percentage).
         // It goes to `left` only — copying it to `right` would fabricate a
@@ -1149,6 +1150,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setProfile(hit);
     }
   }, []);
+
+  // Keep the host-side battery box fresh independently of Soundcore's raw
+  // battery telemetry. This is the Windows/BlueZ aggregate percentage and is
+  // intentionally stored separately so device-side 0..5/0..10 scales can
+  // never overwrite it.
+  useEffect(() => {
+    if (!connected || !connectedMac || transportRef.current?.kind !== 'bridge') return;
+    let stopped = false;
+    const pollHostBattery = async () => {
+      if (stopped) return;
+      const result = await scanBridgeDevicesDetailed(false);
+      if (stopped || result.error) return;
+      const key = connectedMac.toUpperCase();
+      const hit = result.devices.find((d) => d.mac?.toUpperCase() === key);
+      if (hit && typeof hit.battery === 'number') {
+        setBattery((previous) => ({ ...previous, hostPercent: hit.battery }));
+      }
+    };
+    void pollHostBattery();
+    const timer = window.setInterval(() => void pollHostBattery(), 5000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [connected, connectedMac]);
 
   // Keep TWS battery levels fresh while connected to real hardware: the
   // device-info frame arrives once after the handshake, but the explicit
