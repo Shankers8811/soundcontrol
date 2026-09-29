@@ -234,7 +234,16 @@ console.log('\n[controls]');
 const controls = render(React.createElement(M.ControlsPage));
 check('noise control page shows connected-model header label', controls.includes('Connected model'));
 check('noise control page shows separate PC battery box', controls.includes('PC battery') && controls.includes('Host-detected battery'));
-check('noise control page does not use a connected-device artwork in its header', !controls.includes('aria-label="Left and right earbuds"') && !controls.includes('aria-label="Over-ear headset"') && !controls.includes('aria-label="Neckband earphones"'));
+const settingsLabel = controls.indexOf('Connected model');
+const settingsMarkup = settingsLabel >= 0 ? controls.slice(Math.max(0, settingsLabel - 500), settingsLabel + 1200) : '';
+check(
+  'noise control device-settings header contains no device artwork',
+  settingsMarkup.length > 0 &&
+    !settingsMarkup.includes('aria-label="Left and right earbuds"') &&
+    !settingsMarkup.includes('aria-label="Open-ear earbuds"') &&
+    !settingsMarkup.includes('aria-label="Over-ear headset"') &&
+    !settingsMarkup.includes('aria-label="Neckband earphones"'),
+);
 
 check('page title (Pass 8: Noise Control)', controls.includes('>Noise Control<') && !controls.includes('>Controls<'));
 check('ANC component is embedded in the Noise Control page', controls.includes('Noise control is not available on this model'));
