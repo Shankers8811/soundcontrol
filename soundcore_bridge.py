@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """SoundControl RFCOMM bridge — zero third-party dependencies.
 
-Pipes exact Soundcore DSP frames (08 EE …) into Classic Bluetooth RFCOMM.
+Pipes exact Soundcore DSP frames (08 EE …) into Classic Bluetooth RFCOMM on
+Windows and Linux hosts.
 
 The DSP channel is not fixed: 4 on most earbuds, 10 on the P20i family, 12/15
 on several over-ears, 30 on the Space 2. Rather than trusting the first
@@ -13,13 +14,13 @@ frame. Pass --channel to start the probe somewhere else.
     python3 soundcore_bridge.py --mac AA:BB:CC:DD:EE:FF --channel 4
 
 Access control: the bridge listens on the loopback interface and is intended
-only for the packaged Windows desktop renderer. The renderer receives a fresh
-per-session secret from Electron and sends it on every request (see token_ok):
+only for the packaged Windows/Linux desktop renderer. The renderer receives a
+fresh per-session secret from Electron and sends it on every request (see token_ok):
 HTTP callers send `Authorization: Bearer <token>` (or `X-Bridge-Token:`), and
 the renderer connects to `/ws?token=<token>`. Configure manual runs with the
 SOUNDCONTROL_BRIDGE_TOKEN environment variable or --token.
 
-Talk to it from the Windows renderer over WebSocket JSON:
+Talk to it from the desktop renderer over WebSocket JSON:
 
     { "type": "connect", "mac": "AA:BB:CC:DD:EE:FF", "channel": 4 }
     { "type": "tx", "hex": "08EE00000001010A0002" }
@@ -53,12 +54,12 @@ from urllib.parse import parse_qs, urlsplit
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 RFCOMM = getattr(socket, "BTPROTO_RFCOMM", 3)
-# AF_BLUETOOTH exists on Windows (the only production runtime) and on most
-# Linux builds, but some CI Python distributions omit it, which used to kill
-# the channel-probe unit tests with an AttributeError before their fake
-# socket layer was even reached. Same getattr-guard pattern as RFCOMM above:
-# on Windows the real constant is always used; elsewhere the Linux value (31)
-# is a safe stand-in because tests replace socket.socket wholesale.
+# AF_BLUETOOTH exists on Windows and Linux builds, but some CI Python
+# distributions omit it, which used to kill the channel-probe unit tests with
+# an AttributeError before their fake socket layer was even reached. Same
+# getattr-guard pattern as RFCOMM above: on supported hosts the real constant
+# is used; elsewhere the Linux value (31) is a safe stand-in because tests
+# replace socket.socket wholesale.
 AF_BLUETOOTH = getattr(socket, "AF_BLUETOOTH", 31)
 
 # `08 EE 00 00 00 01 01 0A 00 02` — the state request the official app sends
@@ -67,17 +68,18 @@ AF_BLUETOOTH = getattr(socket, "AF_BLUETOOTH", 31)
 HANDSHAKE = bytes.fromhex("08EE00000001010A0002")
 
 # RFCOMM channels the Soundcore DSP has been observed on, most common first.
-# The official app resolves this from SDP; Windows gives us no reliable SDP
-# record for the vendor service, so the bridge probes in this order instead.
+# The official app resolves this from SDP; desktop Bluetooth stacks do not
+# expose a reliable vendor-service record in the same way, so the bridge
+# probes in this order instead.
 # Deliberately excluded: 12/13 are TOTA/BESOTA firmware-flash channels on some
 # families (mervin008/soundcorebridge hard-blocks them for writes) and 16 is
 # Apple iAP2. We only ever send a read-only state request, and probing never
 # writes firmware, but the exclusion keeps a future write path from guessing.
 DSP_CHANNEL_CANDIDATES = (4, 12, 15, 10, 30, 1)
 
-# A cold Windows Bluetooth stack can take a couple of seconds to accept, and a
-# busy headset a moment to answer. Kept short on purpose: the whole probe runs
-# inside the renderer's connect timeout, so 6 candidates must fit in it.
+# A cold desktop Bluetooth stack can take a couple of seconds to accept, and
+# a busy headset a moment to answer. Kept short on purpose: the whole probe
+# runs inside the renderer's connect timeout, so 6 candidates must fit in it.
 PROBE_CONNECT_TIMEOUT = 2.5
 PROBE_REPLY_TIMEOUT = 1.5
 
@@ -101,10 +103,10 @@ WS_MAX_MESSAGE_BYTES = 1 << 20  # 1 MiB per WebSocket message
 TX_MAX_BYTES = 4096  # per RFCOMM write
 
 # --- Earbud-only control boundary (Phase 17) --------------------------------
-# SOUND CONTROL = EAR BUD / HEADPHONE DEVICE CONTROL, never Windows audio.
+# SOUND CONTROL = EAR BUD / HEADPHONE DEVICE CONTROL, never host audio.
 # This helper's only device I/O is the RFCOMM socket to the connected
 # earbuds: it contains no Windows audio, mixer, endpoint or registry APIs and
-# must never gain any. Windows is touched only for transport discovery
+# must never gain any. The host is touched only for transport discovery
 # (read-only paired-device enumeration) and the helper's own process needs.
 #
 # The renderer validates outbound frames against the earbud command registry
@@ -126,6 +128,7 @@ TX_ALLOWED_FRAMES = frozenset(
         "01:FF",  # ldac.set
         "02:81",  # equalizer.set
         "02:83",  # equalizer.set-drc
+        "03:87",  # equalizer.set-hearid (D1202 disabled HearID form)
         "02:86",  # surround.set
         "06:81",  # sound-modes.set      (ANC / transparency / wind)
         "0B:84",  # dual-audio.set
@@ -342,9 +345,9 @@ class Bridge:
         if not silent and not failures and last is not None:
             parts.append(str(last))
         parts.append(
-            "Leave the earbuds connected in Windows Bluetooth settings (not in "
-            "pairing mode) and close the Soundcore phone app — it holds the "
-            "single control slot."
+            "Leave the earbuds connected in this computer's Bluetooth settings "
+            "(not in pairing mode) and close the Soundcore phone app — it holds "
+            "the single control slot."
         )
         return " ".join(parts)
 
@@ -655,6 +658,120 @@ def _parse_windows_scan_output(text: str) -> list[dict[str, object]]:
     return devices
 
 
+def _parse_bluetoothctl_devices_output(text: str) -> list[dict[str, object]]:
+    """Parse ``bluetoothctl devices`` / ``paired-devices`` output.
+
+    BlueZ prints one device per line as ``Device MAC friendly name``. Names
+    may contain spaces, and a device can appear in more than one command's
+    output, so addresses are normalized and deduplicated here rather than in
+    the subprocess caller.
+    """
+    devices: list[dict[str, object]] = []
+    by_mac: dict[str, dict[str, object]] = {}
+    for line in text.splitlines():
+        match = re.match(r"^\s*Device\s+([0-9A-Fa-f:]{12,17})(?:\s+(.*?))?\s*$", line)
+        if not match:
+            continue
+        mac = _normalize_mac(match.group(1))
+        if not mac:
+            continue
+        name = (match.group(2) or "").replace("\x00", "").strip()
+        item = by_mac.get(mac)
+        if item is None:
+            item = {"mac": mac, "name": name or mac}
+            by_mac[mac] = item
+            devices.append(item)
+        elif name and item.get("name") == mac:
+            item["name"] = name
+    return devices
+
+
+def _parse_bluetoothctl_info_output(text: str) -> dict[str, object]:
+    """Extract the useful fields from ``bluetoothctl info MAC`` output."""
+    result: dict[str, object] = {}
+    name = ""
+    alias = ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Name:"):
+            name = stripped.split(":", 1)[1].strip()
+        elif stripped.startswith("Alias:"):
+            alias = stripped.split(":", 1)[1].strip()
+        elif stripped.startswith("Connected:"):
+            result["connected"] = stripped.split(":", 1)[1].strip().lower() == "yes"
+        elif stripped.startswith("Battery Percentage:"):
+            # BlueZ normally prints `0x5a (90)`, but older versions expose
+            # only the hexadecimal value. Accept both without treating an
+            # absent battery service as an error.
+            value = re.search(r"\((\d{1,3})\)", stripped)
+            if value is None:
+                value = re.search(r"0x([0-9A-Fa-f]{1,2})", stripped)
+            if value is not None:
+                try:
+                    battery = int(value.group(1), 16) if value.group(0).lower().startswith("0x") else int(value.group(1))
+                    if 0 <= battery <= 100:
+                        result["battery"] = battery
+                except ValueError:
+                    pass
+    if alias and alias != "(null)":
+        result["name"] = alias
+    elif name and name != "(null)":
+        result["name"] = name
+    return result
+
+
+def _bluetoothctl(*args: str) -> str:
+    """Run a read-only bluetoothctl query, returning empty output on failure."""
+    try:
+        env = os.environ.copy()
+        # Keep command/status words stable while allowing UTF-8 device names.
+        env.setdefault("LC_ALL", "C.UTF-8")
+        result = subprocess.run(
+            ["bluetoothctl", *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=4,
+            check=False,
+            env=env,
+        )
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout or ""
+
+
+def _linux_paired_devices() -> list[dict[str, object]]:
+    """Enumerate BlueZ-known devices and their connected/battery state.
+
+    `bluetoothctl` is part of the standard BlueZ user tools and does not need
+    root privileges for these read-only queries. We merge paired and cached
+    discovery output so a device that is currently connected is visible even
+    when a particular bluetoothctl version does not support the `Connected`
+    filter. RFCOMM connection itself is still performed by the bridge socket.
+    """
+    discovered: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for command in (("paired-devices",), ("devices",), ("devices", "Connected")):
+        for item in _parse_bluetoothctl_devices_output(_bluetoothctl(*command)):
+            mac = str(item["mac"])
+            if mac in seen:
+                continue
+            seen.add(mac)
+            discovered.append(item)
+
+    for item in discovered:
+        mac = str(item["mac"])
+        info = _parse_bluetoothctl_info_output(_bluetoothctl("info", mac))
+        if info.get("name"):
+            item["name"] = info["name"]
+        if "connected" in info:
+            item["connected"] = info["connected"]
+        if "battery" in info:
+            item["battery"] = info["battery"]
+    return discovered
+
+
 def _windows_paired_devices() -> list[dict[str, object]]:
     """Enumerate paired Bluetooth devices and Windows-reported battery levels.
 
@@ -728,13 +845,13 @@ _SCAN_CACHE_LOCK = threading.Lock()
 
 
 def scan_devices(fresh: bool = False) -> list[dict[str, object]]:
-    # The packaged bridge is intentionally Windows-only. Windows registry and
-    # PnP enumeration are what let us find already-paired devices reliably.
-    # Enumeration shells out to PowerShell (~1-4s), so cache briefly: the
-    # renderer polls for liveness separately via /health and only needs a
-    # fresh device list on user refresh. Pass fresh=True (?fresh=1) to bypass.
+    # Windows uses the paired-device registry/PnP view; Linux uses BlueZ's
+    # read-only bluetoothctl view. Both are deliberately polled by the
+    # renderer so a device connected after launch appears without a manual
+    # refresh. Enumeration shells out and can take seconds on a cold adapter,
+    # so cache briefly; fresh=True (?fresh=1) bypasses the cache.
     global _SCAN_CACHE, _SCAN_CACHE_AT
-    if sys.platform != "win32":
+    if sys.platform not in ("win32", "linux"):
         return []
     import time as _time
 
@@ -742,7 +859,7 @@ def scan_devices(fresh: bool = False) -> list[dict[str, object]]:
     with _SCAN_CACHE_LOCK:
         if not fresh and _SCAN_CACHE and (now - _SCAN_CACHE_AT) < _SCAN_CACHE_TTL:
             return [dict(d) for d in _SCAN_CACHE]
-    devices = _windows_paired_devices()
+    devices = _windows_paired_devices() if sys.platform == "win32" else _linux_paired_devices()
     with _SCAN_CACHE_LOCK:
         _SCAN_CACHE = [dict(d) for d in devices]
         _SCAN_CACHE_AT = now
@@ -789,7 +906,7 @@ def bearer_from(headers) -> Optional[str]:
 
 
 def origin_allowed(origin: Optional[str], user_agent: str = "") -> bool:
-    """True when a request comes from the Windows renderer or local tooling."""
+    """True when a request comes from the desktop renderer or local tooling."""
     if not origin:
         # Main-process probes, curl, tests, and native local tooling have no
         # Origin header and are already protected by loopback/token policy.
@@ -917,7 +1034,7 @@ class Handler(BaseHTTPRequestHandler):
         page = (
             "<!doctype html><meta charset=utf-8><title>SoundControl bridge</title>"
             "<body style='font-family:sans-serif;background:#07080c;color:#f3efe6;padding:2rem'>"
-            "<h1>SoundControl Windows helper</h1><p>Local IPC endpoint: <code>/ws</code></p>"
+            "<h1>SoundControl Bluetooth helper</h1><p>Local IPC endpoint: <code>/ws</code></p>"
         ).encode()
         self.send_response(200)
         self._cors()
@@ -1042,9 +1159,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    if sys.platform != "win32":
-        raise SystemExit("SoundControl is a Windows-only desktop application")
-    p = argparse.ArgumentParser(description="SoundControl Windows Bluetooth helper")
+    if sys.platform not in ("win32", "linux"):
+        raise SystemExit("SoundControl supports Windows and Linux desktop hosts")
+    p = argparse.ArgumentParser(description="SoundControl Windows/Linux Bluetooth helper")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--mac", default="")

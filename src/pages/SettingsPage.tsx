@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../state/store';
+import { DEVICES } from '../protocol/devices';
 import { getAppVersion, isDesktop, openLogFolder } from '../lib/appSettings';
 import { HexConsole } from '../components/HexConsole';
 import { ThemeSection } from '../components/ThemeSection';
@@ -37,7 +38,7 @@ import { Button, Card, InfoRow, PageHeader, SettingsRow, Toggle } from '../compo
  *    explicit reason in plain browser mode.
  */
 
-const DESKTOP_ONLY_NOTE = 'Available in the SoundControl Windows desktop app.';
+const DESKTOP_ONLY_NOTE = 'Available in the SoundControl desktop app.';
 
 /** Capability summary chips — derived state, never invented. */
 function CapabilityChips({ items }: { items: Array<[string, boolean]> }) {
@@ -147,7 +148,7 @@ export function SettingsPage() {
         {/* --------------------------------------------------- appearance */}
         <Card
           title="Appearance"
-          subtitle="Theme applies immediately and persists between launches — System follows the Windows appearance preference"
+          subtitle="Theme applies immediately and persists between launches — System follows the host appearance preference"
         >
           <ThemeSection />
         </Card>
@@ -179,8 +180,8 @@ export function SettingsPage() {
         {/* ----------------------------------------------- startup & exit */}
         <Card title="Startup & exit">
           <SettingsRow
-            title="Windows startup"
-            sub="SoundControl never starts with Windows and quits completely when the window is closed — no tray, no background helper, no startup registration. A startup entry left by an older version is removed automatically at launch."
+            title="Host startup"
+            sub="SoundControl never starts with the host OS and quits completely when the window is closed — no tray, no background helper, no startup registration. A startup entry left by an older version is removed automatically at launch."
             control={
               <span className="rounded border border-edge bg-sunken px-2 py-1 text-[10px] font-medium text-mute">
                 manual launch · quits on close
@@ -241,7 +242,7 @@ export function SettingsPage() {
           </div>
           {desktop && folderOpened === false && (
             <p className="mt-2 text-[11px] text-warn">
-              Windows did not open the folder — it may not exist yet (it is created on first log
+              The host did not open the folder — it may not exist yet (it is created on first log
               write).
             </p>
           )}
@@ -278,14 +279,10 @@ export function SettingsPage() {
               everywhere and cannot be reached from a production install.
             </p>
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {[
-                ['p30i', 'P30i / R50i NC'],
-                ['liberty-4-nc', 'Liberty 4 NC'],
-                ['space-one', 'Space One'],
-                ['q30', 'Life Q30'],
-              ].map(([id, name]) => (
-                <Button key={id} size="sm" disabled={app.connecting} onClick={() => void app.connectSim(id).catch(() => {})}>
-                  {name}
+              {DEVICES.map((device) => (
+                <Button key={device.id} size="sm" disabled={app.connecting} onClick={() => void app.connectSim(device.id).catch(() => {})}>
+                  <span className="truncate">{device.name}</span>
+                  <span className="font-mono text-[9px] text-faint">{device.sku}</span>
                 </Button>
               ))}
             </div>
@@ -294,10 +291,10 @@ export function SettingsPage() {
 
         {/* ------------------------------------------- platform footer */}
         <p className="flex items-center justify-center gap-2 pb-2 text-[11px] text-faint">
-          {desktop ? <IconWindows size={13} /> : <IconSound size={13} />}
+          {desktop && !(typeof window !== 'undefined' && window.electronAPI?.platform === 'linux') ? <IconWindows size={13} /> : <IconSound size={13} />}
           {desktop
-            ? `Windows desktop app${version ? ` · v${version}` : ''} · bundled Python helper on 127.0.0.1:8765`
-            : 'Running in a browser — desktop-only settings are disabled, device features need the Windows app'}
+            ? `${typeof window !== 'undefined' && window.electronAPI?.platform === 'linux' ? 'Linux' : 'Windows'} desktop app${version ? ` · v${version}` : ''} · Bluetooth helper on 127.0.0.1:8765`
+            : 'Running in a browser — desktop-only settings are disabled, device features need the SoundControl desktop app'}
         </p>
       </div>
     </div>

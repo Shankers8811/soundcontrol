@@ -101,7 +101,7 @@ const byId = (id) => DEVICES.find((d) => d.id === id);
 
 console.log('\n[1] capability derivation (protocol truth per model)');
 
-check('model table has the 10 documented profiles', DEVICES.length === 10, `got ${DEVICES.length}`);
+check('model table has the 47 documented profiles', DEVICES.length === 47, `got ${DEVICES.length}`);
 
 for (const d of DEVICES) {
   const c = deriveCapabilities(d);
@@ -113,7 +113,8 @@ for (const d of DEVICES) {
   check(`${d.id}: firmware info supported`, c.supportsFirmwareInfo === true);
   // Noise control exactly when a sound-mode layout exists.
   eq(`${d.id}: supportsNoiseControl`, c.supportsNoiseControl, d.ancLayout !== 'none');
-  // EQ exactly when a real EQ command exists (never for the 03:87 models).
+  // EQ exactly when a real, model-specific EQ command exists, including the
+  // source-backed disabled-HearID 03:87 factory form.
   eq(`${d.id}: supportsEqualizer`, c.supportsEqualizer, d.eqCommand !== null);
   // Per-side earbud state only for TWS hardware with two battery bytes.
   eq(
@@ -141,11 +142,21 @@ eq('tws-l3pro layout sub-features (no scene byte)', ANC_SUB_FEATURES['tws-l3pro'
   level: true, scenes: false, transVocal: true, wind: true, adaptive: true,
 });
 
+eq('classic A3035/A3040 layouts expose documented wind and A3040 vocal controls', [
+  ANC_SUB_FEATURES['classic-a3035'].wind,
+  ANC_SUB_FEATURES['classic-a3040'].transVocal,
+  ANC_SUB_FEATURES['classic-a3040'].wind,
+], [true, true, true]);
+
 // Spot-check the capability consequences for representative models.
-eq('q30 (classic): no ANC level slider, scenes yes', [
+eq('q30 (classic): no ANC level slider, scenes yes, no unsupported vocal sub-mode', [
   deriveCapabilities(byId('q30')).ancSub.level,
   deriveCapabilities(byId('q30')).ancSub.scenes,
-], [false, true]);
+  deriveCapabilities(byId('q30')).ancSub.transVocal,
+], [false, true, false]);
+eq('q20i: common four-byte mode has no unsupported sub-features', deriveCapabilities(byId('q20i')).ancSub, {
+  level: false, scenes: false, transVocal: false, wind: false, adaptive: false,
+});
 eq('space-q45 (classic): EQ disabled (03:87), NC enabled', [
   deriveCapabilities(byId('q45')).supportsEqualizer,
   deriveCapabilities(byId('q45')).supportsNoiseControl,
@@ -159,6 +170,19 @@ eq('liberty-4-nc: EQ disabled, earbud state enabled', [
   deriveCapabilities(byId('liberty-4-nc')).supportsEarbudState,
 ], [false, true]);
 eq('p30i: 0..10 battery scale', byId('p30i').batteryMax, 10);
+eq('Space One uses the six-byte A3035 layout, wind byte, and state battery offset 0', [byId('space-one').ancLayout, byId('space-one').wind, byId('space-one').state.batteryLeft], ['classic-a3035', true, 0]);
+eq('Space Q45 uses the six-byte A3040 layout, transparency/wind bytes, and state battery offset 0', [byId('q45').ancLayout, byId('q45').transparency, byId('q45').wind, byId('q45').state.batteryLeft], ['classic-a3040', true, true, 0]);
+eq('A3062 and A3005 use two-byte battery heads and corrected state offsets', [
+  byId('space-one-pro').state.batteryChargingLeft,
+  byId('space-one-pro').state.firmware.at,
+  byId('space-one-pro').state.soundModes,
+  byId('q11i').state.batteryChargingLeft,
+  byId('q11i').state.dualConnections,
+], [1, 2, 69, 1, 41]);
+eq('Space A40 uses its six-byte layout and state sound modes at 111', [byId('space-a40').ancLayout, byId('space-a40').state.soundModes], ['tws-a3936', 111]);
+eq('P40i uses seven-byte modes at state offset 119', [byId('p40i').ancLayout, byId('p40i').state.soundModes], ['tws-p40i', 119]);
+eq('Liberty 5 uses 10-step battery with offset 1', [byId('liberty-5').batteryMax, byId('liberty-5').batteryOffset], [10, 1]);
+eq('Space 2 is read-only by capability profile', [byId('space-2-readonly').ancLayout, byId('space-2-readonly').eqCommand, byId('space-2-readonly').gaming], ['none', null, false]);
 
 /* ============================== 2. battery math ========================= */
 
@@ -172,6 +196,8 @@ eq('level 4 stays 4', batteryLevel(4), 4);
 
 eq('4 of 5 steps = 80%', batteryPercent(4, 5), 80);
 eq('8 of 10 steps = 80%', batteryPercent(8, 10), 80);
+eq('A3005/A3062 offset: raw 0 of 10 steps = 10%', batteryPercent(0, 10, 1), 10);
+eq('A3005/A3062 offset: raw 9 of 10 steps = 100%', batteryPercent(9, 10, 1), 100);
 eq('0 of 5 steps = 0%', batteryPercent(0, 5), 0);
 eq('Windows PnP percent passes through (scale null)', batteryPercent(87, null), 87);
 eq('null level stays unavailable', batteryPercent(null, 5), null);
@@ -351,13 +377,19 @@ eq('l4nc: manual level 3 + wind on', parseSoundModes([0x00, 0x30, 0x00, 0x00, 0x
   mode: 'anc', level: 3, transVocal: false, wind: true,
 });
 eq('p30i: adaptive nibble below 1 is not a level', parseSoundModes([0x02, 0x00, 0x00, 0x00, 0x00], 'tws-p30i'), {
-  mode: 'normal', wind: false,
+  mode: 'normal', wind: false, scene: 'transport',
 });
 eq('p30i: automation byte confirms adaptive ANC', parseSoundModes([0x00, 0x53, 0x00, 0x01, 0x00], 'tws-p30i'), {
-  mode: 'adaptive', level: 5, wind: false,
+  mode: 'adaptive', level: 5, wind: false, scene: 'transport',
 });
 eq('l4nc: automation byte confirms adaptive ANC', parseSoundModes([0x00, 0x32, 0x00, 0x01, 0x00], 'tws-l4nc'), {
   mode: 'adaptive', level: 3, transVocal: false, wind: false,
+});
+eq('A3035 mirror parses wind while keeping custom transparency opaque', parseSoundModes([0x00, 0x50, 0x00, 0x01, 0x01, 0x05], 'classic-a3035'), {
+  mode: 'adaptive', level: 5, wind: true,
+});
+eq('A3040 mirror parses Talk transparency and wind', parseSoundModes([0x01, 0x50, 0x00, 0x01, 0x01, 0x05], 'classic-a3040'), {
+  mode: 'transparency', level: 5, wind: true, transVocal: true,
 });
 // TEST 12 input — a malformed mirror must be REJECTED, so the last confirmed
 // mode survives (the store only moves ANC state on a non-null report).
@@ -434,6 +466,7 @@ eq('unverified SKU A3953 stays on the unknown profile', matchDevice('A3953').id,
 eq('unverified "Sport X10" stays on the unknown profile', matchDevice('Soundcore Sport X10').id, 'unknown');
 eq('unverified "Sleep A10" stays on the unknown profile', matchDevice('soundcore Sleep A10').id, 'unknown');
 eq('unverified SKUs A3961/A6610 stay unknown', [matchDevice('A3961').id, matchDevice('A6610').id], ['unknown', 'unknown']);
+eq('unverified Life aliases stay unknown', [matchDevice('A3935').id, matchDevice('A3939').id, matchDevice('A3933').id], ['unknown', 'unknown', 'unknown']);
 check('unverified alias note explains the unknown treatment', /unknown model/.test(matchNote('Soundcore Liberty 4') ?? ''), String(matchNote('Soundcore Liberty 4')).slice(0, 80));
 check('unverified alias note never claims a borrowed profile', !/using the/i.test(matchNote('Soundcore Sport X10') ?? ''), String(matchNote('Soundcore Sport X10')).slice(0, 80));
 eq('longest-alias ranking still separates Liberty 4 NC from Liberty 3 Pro', [matchDevice('Soundcore Liberty 4 NC').id, matchDevice('Soundcore Liberty 3 Pro').id], ['liberty-4-nc', 'liberty-3-pro']);

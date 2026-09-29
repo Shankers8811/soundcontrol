@@ -18,7 +18,7 @@ import { IconCheck } from './Icons';
  */
 
 const OPTIONS: Array<{ id: ThemePref; label: string; sub: string }> = [
-  { id: 'system', label: 'System', sub: 'Follow Windows' },
+  { id: 'system', label: 'System', sub: 'Follow host appearance' },
   { id: 'dark', label: 'Dark', sub: 'SoundControl navy' },
   { id: 'light', label: 'Light', sub: 'Same design, light surfaces' },
 ];

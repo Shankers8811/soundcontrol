@@ -1,6 +1,5 @@
-// Direct-download links for the Windows desktop release.
-// The Release Windows workflow publishes one stable installer asset, so this
-// link always resolves to the newest Windows build.
+// Release links for the Windows/Linux desktop builds.
+// Platform-specific assets are published on the latest GitHub release page.
 export const REPO_URL = __REPO_URL__;
 
 export const LATEST_RELEASE_URL = `${REPO_URL}/releases/latest`;
