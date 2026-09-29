@@ -30,27 +30,57 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ inputs.source_ref || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Test renderer and packaging guard
-        run: npm run test:ui && npm run test:package
-      # prebuild:linux stages python-embed/ before build:linux. This hard
-      # check prevents an otherwise successful-looking Linux release from
-      # shipping without the helper that performs host Bluetooth discovery.
+      - name: Run the full release test suite
+        run: npm test
+      # Keep this explicit as well as retaining the prebuild:linux hook in
+      # package.json. The release must contain the host-compatible interpreter
+      # and standard library that the bridge needs for Bluetooth RFCOMM.
+      - name: Stage the bundled Linux Python runtime
+        run: npm run stage:linux-python
       - name: Build AppImage and Debian packages with bundled Python
         run: npm run build:linux -- --publish never
-      - name: Verify the relocated runtime is inside the Linux app
+      - name: Verify the relocated runtime and both Linux packages
         shell: bash
         run: |
           set -euo pipefail
           test -x release/linux-unpacked/resources/python/python3
           release/linux-unpacked/resources/python/python3 -c \
             'import sys, socket; assert sys.prefix.endswith("/resources/python"); assert hasattr(socket, "AF_BLUETOOTH") and hasattr(socket, "BTPROTO_RFCOMM")'
-          test "$(find release -maxdepth 1 -type f -name '*.AppImage' | wc -l)" -ge 1
-          test "$(find release -maxdepth 1 -type f -name '*.deb' | wc -l)" -ge 1
+
+          APPIMAGE="$(find release -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          DEB="$(find release -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -n "$APPIMAGE"
+          test -n "$DEB"
+          test -s "$APPIMAGE"
+          test -s "$DEB"
+
+          # Keep electron-builder's version/architecture-named files and add
+          # stable aliases for the README's direct latest-release links. The
+          # current Ubuntu runner produces the x64/amd64 Linux packages.
+          rm -rf release-assets
+          mkdir -p release-assets
+          cp "$APPIMAGE" release-assets/SoundControl.AppImage
+          cp "$DEB" release-assets/SoundControl.deb
+          APPIMAGE_NAME="$(basename "$APPIMAGE")"
+          DEB_NAME="$(basename "$DEB")"
+          if [ "$APPIMAGE_NAME" != "SoundControl.AppImage" ]; then
+            cp "$APPIMAGE" "release-assets/$APPIMAGE_NAME"
+          fi
+          if [ "$DEB_NAME" != "SoundControl.deb" ]; then
+            cp "$DEB" "release-assets/$DEB_NAME"
+          fi
+          test -s release-assets/SoundControl.AppImage
+          test -s release-assets/SoundControl.deb
+          echo "AppImage: $APPIMAGE"
+          echo "Debian package: $DEB"
           echo "Linux packages contain the bundled Python runtime and both targets were produced."
       - name: Resolve release tag
         id: release-tag
@@ -77,10 +107,15 @@ jobs:
             --generate-notes \
             --latest \
             || gh release edit "$RELEASE_TAG" --latest
-          gh release upload "$RELEASE_TAG" release/*.AppImage release/*.deb --clobber
+          # Upload the stable aliases used by the project page and the
+          # original electron-builder filenames, which retain version and
+          # architecture information for users who prefer them.
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
           gh release view "$RELEASE_TAG"
       - uses: actions/upload-artifact@v4
         with:
           name: SoundControl-Linux-Release
-          path: release/
+          path: |
+            release/
+            release-assets/
           if-no-files-found: error
