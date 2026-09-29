@@ -30,9 +30,9 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ inputs.source_ref || github.ref }}
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      # Use the Python 3 runtime supplied by the Ubuntu runner. It is built
+      # against the same distro/glibc as the Linux package and is what the
+      # relocation probe is intended to copy into the app.
       - uses: actions/setup-node@v4
         with:
           node-version: 22

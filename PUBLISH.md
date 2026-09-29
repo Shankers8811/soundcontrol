@@ -76,7 +76,7 @@ smoke-test gates pass.
 The workflow `.github/workflows/release-linux.yml` runs on the network-capable
 `ubuntu-22.04` GitHub-hosted runner. It:
 
-1. installs Python 3.12 and Node.js 22, then runs `npm ci`;
+1. uses the supported Python 3 runtime supplied by Ubuntu and installs Node.js 22, then runs `npm ci`;
 2. runs the full `npm test` suite;
 3. stages the relocated Python interpreter and standard library with
    `npm run stage:linux-python`;
