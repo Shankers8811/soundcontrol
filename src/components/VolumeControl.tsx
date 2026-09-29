@@ -8,7 +8,7 @@ import { IconVolume } from './Icons';
  * volume read or set frame, so SoundControl has no real device volume to
  * show and no command to send. Rather than a local-only slider pretending to
  * control the headset, this card states exactly that and points at the two
- * volume paths that genuinely work: the Windows mixer and the earbuds' own
+ * volume paths that genuinely work: the host mixer and the earbuds' own
  * buttons (whose mappings the device itself handles).
  *
  * `capabilities.supportsVolume` is a hard `false` in src/state/derive.ts; if
@@ -37,7 +37,7 @@ export function VolumeControl() {
           <p className="mt-2.5 text-xs leading-relaxed text-mute">
             SoundControl will not fake a headset volume: the protocol this app speaks has no
             volume command in any published capture. Adjust playback volume in the{' '}
-            <span className="font-semibold text-ink">Windows mixer</span>, or with your earbuds'
+            <span className="font-semibold text-ink">host mixer</span>, or with your earbuds'
             own buttons — those work without this app.
           </p>
         </div>

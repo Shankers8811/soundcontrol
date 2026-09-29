@@ -60,6 +60,7 @@ try {
         export { EarbudStatusCard } from './src/components/EarbudStatusCard.tsx';
         export { deriveCapabilities, deriveEarbudState } from './src/state/derive.ts';
         export { DEVICES, UNKNOWN_PROFILE } from './src/protocol/devices.ts';
+        export { DeviceTypeVisual } from './src/components/DeviceTypeVisual.tsx';
         export { DashboardPage } from './src/pages/DashboardPage.tsx';
         export { DevicesPage } from './src/pages/DevicesPage.tsx';
         export { EqualizerPage } from './src/pages/EqualizerPage.tsx';
@@ -147,13 +148,27 @@ check('quick actions render real presets for this EQ-capable profile', dash.incl
 console.log('\n[devices]');
 const devices = render(React.createElement(M.DevicesPage));
 check('page title', devices.includes('>Devices<'));
-check('real scan surface', devices.includes('Paired Windows devices') && devices.includes('Scan devices'));
+check('real scan surface', devices.includes('Paired Bluetooth devices') && devices.includes('Scan devices'));
 check('helper status starts as checking (no fake "online")', devices.includes('Checking') || devices.includes('checking'));
 check('manual MAC connect form', devices.includes('Connect by address') && devices.includes('AA:BB:CC:DD:EE:FF'));
 check('capability matrix lists the honest volume/gesture facts', devices.includes('no volume command exists in the protocol') && devices.includes('no button-write command is publicly documented'));
 // Disconnected, the override control honestly becomes read-only preview —
 // you cannot override the profile of a device that is not connected.
 check('model profile preview (override only when connected)', devices.includes('Preview profiles') && !devices.includes('>Override profile<'));
+
+console.log('\n[device visuals] exact-profile family artwork');
+for (const [profileId, expectedLabel] of [
+  ['liberty-4-nc', 'Left and right earbuds'],
+  ['q45', 'Over-ear headset'],
+  ['life-u2', 'Neckband earphones'],
+]) {
+  const profile = M.DEVICES.find((candidate) => candidate.id === profileId);
+  check(`${profileId} profile exists for device-family visual`, Boolean(profile));
+  if (profile) {
+    const visual = renderToStaticMarkup(React.createElement(M.DeviceTypeVisual, { kind: profile.kind, size: 30 }));
+    check(`${profileId} renders the confirmed ${profile.kind} visual`, visual.includes(`aria-label="${expectedLabel}"`));
+  }
+}
 
 console.log('\n[equalizer] — default profile is R50i / A3949: factory presets ONLY');
 const eq = render(React.createElement(M.EqualizerPage));
@@ -206,6 +221,7 @@ console.log('\n[controls]');
 const controls = render(React.createElement(M.ControlsPage));
 check('page title (Pass 8: Noise Control)', controls.includes('>Noise Control<') && !controls.includes('>Controls<'));
 check('ANC component is embedded in the Noise Control page', controls.includes('Noise control is not available on this model'));
+check('non-ANC profile keeps all three noise-mode icons visible but faded/disabled', controls.includes('Noise control options unavailable') && (controls.match(/data-noise-mode-disabled="true"/g) ?? []).length === 3 && (controls.match(/data-noise-mode-option="true"/g) ?? []).length === 3);
 check('gesture customization is explicitly unsupported — no decorative remap UI', controls.includes('Gesture customization is not supported by this protocol'));
 // 01:85 is documented only for the Motion+ (A3116); no profile in the table
 // may fire an undocumented destructive frame — the card must explain instead.
@@ -216,9 +232,9 @@ console.log('\n[settings]');
 const settings = render(React.createElement(M.SettingsPage));
 check('page title', settings.includes('>Settings<'));
 check('interface sounds is a real local toggle', settings.includes('Interface sounds'));
-check('desktop-only rows are disabled with a reason', settings.includes('Available in the SoundControl Windows desktop app.'));
+check('desktop-only rows are disabled with a reason', settings.includes('Available in the SoundControl desktop app.'));
 check('autostart + tray toggles removed (release policy)', !settings.includes('Launch at login') && !settings.includes('Minimize to tray'));
-check('Settings states the fixed startup/exit policy', settings.includes('never starts with Windows') && settings.includes('quits completely when the window is closed'));
+check('Settings states the fixed startup/exit policy', settings.includes('never starts with the host OS') && settings.includes('quits completely when the window is closed'));
 check('log folder row references the real path', settings.includes('soundcontrol') && settings.includes('main.log'));
 check('production build hides developer tools', !settings.includes('Developer tools'));
 

@@ -1,7 +1,7 @@
 # Security Policy
 
 SoundControl writes raw bytes to hardware you wear in your ears, and it reads which
-Bluetooth devices Windows has paired. The Windows-only desktop app and its local helper
+Bluetooth devices the host has paired. The Windows/Linux desktop app and its local helper
 are the threat model this page covers.
 
 ## Reporting a vulnerability
@@ -49,7 +49,7 @@ are the reward.
   isolated IPC. Requests without the secret receive `401`.
 - Requests with a foreign origin are rejected. Local development and the packaged
   Electron renderer are the only supported callers. Any process already running as the
-  Windows user can still use the loopback helper; the token protects against accidental
+  desktop user can still use the loopback helper; the token protects against accidental
   callers, not local code execution.
 - Do not run the helper with `--host` pointing at a network interface. The helper logs a
   warning if asked to do so, but loopback is the supported configuration.

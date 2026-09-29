@@ -60,7 +60,7 @@ export function EqualizerPage() {
               This device’s model could not be identified. Equalizer commands and byte layouts
               differ per model, and SoundControl never guesses a payload for unknown firmware — a
               wrong frame could overwrite a personalised hearing profile. EQ stays disabled until
-              the model is known (a Windows-readable device name, a previous connection, or a
+              the model is known (a host-readable device name, a previous connection, or a
               manual profile override on the Devices page).
             </>
           ) : (

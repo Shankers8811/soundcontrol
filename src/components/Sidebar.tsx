@@ -46,7 +46,9 @@ export function Sidebar() {
         <IconLogo size={30} />
         <div className="leading-tight">
           <p className="text-[15px] font-bold tracking-tight text-ink">SoundControl</p>
-          <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-faint">for Windows</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-faint">
+            for {typeof window !== 'undefined' && window.electronAPI?.platform === 'linux' ? 'Linux' : 'desktop'}
+          </p>
         </div>
       </div>
 

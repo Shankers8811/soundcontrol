@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getAppVersion, isDesktop } from '../lib/appSettings';
-import { LATEST_RELEASE_URL, REPO_URL, WINDOWS_DOWNLOAD_URL } from '../lib/downloads';
+import { LATEST_RELEASE_URL, REPO_URL } from '../lib/downloads';
 import { IconExternal, IconLogo } from '../components/Icons';
 import { Card } from '../components/ui';
 
@@ -23,6 +23,12 @@ const BUILD_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_VERSIO
 
 export function AboutSection() {
   const [version, setVersion] = useState<string>(BUILD_VERSION);
+  const platform =
+    typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
+      ? 'Linux desktop'
+      : typeof window !== 'undefined' && window.electronAPI?.platform === 'win32'
+        ? 'Windows desktop'
+        : 'desktop';
 
   useEffect(() => {
     let stopped = false;
@@ -43,7 +49,7 @@ export function AboutSection() {
             <IconLogo size={64} />
             <div className="min-w-0">
               <h2 className="text-2xl font-bold tracking-tight text-ink">SoundControl</h2>
-              <p className="mt-0.5 font-mono text-xs text-accent-soft">version {version} · Windows desktop</p>
+              <p className="mt-0.5 font-mono text-xs text-accent-soft">version {version} · {platform}</p>
               <p className="mt-3 text-sm leading-relaxed text-mute">
                 Desktop controls for Anker Soundcore earbuds and headphones over Bluetooth RFCOMM —
                 noise control, equalizer presets and custom curves, gaming mode, LDAC, dual
@@ -73,14 +79,14 @@ export function AboutSection() {
                 </a>
               </li>
               <li className="flex items-center justify-between gap-3">
-                <span>Windows installer (latest release)</span>
+                <span>Desktop releases (Windows/Linux)</span>
                 <a
-                  href={WINDOWS_DOWNLOAD_URL}
+                  href={LATEST_RELEASE_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 rounded-lg border border-edge bg-sunken px-2.5 py-1.5 font-semibold text-accent-soft transition-colors hover:border-accent/50"
                 >
-                  Download .exe <IconExternal size={12} />
+                  Open releases <IconExternal size={12} />
                 </a>
               </li>
               <li className="flex items-center justify-between gap-3">
@@ -96,8 +102,8 @@ export function AboutSection() {
               </li>
             </ul>
             <p className="mt-3 text-[11px] leading-relaxed text-faint">
-              Updating is manual by design: download the newest installer and run it — the NSIS
-              setup upgrades in place. There is no background updater, so no update button.
+              Updating is manual by design: download the newest Windows installer or Linux package
+              from Releases and install it yourself. There is no background updater, so no update button.
             </p>
           </Card>
 

@@ -34,7 +34,7 @@ import { checksum } from './codec';
  *      `withEarbudOnlyBoundary()`, which wraps every transport the store
  *      installs, so ALL writes (UI actions, connect handshake, background
  *      polls, the diagnostics console) pass through it.
- *   2. The Windows helper (`soundcore_bridge.py`) independently re-validates
+ *   2. The desktop helper (`soundcore_bridge.py`) independently re-validates
  *      every `tx` frame against the same command set before transmitting it
  *      on the RFCOMM socket — so even a buggy or hostile renderer cannot make
  *      the helper send anything but recognized earbud commands.
@@ -87,11 +87,12 @@ export const EARBUD_COMMANDS: readonly EarbudCommandSpec[] = [
   { id: 'device.info', label: 'Serial + firmware query', target: 'earbud', frames: ['01:05'] },
   { id: 'device.factory-reset', label: 'Factory reset', target: 'earbud', frames: ['01:85'] },
   { id: 'game-mode.set', label: 'Gaming / low-latency mode', target: 'earbud', frames: ['01:87'] },
-  { id: 'game-mode.set-a3947', label: 'Gaming mode (Liberty 4 NC variant)', target: 'earbud', frames: ['10:85'] },
+  { id: 'game-mode.set-a3947', label: 'Gaming mode (Liberty variant)', target: 'earbud', frames: ['10:85'] },
   { id: 'ldac.query', label: 'LDAC codec state query', target: 'earbud', frames: ['01:7F'] },
   { id: 'ldac.set', label: 'LDAC codec enable/disable', target: 'earbud', frames: ['01:FF'] },
   { id: 'equalizer.set', label: 'Equalizer preset/bands', target: 'earbud', frames: ['02:81'] },
   { id: 'equalizer.set-drc', label: 'Equalizer with DRC (TWS models)', target: 'earbud', frames: ['02:83'] },
+  { id: 'equalizer.set-hearid', label: 'Equalizer with disabled HearID (D1202)', target: 'earbud', frames: ['03:87'] },
   { id: 'surround.set', label: '3D Surround Sound toggle', target: 'earbud', frames: ['02:86'] },
   { id: 'sound-modes.set', label: 'ANC / transparency / wind noise modes', target: 'earbud', frames: ['06:81'] },
   { id: 'dual-audio.set', label: 'Dual audio enable/disable', target: 'earbud', frames: ['0B:84'] },
@@ -104,7 +105,7 @@ const FRAME_INDEX: ReadonlyMap<string, EarbudCommandSpec> = new Map(
 
 /**
  * The complete set of frame keys the application may transmit — the contract
- * shared with the Windows helper (`TX_ALLOWED_FRAMES` in soundcore_bridge.py).
+ * shared with the desktop helper (`TX_ALLOWED_FRAMES` in soundcore_bridge.py).
  */
 export const EARBUD_COMMAND_FRAME_KEYS: readonly string[] = [...FRAME_INDEX.keys()].sort();
 

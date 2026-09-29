@@ -48,7 +48,7 @@ export function verifyFrame(data: ArrayLike<number>): boolean | null {
 
 /**
  * XOR checksum used by some legacy BLE captures of the Soundcore protocol.
- * The Windows RFCOMM transport always uses the additive checksum above; this
+ * The desktop RFCOMM transport always uses the additive checksum above; this
  * helper exists so Android BLE dumps (see src/protocol/ble.ts) can be
  * validated in the diagnostics console without guessing.
  */

@@ -132,7 +132,7 @@ export function HexConsole() {
         Android BLE captures use an XOR checksum instead. Injection sends the real frame to the
         connected device over the bridge — recognized earbud commands only: anything else is
         rejected before it leaves the app (earbud-only control boundary), and SoundControl never
-        sends audio commands to Windows itself.
+        sends audio commands to the host itself.
       </p>
       <div className="flex flex-wrap gap-1">
         {(['all', 'tx', 'rx', 'sys'] as const).map((f) => (
@@ -248,7 +248,7 @@ export function HexConsole() {
           ))}
         </ul>
         <p className="mt-2 text-[11px] text-faint">
-          GATT ab00 (TX ab01 / RX ab02). Windows sends the RFCOMM column; this table only decodes
+          GATT ab00 (TX ab01 / RX ab02). The desktop helper sends the RFCOMM column; this table only decodes
           captures — SoundControl never transmits BLE.
         </p>
       </div>

@@ -8,16 +8,16 @@ product. Everyone participating is covered by the
 
 - **Node.js 20.19+ or 22.12+** is required (Vite 8 refuses older runtimes).
 - `npm ci && npm run build` must pass. That command typechecks (`tsc --noEmit`)
-  and builds the renderer packaged into the Windows application.
+  and builds the renderer packaged into the Windows/Linux desktop application.
 - Use the simulator or run the Electron shell while reviewing UI work. Hardware testing
-  requires a Windows machine with a paired Soundcore device.
+  requires a Windows or Linux machine with a paired Soundcore device (BlueZ tools on Linux).
 - `npm audit` should stay clean; dependency changes land in the same PR as the
   lockfile update.
 
 ## Reporting an issue
 
 Use one of the two templates — **🎧 Device won't connect** or **✨ Feature request**.
-They ask for the details that actually decide a fix: which Windows build, what state the
+They ask for the details that actually decide a fix: which desktop platform/build, what state the
 earbuds were in when you tried to connect, and the hex console output. Search open and
 closed issues first; connection reports without a helper log line are usually closed as
 unreproducible.
@@ -39,7 +39,7 @@ Suspected security problems are different: read
 
 A PR that touches a release path (`package.json` version, `.github/workflows/`,
 `electron-main.cjs`, `soundcore_bridge.py`) will be built and published by CI, so
-expect the reviewer to ask "what did the Windows Build job do?" before "LGTM".
+expect the reviewer to ask "what did the desktop build job do?" before "LGTM".
 
 ## Safety
 

@@ -6,6 +6,8 @@ import {
   type ScannedDevice,
 } from '../state/derive';
 import { DEVICES } from '../protocol/devices';
+import { MARKET_CATALOG, type MarketCatalogEntry } from '../protocol/marketCatalog';
+import { deviceKindLabel } from '../components/DeviceTypeVisual';
 import { bridgeHealth, scanBridgeDevicesDetailed } from '../transports/bridge';
 import { IconBolt, IconBt, IconCheck, IconClose, IconRefresh } from '../components/Icons';
 import {
@@ -20,10 +22,11 @@ import {
 } from '../components/ui';
 
 /**
- * Devices page (PART I/M) — the real Windows scanning backend only.
+ * Devices page (PART I/M) — the real Windows/Linux Bluetooth scanning
+ * backend only.
  *
- * Scan data comes from the helper's `/scan` HTTP endpoint (PowerShell/PnP
- * enumeration in soundcore_bridge.py — unchanged), liveness from `/health`.
+ * Scan data comes from the helper's `/scan` HTTP endpoint (Windows PnP or
+ * Linux BlueZ enumeration in soundcore_bridge.py), liveness from `/health`.
  * Every state is explicit: checking helper / scanning / results / empty /
  * error + retry. No mock or demo data reaches this page in production; the
  * developer simulator lives in Settings behind `import.meta.env.DEV`.
@@ -32,7 +35,7 @@ import {
 function soundcoreFirst(a: ScannedDevice, b: ScannedDevice): number {
   const score = (d: ScannedDevice) =>
     /soundcore|anker|liberty|r50i|p30i|p20i|space|q30|q35|q45|a39|a30/i.test(d.name) ? 0 : 1;
-  return score(a) - score(b) || a.name.localeCompare(b.name);
+  return Number(Boolean(b.connected)) - Number(Boolean(a.connected)) || score(a) - score(b) || a.name.localeCompare(b.name);
 }
 
 function normalizeMac(input: string): string {
@@ -43,7 +46,7 @@ function normalizeMac(input: string): string {
 }
 
 const HELPER_OFFLINE_MESSAGE =
-  'The Windows Bluetooth helper is not responding. It starts automatically with SoundControl and may still be booting — retry in a moment. If it never starts, check %AppData%\\soundcontrol\\main.log.';
+  'The Bluetooth helper is not responding. It starts automatically with SoundControl and may still be booting — retry in a moment. If it never starts, check the SoundControl log folder in Settings.';
 
 export function DevicesPage() {
   const app = useApp();
@@ -52,6 +55,7 @@ export function DevicesPage() {
   const [macHint, setMacHint] = useState<string | null>(null);
   const [connectingMac, setConnectingMac] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
 
   /* ---------------------------------------------------------- scanning */
 
@@ -122,16 +126,16 @@ export function DevicesPage() {
     event.preventDefault();
     const mac = normalizeMac(macInput);
     if (!mac) {
-      setMacHint('Enter the Bluetooth address like AA:BB:CC:DD:EE:FF from Windows device properties.');
+      setMacHint('Enter the Bluetooth address like AA:BB:CC:DD:EE:FF from your computer’s Bluetooth device details.');
       return;
     }
     setMacHint(null);
     // When the typed address is in the current scan results, reuse the
-    // identity Windows already reported for it: the model name selects the
-    // right device profile (and with it the correct battery scale — a
-    // scale-5 model read against the generic scale-10 default would show
-    // half the real percentage). Only real scan data is used; an address
-    // Windows cannot name still connects with the honest generic default.
+            // identity the host already reported for it: the model name selects the
+            // right device profile (and with it the correct battery scale — a
+            // scale-5 model read against the generic scale-10 default would show
+            // half the real percentage). Only real scan data is used; an address
+            // the host cannot name still connects with the honest generic default.
     const known = scan.devices.find(
       (d) => typeof d.mac === 'string' && d.mac.toUpperCase() === mac,
     );
@@ -157,7 +161,7 @@ export function DevicesPage() {
                     ? 'border-danger/30 bg-danger/8 text-danger'
                     : 'border-edge bg-sunken text-mute'
               }`}
-              title="The local Python helper performs Windows PnP Bluetooth enumeration"
+              title="The local helper performs host Bluetooth enumeration"
             >
               <span
                 className={`h-1.5 w-1.5 rounded-full ${
@@ -186,8 +190,8 @@ export function DevicesPage() {
         {/* ---------------------------------------------- discovered list */}
         <div className="space-y-4 xl:col-span-7">
           <Card
-            title="Paired Windows devices"
-            subtitle="Bluetooth devices already paired in Windows Settings — SoundControl speaks RFCOMM to them directly"
+            title="Paired Bluetooth devices"
+            subtitle="Devices paired with this computer — SoundControl detects them automatically and speaks RFCOMM directly"
             actions={
               scan.lastScanAt !== null ? (
                 <span className="font-mono text-[10px] text-faint">
@@ -216,8 +220,8 @@ export function DevicesPage() {
               <div className="space-y-3 py-2">
                 <p className="text-sm leading-relaxed text-mute">{scan.message}</p>
                 <p className="text-xs text-faint">
-                  Earbuds must stay <span className="font-semibold text-ink/80">connected</span> in Windows
-                  Bluetooth settings (audio may be playing). “Pairing mode” is the wrong state.
+                  Earbuds must stay <span className="font-semibold text-ink/80">connected</span> in this
+                  computer’s Bluetooth settings (audio may be playing). “Pairing mode” is the wrong state.
                 </p>
               </div>
             )}
@@ -250,7 +254,12 @@ export function DevicesPage() {
                           <span className="truncate text-sm font-semibold text-ink">{device.name}</span>
                           {isActive && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-bold text-accent-soft">
-                              <IconCheck size={10} /> Connected
+                              <IconCheck size={10} /> Connected to SoundControl
+                            </span>
+                          )}
+                          {!isActive && device.connected && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-accent/8 px-2 py-0.5 text-[10px] font-semibold text-accent-soft">
+                              <IconCheck size={10} /> Bluetooth connected
                             </span>
                           )}
                         </span>
@@ -259,7 +268,7 @@ export function DevicesPage() {
                           {typeof device.battery === 'number' && (
                             <span className="inline-flex items-center gap-1 text-mute">
                               · {device.battery}%
-                              <IconBolt size={10} className="text-warn/80" /> Windows
+                              <IconBolt size={10} className="text-warn/80" /> host
                             </span>
                           )}
                         </span>
@@ -287,7 +296,7 @@ export function DevicesPage() {
           </Card>
 
           {/* Manual MAC — real connect path for nameless pairings. */}
-          <Card title="Connect by address" subtitle="For devices Windows paired without a readable name">
+          <Card title="Connect by address" subtitle="For devices paired without a readable name">
             <form onSubmit={submitMac} className="flex flex-col gap-2 sm:flex-row">
               <input
                 value={macInput}
@@ -327,7 +336,7 @@ export function DevicesPage() {
                     <button
                       onClick={() => app.forgetRecentDevice(d.mac)}
                       aria-label={`Forget ${d.name} from the recent list`}
-                      title="Remove from this local list (does not unpair the device in Windows)"
+                      title="Remove from this local list (does not unpair the device from the computer)"
                       className="rounded p-1 text-faint transition-colors hover:bg-raised hover:text-danger"
                     >
                       <IconClose size={12} />
@@ -361,6 +370,8 @@ export function DevicesPage() {
               </p>
             )}
           </Card>
+
+          <MarketCoverageCard onOpen={() => setCatalogOpen(true)} />
         </div>
       </div>
 
@@ -395,7 +406,7 @@ export function DevicesPage() {
                       )}
                     </span>
                     <span className="mt-0.5 block text-[11px] text-mute">
-                      {d.kind === 'earbuds' ? 'Earbuds' : 'Over-ear'} ·{' '}
+                      {deviceKindLabel(d.kind)} ·{' '}
                       {d.ancLayout !== 'none' ? 'noise control' : 'no noise control'} ·{' '}
                       {d.eqCommand ? `EQ ${d.eqCommand}` : 'EQ via 03:87 (unsupported)'}
                     </span>
@@ -407,7 +418,92 @@ export function DevicesPage() {
           })}
         </ul>
       </Modal>
+
+      <Modal open={catalogOpen} title="Soundcore market compatibility" onClose={() => setCatalogOpen(false)} width="max-w-4xl">
+        <p className="mb-4 text-xs leading-relaxed text-mute">
+          Catalog identity, exact protocol evidence, local simulator/tests, and physical hardware
+          validation are separate statuses. A catalog row with unknown protocol evidence is
+          intentionally read-only: SoundControl will not guess ANC, EQ, codec, or state offsets.
+        </p>
+        <div className="space-y-4">
+          {(['tws', 'sleep', 'open-ear', 'neckband', 'headphones'] as const).map((category) => {
+            const entries = MARKET_CATALOG.filter((entry) => entry.category === category);
+            return (
+              <section key={category}>
+                <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.12em] text-accent-soft">
+                  {category === 'tws' ? 'Traditional TWS earbuds' : category === 'sleep' ? 'Sleep earbuds' : category === 'open-ear' ? 'Open-ear / clip-on' : category === 'neckband' ? 'Neckband earphones' : 'Over-ear / on-ear'}
+                </h3>
+                <ul className="space-y-1.5">
+                  {entries.map((entry) => <CatalogStatusRow key={entry.sku} entry={entry} />)}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
+      </Modal>
     </div>
+  );
+}
+
+/** Summary card for the deduplicated official-market registry. */
+function MarketCoverageCard({ onOpen }: { onOpen: () => void }) {
+  const protocol = MARKET_CATALOG.filter((entry) => entry.protocolStatus === 'implemented').length;
+  const readOnly = MARKET_CATALOG.filter((entry) => entry.protocolStatus === 'read-only').length;
+  const unknown = MARKET_CATALOG.filter((entry) => entry.protocolStatus === 'unknown').length;
+  const tested = MARKET_CATALOG.filter((entry) => entry.unitTestCoverage === 'covered').length;
+  return (
+    <Card
+      title="Market compatibility"
+      subtitle={`${MARKET_CATALOG.length} deduplicated catalog identities · snapshot 2026-09-29`}
+      actions={<Button size="sm" onClick={onOpen}>View status</Button>}
+    >
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <MarketMetric value={protocol} label="protocol" tone="good" />
+        <MarketMetric value={readOnly} label="read-only" tone="warn" />
+        <MarketMetric value={unknown} label="catalog only" tone="muted" />
+        <MarketMetric value={tested} label="unit-tested" tone="good" />
+      </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-faint">
+        Physical validation: <span className="font-semibold text-warn">pending for every model</span>.
+        Regional names and model-number aliases are grouped into one canonical SKU row.
+      </p>
+    </Card>
+  );
+}
+
+function MarketMetric({ value, label, tone }: { value: number; label: string; tone: 'good' | 'warn' | 'muted' }) {
+  const style = tone === 'good' ? 'text-accent-soft' : tone === 'warn' ? 'text-warn' : 'text-mute';
+  return (
+    <div className="rounded-lg border border-edge bg-sunken px-2.5 py-2">
+      <div className={`font-mono text-lg font-semibold ${style}`}>{value}</div>
+      <div className="text-[10px] text-faint">{label}</div>
+    </div>
+  );
+}
+
+function CatalogStatusRow({ entry }: { entry: MarketCatalogEntry }) {
+  const protocol = entry.protocolStatus === 'implemented' ? 'protocol' : entry.protocolStatus === 'read-only' ? 'read-only' : 'catalog only';
+  const protocolStyle = entry.protocolStatus === 'implemented'
+    ? 'border-accent/30 bg-accent/8 text-accent-soft'
+    : entry.protocolStatus === 'read-only'
+      ? 'border-warn/30 bg-warn/8 text-warn'
+      : 'border-edge bg-sunken text-faint';
+  return (
+    <li className="rounded-xl border border-edge bg-sunken px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-[11px] font-semibold text-ink">{entry.sku}</span>
+        <span className="text-xs font-semibold text-ink">{entry.name}</span>
+        <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase ${protocolStyle}`}>{protocol}</span>
+        <span className="ml-auto text-[10px] text-faint">{entry.regions.join(' / ')}</span>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-faint">
+        <span>simulator: <b className={entry.simulatorCoverage === 'covered' ? 'text-accent-soft' : 'text-faint'}>{entry.simulatorCoverage}</b></span>
+        <span>unit tests: <b className={entry.unitTestCoverage === 'covered' ? 'text-accent-soft' : 'text-faint'}>{entry.unitTestCoverage}</b></span>
+        <span>physical: <b className="text-warn">{entry.physicalValidation}</b></span>
+      </div>
+      <p className="mt-1 text-[10px] leading-relaxed text-faint">Aliases: {entry.aliases.join(' · ')}</p>
+      <p className="mt-1 text-[10px] leading-relaxed text-mute">{entry.protocolEvidence}</p>
+    </li>
   );
 }
 
