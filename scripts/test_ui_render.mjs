@@ -109,6 +109,17 @@ globalThis.localStorage = {
 
 const M = await import(pathToFileURL(bundlePath).href);
 const { React, renderToStaticMarkup, AppProvider } = M;
+console.log('\n[device type visuals]');
+for (const [kind, label, needle] of [
+  ['earbuds', 'TWS earbuds', 'Left and right earbuds'],
+  ['open-ear', 'open-ear', 'Open-ear earbuds'],
+  ['neckband', 'neckband', 'Neckband earphones'],
+  ['overear', 'headset', 'Over-ear headset'],
+]) {
+  const html = renderToStaticMarkup(React.createElement(M.DeviceTypeVisual, { kind, size: 18 }));
+  check(`device icon mapping: ${label}`, html.includes(`aria-label="${needle}"`));
+}
+
 
 function render(el) {
   return renderToStaticMarkup(React.createElement(AppProvider, null, el));
@@ -147,6 +158,8 @@ check('quick actions render real presets for this EQ-capable profile', dash.incl
 
 console.log('\n[devices]');
 const devices = render(React.createElement(M.DevicesPage));
+check('Devices page labels the catalog as a US/EU market snapshot', devices.includes('US/EU catalog identities') || devices.includes('US/EU market snapshot'));
+
 check('page title', devices.includes('>Devices<'));
 check('real scan surface', devices.includes('Paired Bluetooth devices') && devices.includes('Scan devices'));
 check('helper status starts as checking (no fake "online")', devices.includes('Checking') || devices.includes('checking'));
@@ -219,6 +232,10 @@ check('A3959: custom curve documents the real FE FE preset id', eqNc.includes('F
 
 console.log('\n[controls]');
 const controls = render(React.createElement(M.ControlsPage));
+check('noise control page shows connected-model header label', controls.includes('Connected model'));
+check('noise control page shows separate PC battery box', controls.includes('PC battery') && controls.includes('Host-detected battery'));
+check('noise control page does not use a connected-device artwork in its header', !controls.includes('aria-label="Left and right earbuds"') && !controls.includes('aria-label="Over-ear headset"') && !controls.includes('aria-label="Neckband earphones"'));
+
 check('page title (Pass 8: Noise Control)', controls.includes('>Noise Control<') && !controls.includes('>Controls<'));
 check('ANC component is embedded in the Noise Control page', controls.includes('Noise control is not available on this model'));
 check('non-ANC profile keeps all three noise-mode icons visible but faded/disabled', controls.includes('Noise control options unavailable') && (controls.match(/data-noise-mode-disabled="true"/g) ?? []).length === 3 && (controls.match(/data-noise-mode-option="true"/g) ?? []).length === 3);
