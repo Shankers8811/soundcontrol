@@ -620,12 +620,11 @@ def _normalize_mac(raw: str) -> str:
 
 
 def _parse_windows_scan_output(text: str) -> list[dict[str, object]]:
-    """Parse the ``MAC|Name|Battery`` lines produced by PowerShell.
+    """Parse MAC|Name|Battery|Connected lines produced by PowerShell.
 
-    Windows PowerShell can emit non-ASCII Bluetooth names using the active
-    console code page. The caller explicitly decodes UTF-8, and this parser
-    also removes the common all-question-mark placeholder instead of showing
-    it as a device name in the UI.
+    Connected comes from the Windows PnP PresentOnly view rather than from
+    the pairing registry. This keeps paired, connected, and RFCOMM-connected
+    as separate states in the desktop UI.
     """
     devices: list[dict[str, object]] = []
     seen: set[str] = set()
@@ -633,10 +632,11 @@ def _parse_windows_scan_output(text: str) -> list[dict[str, object]]:
         line = line.strip()
         if not line:
             continue
-        parts = line.split("|", 2)
+        parts = line.split("|", 3)
         mac_part = parts[0]
         name = parts[1].strip() if len(parts) > 1 else ""
         raw_battery = parts[2].strip() if len(parts) > 2 else ""
+        raw_connected = parts[3].strip().lower() if len(parts) > 3 else ""
         mac = _normalize_mac(mac_part)
         if not mac or mac in seen:
             continue
@@ -651,7 +651,8 @@ def _parse_windows_scan_output(text: str) -> list[dict[str, object]]:
                 battery = value
         except (TypeError, ValueError):
             pass
-        item: dict[str, object] = {"mac": mac, "name": name}
+        connected = raw_connected in {"1", "true", "yes"}
+        item: dict[str, object] = {"mac": mac, "name": name, "connected": connected}
         if battery is not None:
             item["battery"] = battery
         devices.append(item)
@@ -785,6 +786,19 @@ def _windows_paired_devices() -> list[dict[str, object]]:
 $OutputEncoding = [Text.Encoding]::UTF8
 $levels = @{}
 $names = @{}
+$present = @{}
+# Windows documents -PresentOnly as the current physically-present PnP view.
+# Keep paired addresses from the registry below, then mark only addresses
+# present in this view as Bluetooth-connected.
+Get-PnpDevice -Class Bluetooth -PresentOnly -ErrorAction SilentlyContinue | ForEach-Object {
+    $id = [string]$_.InstanceId
+    $friendly = [string]$_.FriendlyName
+    if ($id -match '(?i)DEV_([0-9A-F]{12})' -and
+        $friendly -and
+        $friendly -notmatch '(?i)Microsoft Bluetooth|Bluetooth Enumerator|RFCOMM Protocol|Generic Attribute|A2DP|AVRCP|Hands-Free|Audio Gateway') {
+        $present[$Matches[1].ToUpper()] = $true
+    }
+}
 Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | ForEach-Object {
     $id = [string]$_.InstanceId
     $friendly = [string]$_.FriendlyName
@@ -820,7 +834,8 @@ Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Device
         if ($names.ContainsKey($key) -and $names[$key]) { $n = [string]$names[$key] }
         if (-not $n -or -not $n.Trim("?")) { $n = $key }
         $b = if ($levels.ContainsKey($key)) { $levels[$key] } else { "" }
-        "{0}|{1}|{2}" -f $key, $n, $b
+        $connected = if ($present.ContainsKey($key)) { "true" } else { "false" }
+        "{0}|{1}|{2}|{3}" -f $key, $n, $b, $connected
     }
 """
     try:
