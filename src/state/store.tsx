@@ -28,7 +28,7 @@ import {
 } from '../protocol/packets';
 import { presetById, type EqPreset } from '../protocol/presets';
 import { requiredStateLength, withDeviceBoundary } from '../protocol/modelRegistry';
-import { createSessionGuard, parseDeviceToggles } from '../protocol/responses';
+import { createSessionGuard, isCurrentTransportSession, parseDeviceToggles } from '../protocol/responses';
 import { isTransportBusyError } from '../lib/transportErrors';
 import { connectBridge, scanBridgeDevicesDetailed } from '../transports/bridge';
 import {
@@ -88,6 +88,16 @@ function ascii(payload: Uint8Array, at: number, length: number): string | null {
   }
   const trimmed = out.trim();
   return trimmed.length >= 3 ? trimmed : null;
+}
+
+/** Strict OpenSCQ30 boolean decoding for charging fields. */
+function strictBooleanByte(value: number | undefined): boolean | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === 0x00) return false;
+  if (value === 0x01) return true;
+  // A documented flag carrying another byte is malformed/unknown, never
+  // implicitly "true" and never a confirmed "not charging".
+  return null;
 }
 
 /**
@@ -314,6 +324,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // values, while valid data with an absent side clears it (see
       // mergeBatteryTelemetry).
       if (!verifyFrame(data)) return;
+      const declaredLength = data[7] | (data[8] << 8);
+      if (declaredLength !== data.length) {
+        pushLog(
+          'sys',
+          '',
+          `Response frame ignored — length field ${declaredLength} does not match ${data.length} received bytes`,
+        );
+        return;
+      }
 
       const cat = data[5];
       const typ = data[6];
@@ -326,8 +345,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (cat === 0x01 && typ === 0x05) {
         // Serial number + firmware: 10 bytes of ASCII "XX.XX" + "XX.XX",
-        // then 16 bytes of ASCII serial. Every supported model answers this,
-        // which is why firmware is read here rather than from the state blob.
+        // then 16 bytes of ASCII serial. Any shorter or longer reply is
+        // malformed as a whole; do not accept a valid-looking firmware prefix
+        // from it.
+        if (payload.length !== 26) return;
+        // Every supported model answers this request, which is why firmware
+        // is read here rather than from the state blob.
         const fw = ascii(payload, 0, 10);
         const sn = ascii(payload, 10, 16);
         if (fw) setFirmware(fw);
@@ -335,33 +358,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (cat === 0x01 && typ === 0x04 && payload.length >= 1) {
-        // Charging flag for the first reported side (PROTOCOL.md documents
-        // "charging flag(s)" without byte-confirmed multi-side semantics, so
-        // only byte0 is consumed). A flag can never attach to a side the
-        // device has explicitly reported absent — a charging bud is present
-        // by definition, so this frame contradicts a confirmed 'right'/'none'
-        // presence and is ignored rather than allowed to dirty the state.
-        setBattery((p) =>
-          p.presence === 'right' || p.presence === 'none'
-            ? p
-            : { ...p, leftCharging: (payload[0] & 0x01) !== 0 },
-        );
+      if (cat === 0x01 && typ === 0x04) {
+        // Only consume charging bytes when this profile documents them in its
+        // state layout. A flag can never attach to a side the device has
+        // explicitly reported absent, and a short multi-side reply is ignored
+        // rather than clearing or guessing the other side.
+        const hasLeft = offsets.batteryChargingLeft !== null;
+        const hasRight = offsets.batteryChargingRight !== null;
+        if ((!hasLeft && !hasRight) || payload.length < (hasRight ? 2 : 1)) return;
+        setBattery((p) => {
+          const next = { ...p };
+          if (hasLeft && p.presence !== 'right' && p.presence !== 'none') {
+            next.leftCharging = strictBooleanByte(payload[0]);
+          }
+          if (hasRight && p.presence !== 'left' && p.presence !== 'none') {
+            next.rightCharging = strictBooleanByte(payload[1]);
+          }
+          return next;
+        });
         return;
       }
 
       if (cat === 0x02 && (typ === 0x81 || typ === 0x83) && payload.length >= 4) {
+        // CAT:TYPE is shared by several EQ shapes. Only mirror a response
+        // whose documented command matches the connected SKU; an unknown
+        // model or a different model's response must not overwrite the UI.
+        const expectedType = profileRef.current.eqCommand?.startsWith('02:81')
+          ? 0x81
+          : profileRef.current.eqCommand?.startsWith('02:83')
+            ? 0x83
+            : null;
+        if (expectedType !== typ || !offsets.eqBands) return;
         const id = payload[0] | (payload[1] << 8);
-        const at = offsets.eqBands?.at ?? 2 + 1;
-        const count = offsets.eqBands?.count ?? 8;
-        const bandStart = typ === 0x81 ? 3 : 2;
+        const count = offsets.eqBands.count;
+        const bandStart = typ === 0x81 ? 2 : 2;
         const raw = payload.slice(bandStart, bandStart + count);
         if (raw.length === count) {
           const hit = presetById(id);
           setEqId(hit ? hit.id : 'custom');
           setBands(Array.from(raw.slice(0, 8), (b) => Math.round(b - 120) / 10));
         }
-        void at;
         return;
       }
 
@@ -375,13 +411,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let sawBatteryFrame = false;
       let rawLeft: number | undefined;
       let rawRight: number | undefined;
-      let chargingLeft: boolean | undefined;
-      let chargingRight: boolean | undefined;
+      let chargingLeft: boolean | null | undefined;
+      let chargingRight: boolean | null | undefined;
 
       if (cat === 0x01 && typ === 0x01) {
         // Full state update. Field offsets are model-specific — see
         // src/protocol/devices.ts, where each row cites the OpenSCQ30 packet
         // definition it came from.
+        // Catalog-only identities intentionally carry only enough shape for
+        // universal presence handling; they do NOT have an independently
+        // documented 01:01 layout. Never parse their generic placeholder
+        // offsets as real telemetry.
+        if (!profileRef.current.verified) {
+          pushLog(
+            'sys',
+            '',
+            `State frame ignored — ${profileRef.current.name} (${profileRef.current.sku}) has no independently documented 01:01 state layout`,
+          );
+          return;
+        }
         // Phase 18 malformed-response guard: a state payload too short to
         // hold the fields THIS profile documents is not telemetry — it is
         // ignored whole, never partially parsed into a half-updated UI.
@@ -398,11 +446,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         rawRight = offsets.batteryRight === null ? undefined : payload[offsets.batteryRight];
         // The case byte stays a wire fact (see PROTOCOL.md) but is never
         // surfaced: many models do not report it and over-ears have no case.
+        // Charging flags follow OpenSCQ30's exact 0/1 parser; other values are
+        // not treated as a set bit.
         if (offsets.batteryChargingLeft !== null) {
-          chargingLeft = (payload[offsets.batteryChargingLeft] & 0x01) !== 0;
+          chargingLeft = strictBooleanByte(payload[offsets.batteryChargingLeft]);
         }
         if (offsets.batteryChargingRight !== null) {
-          chargingRight = (payload[offsets.batteryChargingRight] & 0x01) !== 0;
+          chargingRight = strictBooleanByte(payload[offsets.batteryChargingRight]);
         }
         if (offsets.firmware) {
           const fw = ascii(payload, offsets.firmware.at, offsets.firmware.length);
@@ -421,8 +471,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (mirror.gaming !== null) setGamingState(mirror.gaming);
         if (mirror.surround !== null) setSurroundState(mirror.surround);
         if (mirror.dual !== null) setDualState(mirror.dual);
-      } else if (cat === 0x01 && typ === 0x03 && payload.length >= 1) {
+      } else if (cat === 0x01 && typ === 0x03) {
         // The explicit battery query returns left/right in the first bytes.
+        // A dual-battery profile needs both bytes; accepting a one-byte reply
+        // would clear the other side as if it had gone unavailable.
+        const required = offsets.batteryRight === null ? 1 : 2;
+        if (payload.length < required) return;
         sawBatteryFrame = true;
         rawLeft = payload[0];
         rawRight = offsets.batteryRight === null ? undefined : payload[1];
@@ -733,7 +787,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // it to verify the dropped transport is still the active one (a fast
         // disconnect→reconnect must not let the old socket's close tear down
         // the new session).
-        const linked: { transport: Transport | null } = { transport: null };
+        const linked: { transport: Transport | null; downReason: string | null } = {
+          transport: null,
+          downReason: null,
+        };
         const guardedRx = (data: Uint8Array) => {
           if (!sessionGuardRef.current.isActive(mySession)) return;
           onRx(data);
@@ -750,7 +807,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // (helper exit/crash/restart): leave the "Connected" state out loud
           // instead of sitting there until the next write fails.
           (reason) => {
-            if (!linked.transport || transportRef.current !== linked.transport) return;
+            // The callback can race the promise continuation that installs
+            // the returned transport. Remember an early close and reconcile it
+            // immediately after installation instead of losing the event.
+            linked.downReason = reason;
+            if (
+              !isCurrentTransportSession(
+                sessionGuardRef.current,
+                mySession,
+                transportRef.current,
+                linked.transport,
+              )
+            ) {
+              return;
+            }
             transportRef.current = null;
             sessionGuardRef.current.end();
             // The whole control link died: every piece of device state goes
@@ -763,7 +833,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
           },
         );
         linked.transport = transport;
+        if (linked.downReason) {
+          try {
+            await transport.close();
+          } catch {
+            /* the helper already closed it */
+          }
+          if (sessionGuardRef.current.isActive(mySession)) {
+            sessionGuardRef.current.end();
+            clearDeviceState();
+            setError(linked.downReason);
+            pushLog('sys', '', linked.downReason);
+          }
+          throw new Error(linked.downReason);
+        }
         await attach(transport, name, b, dspChannel, hostBattery ?? null);
+        // attach() installs the model/earbud boundary wrapper, so compare
+        // future link-down callbacks with that installed identity, not the
+        // raw transport returned by connectBridge.
+        linked.transport = transportRef.current;
+        if (
+          linked.downReason ||
+          !sessionGuardRef.current.isActive(mySession) ||
+          transportRef.current !== linked.transport
+        ) {
+          if (transportRef.current === linked.transport) transportRef.current = null;
+          if (sessionGuardRef.current.isActive(mySession)) sessionGuardRef.current.end();
+          clearDeviceState();
+          return;
+        }
         setConnectedMac(mac || null);
         // Settings persistence: remember the last few devices for one-tap
         // reconnect on the next launch.
@@ -804,6 +902,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? DEVICES.find((d) => d.id === customProfileId)
           : undefined;
         const simProfile = targetProfile ?? profileRef.current;
+        if (!simProfile.verified) {
+          throw new Error(
+            `${simProfile.name} (${simProfile.sku}) has no independently documented packet layout, so the simulator is unavailable`,
+          );
+        }
         const guardedRx = (data: Uint8Array) => {
           if (!sessionGuardRef.current.isActive(mySession)) return;
           onRx(data);
@@ -891,8 +994,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [ancLevel, ancMode, ancScene, transVocal, windNoise],
   );
 
-  const sendAnc = useCallback(
-    async (intent: AncIntent, note: string) => {
+  const prepareAnc = useCallback(
+    (intent: AncIntent): Uint8Array | null => {
       const pkt = buildAnc(profile.ancLayout, intent);
       if (!pkt) {
         pushLog(
@@ -900,25 +1003,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
           '',
           `${profile.name} (${profile.sku}) has no sound-mode control — nothing was sent.`,
         );
-        return;
       }
+      return pkt;
+    },
+    [profile.ancLayout, profile.name, profile.sku, pushLog],
+  );
+
+  const sendAnc = useCallback(
+    async (pkt: Uint8Array, note: string): Promise<void> => {
       await write(pkt, note);
     },
-    [profile.ancLayout, profile.name, profile.sku, pushLog, write],
+    [write],
   );
 
   const setAnc = useCallback(
     async (mode: AncMode, level?: number, scene = ancScene) => {
       const appliedLevel = level ?? ancLevel;
+      const intent = ancIntent({ mode, level: appliedLevel, scene });
+      const pkt = prepareAnc(intent);
+      // Build the documented packet BEFORE touching UI state. Unsupported
+      // profiles therefore have no transient optimistic mutation at all.
+      if (!pkt) return;
       const prev = { mode: ancMode, level: ancLevel, scene: ancScene };
       setAncMode(mode);
       setAncLevel(appliedLevel);
       setAncScene(scene);
       setBusy('anc');
       try {
-        const intent = ancIntent({ mode, level: appliedLevel, scene });
         await sendAnc(
-          intent,
+          pkt,
           `ANC ${mode}${mode === 'anc' || mode === 'adaptive' ? ` L${appliedLevel}` : ''}${
             profile.scenes ? ` ${scene}` : ''
           }`,
@@ -935,18 +1048,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       if (prompts) await beep('mode');
     },
-    [ancIntent, ancLevel, ancMode, ancScene, profile.scenes, prompts, sendAnc],
+    [ancIntent, ancLevel, ancMode, ancScene, prepareAnc, profile.scenes, prompts, sendAnc],
   );
 
   const setTransVocal = useCallback(
     async (on: boolean) => {
+      const intent = ancIntent({ mode: 'transparency', transVocal: on });
+      const pkt = prepareAnc(intent);
+      if (!pkt) return;
       const prev = { vocal: transVocal, mode: ancMode };
       setTransVocalState(on);
       setAncMode('transparency');
       setBusy('anc');
       try {
-        const intent = ancIntent({ mode: 'transparency', transVocal: on });
-        await sendAnc(intent, on ? 'Talk mode' : 'Full transparency');
+        await sendAnc(pkt, on ? 'Talk mode' : 'Full transparency');
       } catch (err) {
         setTransVocalState(prev.vocal);
         setAncMode(prev.mode);
@@ -956,16 +1071,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       if (prompts) await beep('ok');
     },
-    [ancIntent, ancMode, prompts, sendAnc, transVocal],
+    [ancIntent, ancMode, prepareAnc, prompts, sendAnc, transVocal],
   );
 
   const setWindNoise = useCallback(
     async (on: boolean) => {
+      const pkt = prepareAnc(ancIntent({ wind: on }));
+      if (!pkt) return;
       const prev = windNoise;
       setWindNoiseState(on);
       setBusy('anc');
       try {
-        await sendAnc(ancIntent({ wind: on }), `Wind noise ${on ? 'on' : 'off'}`);
+        await sendAnc(pkt, `Wind noise ${on ? 'on' : 'off'}`);
       } catch (err) {
         setWindNoiseState(prev);
         throw err;
@@ -974,7 +1091,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       if (prompts) await beep('ok');
     },
-    [ancIntent, prompts, sendAnc, windNoise],
+    [ancIntent, prepareAnc, prompts, sendAnc, windNoise],
   );
 
   const setGaming = useCallback(
@@ -1145,12 +1262,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const setProfileId = useCallback((id: string) => {
+    // A real connected session must stay bound to the identity-derived
+    // profile. Allowing a live override would let a user select another
+    // model's offsets/capabilities and send the wrong physical command to the
+    // current device. Profile selection remains available for disconnected
+    // previews and simulator runs.
+    if (connected) return;
     const hit = DEVICES.find((d) => d.id === id);
     if (hit) {
       profileRef.current = hit;
       setProfile(hit);
     }
-  }, []);
+  }, [connected]);
 
   // Keep the host-side battery box fresh independently of Soundcore's raw
   // battery telemetry. This is the Windows/BlueZ aggregate percentage and is

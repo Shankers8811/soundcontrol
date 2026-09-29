@@ -289,12 +289,12 @@ export function gateCommandForProfile(
   frame: Uint8Array,
   profile: DeviceProfile,
 ): ModelGateResult {
+  const deny = (reason: string): ModelGateResult => ({ ok: false, reason });
+  if (frame.length < 10) return deny('cannot gate a malformed frame shorter than the Soundcore header');
   const spec = commandForFrameKey(`${frame[5].toString(16).toUpperCase().padStart(2, '0')}:${frame[6].toString(16).toUpperCase().padStart(2, '0')}`);
   if (!spec || spec.id !== commandId) {
     return { ok: false, reason: `command id ${commandId} does not match the frame` };
   }
-  const deny = (reason: string): ModelGateResult => ({ ok: false, reason });
-
   if (UNIVERSAL_COMMANDS.has(commandId)) return { ok: true, command: spec };
 
   // Registry decisions for the two target models, with the profile flags as
@@ -319,6 +319,22 @@ export function gateCommandForProfile(
       if (profileFrameKey !== frameKey) {
         return deny(
           `${profile.name} (${profile.sku}) writes its equalizer via ${profile.eqCommand ?? 'no documented EQ command'} — not ${frameKey}`,
+        );
+      }
+      // 02:81 is shared by the classic one-channel and D1101 two-channel
+      // shapes. The CAT:TYPE bytes alone cannot distinguish them, so the
+      // connected profile must also select the documented frame length.
+      const expectedEqLength =
+        profile.eqCommand === '02:81'
+          ? 20
+          : profile.eqCommand === '02:81-dual'
+            ? 32
+            : profile.eqCommand === '03:87'
+              ? 124
+              : 32;
+      if (frame.length !== expectedEqLength) {
+        return deny(
+          `${profile.name} (${profile.sku}) requires ${profile.eqCommand} equalizer frames of ${expectedEqLength} bytes, not ${frame.length}`,
         );
       }
       const presetId = frame.length >= 11 ? frame[9] | (frame[10] << 8) : -1;
@@ -422,7 +438,7 @@ export function requiredStateLength(state: StateOffsets): number {
   take(state.batteryCase);
   if (state.firmware) end = Math.max(end, state.firmware.at + state.firmware.length);
   if (state.serial) end = Math.max(end, state.serial.at + state.serial.length);
-  take(state.eqPresetId);
+  if (typeof state.eqPresetId === 'number') end = Math.max(end, state.eqPresetId + 2);
   if (state.eqBands) end = Math.max(end, state.eqBands.at + state.eqBands.count);
   take(
     state.soundModes !== null

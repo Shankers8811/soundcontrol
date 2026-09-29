@@ -114,9 +114,10 @@ check(
   JSON.stringify(M.WINDOWS_HOST_AUDIO_COMMANDS ?? null),
 );
 
-// The exact contract the Windows helper enforces independently
-// (TX_ALLOWED_FRAMES in soundcore_bridge.py — cross-checked on the Python
-// side by scripts/test_bridge_probe.py).
+// The renderer's evidence registry. The helper has an intentionally stricter
+// independent allowlist: it excludes destructive 01:85 because the helper
+// cannot authorize a model-specific factory reset on its own. The Python
+// policy is covered by scripts/test_bridge_probe.py.
 const EXPECTED_FRAME_KEYS = [
   '01:01', '01:03', '01:04', '01:05', '01:7F', '01:85', '01:87', '01:FF',
   '02:81', '02:83', '02:86', '03:87', '06:81', '0B:84', '10:85',

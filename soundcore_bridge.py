@@ -83,15 +83,10 @@ DSP_CHANNEL_CANDIDATES = (4, 12, 15, 10, 30, 1)
 PROBE_CONNECT_TIMEOUT = 2.5
 PROBE_REPLY_TIMEOUT = 1.5
 
-# When nothing answered the handshake we still adopt the first accepting
-# channel (manual console use), but the UI would then sit at "Connected" with
-# empty battery/ANC forever. This watchdog names that condition out loud: if
-# the silent link has not produced a single device frame after this many
-# seconds, the bridge reports it instead of pretending all is well — and then
-# keeps re-sending the read-only handshake every SILENT_LINK_WATCHDOG_S, so a
-# control slot that frees up later (phone app closed) heals by itself and the
-# renderer is told "battery and ANC are live now" without a manual reconnect.
-SILENT_LINK_WATCHDOG_S = 8.0
+# A channel is adopted only after it answers the exact read-only 01:01
+# handshake. An RFCOMM service that accepts a socket but stays silent may be
+# hands-free/A2DP or a firmware channel; keeping it open would make later
+# control writes unsafe, so silent channels are rejected rather than guessed.
 
 # Input-size guards. The bridge only ever talks to the local desktop app, but
 # a compromised or buggy local caller must not be able to make the helper
@@ -113,16 +108,18 @@ TX_MAX_BYTES = 4096  # per RFCOMM write
 # (src/protocol/targets.ts) before any write; the check below is an
 # independent second gate, so even a buggy or hostile renderer cannot make
 # this helper transmit anything but recognized Soundcore earbud commands.
-# Keep this set in sync with EARBUD_COMMANDS / EARBUD_COMMAND_FRAME_KEYS —
-# both sides are cross-checked by tests (scripts/test_bridge_probe.py and
-# scripts/test_command_targets.mjs).
+# Keep this set in sync with the renderer's currently transmissible command
+# set. The renderer registry still records the source-backed 01:85 factory
+# reset for model-gating/evidence, but the helper deliberately excludes that
+# destructive frame because it has no model identity and cannot authorize a
+# reset safely on its own.
 TX_ALLOWED_FRAMES = frozenset(
     {
         "01:01",  # state.request        (handshake)
         "01:03",  # battery.query
         "01:04",  # charging.query
         "01:05",  # device.info          (serial + firmware)
-        "01:85",  # device.factory-reset
+        # 01:85 factory reset is intentionally absent; see the policy comment.
         "01:87",  # game-mode.set
         "01:7F",  # ldac.query
         "01:FF",  # ldac.set
@@ -135,6 +132,27 @@ TX_ALLOWED_FRAMES = frozenset(
         "10:85",  # game-mode.set-a3947
     }
 )
+
+# Total RFCOMM frame lengths. The helper repeats the renderer's structural
+# contract so a caller that bypasses the UI cannot send an arbitrary payload
+# under a recognized CAT:TYPE. `06:81` is the only family with several
+# documented lengths; its 4/6/7/8-byte payloads become 14/16/17/18 total.
+TX_FRAME_LENGTHS = {
+    "01:01": (10,),
+    "01:03": (10,),
+    "01:04": (10,),
+    "01:05": (10,),
+    "01:7F": (10,),
+    "01:87": (11,),
+    "01:FF": (11,),
+    "02:81": (20, 32),
+    "02:83": (32,),
+    "02:86": (11,),
+    "03:87": (124,),
+    "06:81": (14, 16, 17, 18),
+    "0B:84": (11,),
+    "10:85": (11,),
+}
 
 
 def validate_tx_frame(data: bytes) -> Optional[str]:
@@ -158,30 +176,42 @@ def validate_tx_frame(data: bytes) -> Optional[str]:
     key = f"{data[5]:02X}:{data[6]:02X}"
     if key not in TX_ALLOWED_FRAMES:
         return f"not a recognized supported earbud command ({key})"
+    allowed_lengths = TX_FRAME_LENGTHS.get(key, ())
+    if len(data) not in allowed_lengths:
+        expected = " or ".join(str(n) for n in allowed_lengths) or "none"
+        return f"unsupported payload shape for {key}: {len(data)} bytes (expected {expected})"
     return None
 
 
 def _answers_handshake(buf: bytes) -> bool:
-    """True when `buf` holds at least one checksum-valid `09 FF` frame."""
+    """True only for a complete, exact `09 FF 01 01` state response.
+
+    The declared total length is part of the framing contract. Do not use a
+    checksum-only boundary fallback here: a silent/non-DSP service must never
+    be promoted to an active control channel because arbitrary bytes happened
+    to sum to a plausible checksum.
+    """
     i = 0
     while i + 1 < len(buf):
-        if buf[i] == 0x09 and buf[i + 1] == 0xFF:
-            if i + 9 >= len(buf):
-                return False  # header found, frame still arriving
-            indicated = buf[i + 7] | (buf[i + 8] << 8)
-            end = None
-            if 10 <= indicated <= 512 and len(buf) >= i + indicated:
-                end = i + indicated
-            else:
-                for candidate in range(i + 10, min(len(buf), i + 512) + 1):
-                    if _frame_checksum(buf[i : candidate - 1]) == buf[candidate - 1]:
-                        end = candidate
-                        break
-            if end is not None and _frame_checksum(buf[i : end - 1]) == buf[end - 1]:
-                return True
-            i += 2
-        else:
+        if buf[i] != 0x09 or buf[i + 1] != 0xFF:
             i += 1
+            continue
+        if i + 9 >= len(buf):
+            return False  # header found, frame still arriving
+        # The response to 01:01 must itself be the inbound 01:01 state frame.
+        if buf[i + 5] != 0x01 or buf[i + 6] != 0x01:
+            i += 2
+            continue
+        indicated = buf[i + 7] | (buf[i + 8] << 8)
+        if not 10 <= indicated <= 512:
+            i += 2
+            continue
+        if len(buf) < i + indicated:
+            return False
+        end = i + indicated
+        if _frame_checksum(buf[i : end - 1]) == buf[end - 1]:
+            return True
+        i += 2
     return False
 
 
@@ -193,17 +223,13 @@ class Bridge:
         self.channel = 4
         self.clients: list[socket.socket] = []
         # Serialises writes to the RFCOMM socket: the WebSocket handler thread
-        # (tx commands) and the silent-link watchdog thread (background
-        # handshake retries) can both sendall() it, and interleaved writes
-        # would garble frames on the device link.
+        # can issue a command while another request is being handled, and
+        # interleaved sendall() calls would garble frames on the device link.
         self.tx_lock = threading.Lock()
         # Serialises whole connect attempts (see connect()). Separate from
         # self.lock, which guards the WebSocket client list and is taken by
         # broadcast() *inside* a connect — nesting the two would deadlock.
         self.connect_lock = threading.Lock()
-        # Set by the reader on the first inbound device frame after _adopt;
-        # the silent-link watchdog waits on it.
-        self.first_rx = threading.Event()
 
     def broadcast(self, payload: dict) -> None:
         raw = json.dumps(payload).encode("utf-8")
@@ -246,10 +272,9 @@ class Bridge:
         the first channel that accepted and reported success.
 
         So each candidate is probed with the `01:01` handshake and only a
-        channel that answers with a valid `09 FF` frame is kept. If nothing
-        answers — a device that only replies to a later command, or a manual
-        console session — fall back to the first channel that at least
-        accepted, and say so in the log.
+        channel that answers with a valid `09 FF 01 01` state frame is kept.
+        If nothing answers, the bridge refuses to adopt an unproven RFCOMM
+        service rather than risking later control writes on the wrong channel.
         """
         # Validate before touching any socket: a malformed address must be
         # reported as such, not surface as a confusing OS-level "host down".
@@ -260,6 +285,12 @@ class Bridge:
                 "e.g. AA:BB:CC:DD:EE:FF"
             )
         mac = normalized
+        if channel not in DSP_CHANNEL_CANDIDATES:
+            allowed = ", ".join(str(candidate) for candidate in DSP_CHANNEL_CANDIDATES)
+            raise RuntimeError(
+                f"Unsupported RFCOMM channel {channel}; refusing to probe it. "
+                f"Documented DSP candidates are: {allowed}"
+            )
         self.close()
 
         candidates = [channel] + [c for c in DSP_CHANNEL_CANDIDATES if c != channel]
@@ -303,30 +334,10 @@ class Bridge:
                 pass
             sock.close()
 
-        if silent:
-            # Nothing spoke Soundcore, but something accepted. Prefer the
-            # requested channel so a manual `--channel` run still works.
-            ch = silent[0]
-            sock = socket.socket(AF_BLUETOOTH, socket.SOCK_STREAM, RFCOMM)
-            try:
-                sock.settimeout(PROBE_CONNECT_TIMEOUT)
-                sock.connect((mac, ch))
-            except Exception as exc:  # noqa: BLE001
-                raise RuntimeError(self._failure_message(failures, silent, exc)) from exc
-            self._adopt(sock, mac, ch)
-            msg = (
-                f"connected to channel {ch}, but the earbuds did not answer the "
-                f"handshake — battery and ANC will stay empty until they do"
-            )
-            if failures:
-                # The user needs to see why the other candidates were rejected,
-                # not just that two channels stayed silent.
-                msg += ". Other channels refused: " + "; ".join(failures[:4])
-            sys.stderr.write(f"bridge: {msg}\n")
-            self.broadcast({"type": "sys", "message": msg, "channel": ch})
-            threading.Thread(target=self._silent_watchdog, args=(sock, ch), daemon=True).start()
-            return
-
+        # An accepting but silent RFCOMM service is not proven to be the
+        # Soundcore DSP. Never adopt it: later writes could target a hands-free,
+        # A2DP-control, or firmware service. The caller gets the complete probe
+        # diagnosis and may retry after closing the phone app.
         raise RuntimeError(self._failure_message(failures, silent, None))
 
     @staticmethod
@@ -356,57 +367,11 @@ class Bridge:
         self.sock = sock
         self.mac = mac
         self.channel = ch
-        self.first_rx.clear()
         threading.Thread(target=self._reader, daemon=True).start()
-
-    def _silent_watchdog(self, sock: socket.socket, ch: int) -> None:
-        """Name the fake-"Connected" condition, then keep trying to heal it.
-
-        Only started when the adopted channel never answered the handshake.
-        After SILENT_LINK_WATCHDOG_S of silence the socket is almost certainly
-        a non-DSP profile, or the Soundcore phone app still holds the single
-        control slot. The bridge says so out loud (stderr + the renderer
-        console) instead of sitting at a forever-empty "Connected" — and then
-        keeps re-sending the read-only handshake in the background. When the
-        slot frees up and the device finally answers, the reader thread sets
-        `first_rx` and this thread announces that battery/ANC are live, so the
-        user does not have to reconnect by hand. The socket is never closed
-        here: a manual console session must keep working either way.
-        """
-        reported = False
-        while self.sock is sock and not self.first_rx.is_set():
-            if self.first_rx.wait(SILENT_LINK_WATCHDOG_S):
-                break  # the device spoke (spontaneously or after a retry)
-            if self.sock is not sock:
-                return  # a reconnect replaced this link while we waited
-            if not reported:
-                msg = (
-                    f"silent-link watchdog: channel {ch} has sent nothing for "
-                    f"{int(SILENT_LINK_WATCHDOG_S)}s — that socket is probably not "
-                    "the DSP, or the Soundcore phone app still holds the control "
-                    "slot. Keeping the link open and retrying the handshake in "
-                    "the background; close the phone app if it is open."
-                )
-                sys.stderr.write(f"bridge: {msg}\n")
-                self.broadcast({"type": "sys", "error": msg, "channel": ch})
-                reported = True
-            try:
-                with self.tx_lock:
-                    sock.sendall(HANDSHAKE)
-            except OSError:
-                return  # the link died; the reader thread reports the close
-        if self.sock is not sock:
-            return
-        msg = (
-            f"DSP answered on channel {ch} after retry — battery and ANC are "
-            "live now"
-        )
-        sys.stderr.write(f"bridge: {msg}\n")
-        self.broadcast({"type": "sys", "message": msg, "channel": ch})
 
     @staticmethod
     def _probe(sock: socket.socket) -> bool:
-        """Send the handshake; true when a valid `09 FF` frame comes back."""
+        """Send 01:01; true only for a valid declared-length 01:01 reply."""
         try:
             sock.sendall(HANDSHAKE)
         except OSError:
@@ -477,15 +442,15 @@ class Bridge:
                     break
                 buf = remainder
                 if frame:
-                    if frame[:1] == b"\x09":
-                        # First device-originated frame of this link; stops
-                        # the silent-link watchdog if one is waiting.
-                        self.first_rx.set()
                     self.broadcast({"type": "rx", "hex": frame.hex().upper()})
+        # Only the reader that still owns the active socket may clear state or
+        # announce a link-down. A reconnect can replace self.sock while this
+        # thread is unwinding; broadcasting the old reader's close used to
+        # tear down the new renderer session as well.
         if self.sock is sock:
             self.sock = None
             self.mac = ""
-        self.broadcast({"type": "sys", "error": "RFCOMM closed"})
+            self.broadcast({"type": "sys", "error": "RFCOMM closed"})
 
 
 def _frame_checksum(data: bytes) -> int:
@@ -622,9 +587,10 @@ def _normalize_mac(raw: str) -> str:
 def _parse_windows_scan_output(text: str) -> list[dict[str, object]]:
     """Parse MAC|Name|Battery|Connected lines produced by PowerShell.
 
-    Connected comes from the Windows PnP PresentOnly view rather than from
-    the pairing registry. This keeps paired, connected, and RFCOMM-connected
-    as separate states in the desktop UI.
+    Connected comes from the Bluetooth connection-state PnP property rather
+    than from the pairing registry or PnP PresentOnly presence. This keeps
+    paired, Bluetooth-connected, and RFCOMM-connected as separate states in
+    the desktop UI.
     """
     devices: list[dict[str, object]] = []
     seen: set[str] = set()
@@ -787,15 +753,24 @@ $OutputEncoding = [Text.Encoding]::UTF8
 $levels = @{}
 $names = @{}
 $present = @{}
-# Windows documents -PresentOnly as the current physically-present PnP view.
-# Keep paired addresses from the registry below, then mark only addresses
-# present in this view as Bluetooth-connected.
-Get-PnpDevice -Class Bluetooth -PresentOnly -ErrorAction SilentlyContinue | ForEach-Object {
+# PnP -PresentOnly means "present in the PnP tree", not necessarily
+# currently connected over Bluetooth. The Bluetooth connection-state property
+# is the authoritative host-side signal (DEVPROPKEY_Bluetooth_IsConnected,
+# property 15); use it below while keeping paired addresses from the registry.
+# Some adapters do not expose the property, so those devices remain paired with
+# connected=false rather than being promoted by a weaker PresentOnly heuristic.
+$connectedKey = '{83DA6326-97A6-4088-9453-A1923F573B29} 15'
+Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | ForEach-Object {
     $id = [string]$_.InstanceId
-    if ($id -match '(?i)DEV_([0-9A-F]{12})') {
-        $present[$Matches[1].ToUpper()] = $true
-    } elseif ($id -match '(?i)([0-9A-F]{12})_C[0-9A-F]+$') {
-        $present[$Matches[1].ToUpper()] = $true
+    $mac = ""
+    if ($id -match '(?i)DEV_([0-9A-F]{12})') { $mac = $Matches[1].ToUpper() }
+    elseif ($id -match '(?i)([0-9A-F]{12})_C[0-9A-F]+$') { $mac = $Matches[1].ToUpper() }
+    if (-not $mac) { return }
+    $state = Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName $connectedKey -ErrorAction SilentlyContinue |
+        Where-Object { $_.Type -ne 'Empty' -and $null -ne $_.Data } |
+        Select-Object -First 1
+    if ($null -ne $state -and ([string]$state.Data) -match '(?i)^(true|1|yes)$') {
+        $present[$mac] = $true
     }
 }
 Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | ForEach-Object {
@@ -1229,13 +1204,11 @@ def main() -> None:
             print(f"preconnect failed: {exc}", file=sys.stderr)
     if args.host not in ("127.0.0.1", "localhost", "::1"):
         # Anyone on the LAN could then write raw frames to the paired device.
-        # A token authenticates the caller but the channel is still plain
-        # HTTP, so loopback remains the only supported binding.
-        print(
-            f"bridge: WARNING binding {args.host}:{args.port} exposes Bluetooth writes "
-            f"to the network ({'token required' if BRIDGE_TOKEN else 'no token configured'}); "
-            "use the default 127.0.0.1",
-            file=sys.stderr,
+        # A token authenticates the caller but the channel is still plain HTTP,
+        # so a non-loopback bind is never permitted, even for manual runs.
+        raise SystemExit(
+            f"bridge: refusing non-loopback host {args.host!r}; "
+            "the Bluetooth helper must bind to 127.0.0.1/localhost/::1"
         )
     try:
         httpd = ThreadingHTTPServer((args.host, args.port), Handler)

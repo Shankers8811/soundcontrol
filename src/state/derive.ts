@@ -278,8 +278,9 @@ export interface BatteryFrame {
   rawLeft: number | undefined;
   rawRight: number | undefined;
   /** Only `01:01`/`01:04` carry charging bits; `01:03` leaves them unset. */
-  chargingLeft?: boolean;
-  chargingRight?: boolean;
+  /** `null` means the field was present but not a strict 0/1 boolean. */
+  chargingLeft?: boolean | null;
+  chargingRight?: boolean | null;
   /**
    * The model's raw-level maximum (0..5 / 0..10), null for percents, or
    * 'unknown' when the device model — and therefore the scale — is unknown.
@@ -314,8 +315,11 @@ export function mergeBatteryTelemetry(previous: BatteryState, frame: BatteryFram
   return {
     left: l.level,
     right: r.level,
-    leftCharging: l.trusted ? frame.chargingLeft ?? previous.leftCharging : undefined,
-    rightCharging: r.trusted ? frame.chargingRight ?? previous.rightCharging : undefined,
+    // `undefined` means this frame legitimately carried no charging field, so
+    // keep the last confirmed value. `null` means a charging field was present
+    // but malformed, so clear it rather than retaining a misleading `true`.
+    leftCharging: l.trusted ? frame.chargingLeft === undefined ? previous.leftCharging : frame.chargingLeft : undefined,
+    rightCharging: r.trusted ? frame.chargingRight === undefined ? previous.rightCharging : frame.chargingRight : undefined,
     batteryScale: frame.scale,
     batteryOffset: frame.offset ?? previous.batteryOffset ?? 0,
     // Host-reported percentage is independent from the device's raw
@@ -360,7 +364,7 @@ export function deriveEarbudState(battery: BatteryState, caps: Capabilities): Ea
         state === 'connected'
           ? batteryPercent(raw, battery.batteryScale, battery.batteryOffset ?? 0)
           : null,
-      charging: state === 'connected' && charging !== undefined ? charging : null,
+      charging: state === 'connected' && charging !== undefined && charging !== null ? charging : null,
     };
   };
 
@@ -392,7 +396,23 @@ export function parseSoundModes(
   payload: ArrayLike<number>,
   layout: AncLayout,
 ): SoundModeReport | null {
-  if (layout === 'none' || payload.length < 2) return null;
+  if (layout === 'none') return null;
+  const minimumLength: Record<Exclude<AncLayout, 'none'>, number> = {
+    classic: 4,
+    'classic-a3035': 6,
+    'classic-a3040': 6,
+    'tws-p30i': 7,
+    'tws-l4nc': 7,
+    'tws-l3pro': 6,
+    'tws-a3062': 6,
+    'tws-a3936': 6,
+    'tws-l4pro': 4,
+    'tws-p40i': 7,
+    'tws-l5': 7,
+    'tws-a3968': 6,
+    'tws-d1202': 8,
+  };
+  if (payload.length < minimumLength[layout]) return null;
   const b0 = payload[0];
   if (b0 !== 0x00 && b0 !== 0x01 && b0 !== 0x02) return null;
   const report: SoundModeReport = {

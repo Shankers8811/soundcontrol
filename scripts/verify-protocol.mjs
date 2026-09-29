@@ -104,6 +104,7 @@ const {
   buildEq87D1202,
   buildSurroundSound,
   buildResetDevice,
+  buildDeviceInfoQuery,
   buildGameMode,
   EQ_PRESETS,
   DEVICES,
@@ -336,6 +337,7 @@ check(
 );
 /* request_serial_number_and_firmware_version.rs test. */
 check('OpenSCQ30 01:05 request', hex(DEVICE_INFO), '08 ee 00 00 00 01 05 0a 00 06');
+check('buildDeviceInfoQuery uses the 01:05 request (not the 01:01 handshake)', hex(buildDeviceInfoQuery()), hex(DEVICE_INFO));
 /* request_state.rs — the handshake. */
 check('OpenSCQ30 01:01 request', hex(INIT), '08 ee 00 00 00 01 01 0a 00 02');
 /* request_battery_level is `01:03` with an empty body. */
@@ -465,7 +467,7 @@ const EXPECTED = {
   A3028: { name: 'Life Q30', eq: '02:81', anc: 'classic', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false, customEq: true },
   A3029: { name: 'Life Tune', eq: '02:81', anc: 'classic', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false, customEq: true },
   A3330: { name: 'C30i', eq: '02:83-single', anc: 'none', batteryMax: 5, gaming: false, ldac: false, dual: true, surround: false, customEq: true },
-  A3388: { name: 'AeroClip', eq: '02:83-dual', anc: 'none', batteryMax: 10, gaming: false, ldac: false, dual: true, surround: true, customEq: true },
+  A3388: { name: 'AeroClip', eq: '02:83-dual', anc: 'none', batteryMax: 10, gaming: false, ldac: false, dual: true, surround: false, customEq: true },
   A3876: { name: 'V20i', eq: '02:83-single', anc: 'none', batteryMax: 10, gaming: true, ldac: false, dual: true, surround: false, customEq: true },
   A3968: { name: 'Sport X20', eq: null, anc: 'tws-a3968', batteryMax: 5, gaming: false, ldac: false, dual: true, surround: true, customEq: false },
   D1101: { name: 'C50i', eq: '02:81-dual', anc: 'none', batteryMax: 10, gaming: false, ldac: true, dual: true, surround: false, customEq: true },
@@ -521,11 +523,11 @@ console.log(`  ${Object.keys(STATE_PINS).length * 6} state-offset pin checks`);
    late fields. Keep those offsets independently pinned so a generic helper
    cannot silently move a new SKU onto the wrong telemetry layout. */
 const EXPANDED_STATE_PINS = {
-  A3330: { battery: '2,3,null,null', firmware: { at: 4, length: 10 }, serial: { at: 14, length: 16 }, eq: '52,54,10', sound: 'null', length: 7, dual: 49, surround: 46, gaming: null },
-  A3388: { battery: '2,3,null,null', firmware: { at: 4, length: 10 }, serial: { at: 14, length: 16 }, eq: '52,54,20', sound: 'null', length: 7, dual: 49, surround: 46, gaming: null },
+  A3330: { battery: '2,3,null,null', firmware: { at: 4, length: 10 }, serial: { at: 14, length: 16 }, eq: '50,52,10', sound: 'null', length: 7, dual: 47, surround: 44, gaming: null },
+  A3388: { battery: '2,3,null,null', firmware: { at: 4, length: 10 }, serial: { at: 14, length: 16 }, eq: '50,52,10', sound: 'null', length: 7, dual: 47, surround: 44, gaming: null },
   A3876: { battery: '2,3,null,null', firmware: { at: 4, length: 10 }, serial: { at: 14, length: 16 }, eq: '36,38,20', sound: 'null', length: 7, dual: 74, surround: null, gaming: 72 },
   A3968: { battery: '2,3,4,5', firmware: { at: 6, length: 10 }, serial: { at: 16, length: 16 }, eq: '38,40,20', sound: '117', length: 6, dual: 128, surround: 126, gaming: null },
-  D1101: { battery: '2,3,null,null', firmware: { at: 4, length: 10 }, serial: { at: 14, length: 16 }, eq: '30,32,10', sound: 'null', length: 7, dual: 54, surround: null, gaming: null },
+  D1101: { battery: '2,3,null,null', firmware: { at: 4, length: 10 }, serial: { at: 14, length: 16 }, eq: '30,32,10', sound: 'null', length: 7, dual: 53, surround: null, gaming: null },
   D1202: { battery: '2,3,4,5', firmware: { at: 6, length: 10 }, serial: { at: 16, length: 16 }, eq: '38,40,20', sound: '119', length: 8, dual: 131, surround: null, gaming: null },
   D1301: { battery: '2,3,null,null', firmware: { at: 6, length: 10 }, serial: { at: 16, length: 16 }, eq: 'null,null,null', sound: 'null', length: 7, dual: null, surround: null, gaming: null },
 };

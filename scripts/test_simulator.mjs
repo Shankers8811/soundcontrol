@@ -2,9 +2,11 @@
  * Profile-wide simulator fixtures.
  *
  * The simulator is deliberately not a hardware claim. This test only proves
- * that every catalog/profile row can produce a checksum-valid state frame
- * whose payload reaches the offsets declared by that row, and that every
- * model-specific 06:01 mirror has the declared sound-mode shape.
+ * that every independently documented profile can produce a checksum-valid
+ * state frame whose payload reaches the offsets declared by that row, and
+ * that every model-specific 06:01 mirror has the declared sound-mode shape.
+ * Catalog-only identities are intentionally excluded: their state layout is
+ * unknown, so a generic fixture would be false evidence.
  */
 
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -49,10 +51,22 @@ try {
   globalThis.window = { setTimeout };
 
   const profiles = M.DEVICES;
-  check('every registered profile has a fixture', profiles.length === 47, `${profiles.length}`);
-  check('fixture SKUs are unique', new Set(profiles.map((p) => p.sku)).size === profiles.length);
+  const simulatedProfiles = profiles.filter((profile) => profile.verified);
+  const unverifiedProfiles = profiles.filter((profile) => !profile.verified);
+  check('registered profile count is stable', profiles.length === 47, `${profiles.length}`);
+  check('documented profiles have simulator fixtures', simulatedProfiles.length > 0);
+  check('fixture SKUs are unique', new Set(simulatedProfiles.map((p) => p.sku)).size === simulatedProfiles.length);
+  for (const profile of unverifiedProfiles) {
+    let rejected = false;
+    try {
+      M.connectSimulator(() => {}, profile);
+    } catch {
+      rejected = true;
+    }
+    check(`${profile.sku}: undocumented simulator fixture is rejected`, rejected);
+  }
 
-  const runs = profiles.map((profile) => new Promise((resolveRun) => {
+  const runs = simulatedProfiles.map((profile) => new Promise((resolveRun) => {
     const frames = [];
     const simulator = M.connectSimulator((data) => frames.push(data), profile);
     // The app requests 01:01 during attach; mirror that handshake here so
@@ -98,4 +112,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
-console.log('All registered profiles exercise a valid local simulator path.');
+console.log('All documented profiles exercise a valid local simulator path; undocumented profiles are rejected.');

@@ -94,6 +94,9 @@ const A3062 = M.DEVICES.find((d) => d.sku === 'A3062');
 const A3004 = M.DEVICES.find((d) => d.sku === 'A3004');
 const A3005 = M.DEVICES.find((d) => d.sku === 'A3005');
 const D1402 = M.DEVICES.find((d) => d.sku === 'D1402');
+const A3330 = M.DEVICES.find((d) => d.sku === 'A3330');
+const A3388 = M.DEVICES.find((d) => d.sku === 'A3388');
+const D1101 = M.DEVICES.find((d) => d.sku === 'D1101');
 
 /* ------------------------------------------- 1. registry integrity */
 
@@ -410,6 +413,41 @@ console.log('\nTransport boundary (withDeviceBoundary)');
   check('A3959 session: ANC write passes the boundary', written.length === 2);
 }
 
+/* ------------------------------------ expanded state-layout regressions */
+
+console.log('\nExpanded profile layout regressions');
+check(
+  'A3330/C30i state offsets match the captured 01:01 layout',
+  A3330.state.batteryCase === 35 &&
+    A3330.state.surround === 44 &&
+    A3330.state.dualConnections === 47 &&
+    A3330.state.eqPresetId === 50 &&
+    A3330.state.eqBands?.at === 52 &&
+    A3330.state.eqBands?.count === 10,
+  JSON.stringify(A3330.state),
+);
+check(
+  'A3388/AeroClip state uses one ten-band EQ block and accepts the 66-byte sample length',
+  A3388.state.batteryCase === 35 &&
+    A3388.state.surround === 44 &&
+    A3388.state.dualConnections === 47 &&
+    A3388.state.eqPresetId === 50 &&
+    A3388.state.eqBands?.at === 52 &&
+    A3388.state.eqBands?.count === 10 &&
+    M.requiredStateLength(A3388.state) === 62,
+  JSON.stringify(A3388.state),
+);
+check(
+  'A3388 never advertises or gates the undocumented 02:86 surround writer',
+  A3388.surround === false &&
+    M.gateCommandForProfile('surround.set', M.buildSurroundSound(true), A3388).ok === false,
+);
+check(
+  'D1101/C50i dual-connections state flag is offset 53',
+  D1101.state.dualConnections === 53 && M.requiredStateLength(D1101.state) === 54,
+  JSON.stringify(D1101.state),
+);
+
 /* ------------------------------------ 6. response validation (Task 12) */
 
 console.log('\nTask 12 — response validation (state layout)');
@@ -455,6 +493,8 @@ check(
   check('A3949 mirror: gaming=true read from byte 65 (no firmware gate for this model)', m.gaming === true && m.surround === null && m.dual === null, JSON.stringify(m));
   const m0 = M.parseDeviceToggles(a3949Payload({ gaming: 0x00 }), A3949.state);
   check('A3949 mirror: gaming=false read back', m0.gaming === false);
+  const invalid = M.parseDeviceToggles(a3949Payload({ gaming: 0xff }), A3949.state);
+  check('A3949 mirror: non-boolean gaming byte stays unknown', invalid.gaming === null, JSON.stringify(invalid));
   const short = M.parseDeviceToggles(a3949Payload().slice(0, 60), A3949.state);
   check('A3949 mirror: truncated payload yields null (never a partial guess)', short.gaming === null, JSON.stringify(short));
 }
@@ -467,6 +507,8 @@ check(
     old.gaming === null && old.surround === true,
     JSON.stringify(old),
   );
+  const invalid = M.parseDeviceToggles(a3959Payload({ dual: 0xff, surround: 0xff, gaming: 0xff }), A3959.state);
+  check('A3959 mirror: non-boolean toggle bytes stay unknown', invalid.dual === null && invalid.surround === null && invalid.gaming === null, JSON.stringify(invalid));
   const half = M.parseDeviceToggles(a3959Payload({ fw: '01.6001.59' }), A3959.state);
   check('A3959 mirror: min(both buds) firmware is what counts (right bud 01.59 ⇒ untrusted)', half.gaming === null, JSON.stringify(half));
 }
@@ -491,6 +533,22 @@ console.log('\nTask 13 — device session isolation');
   check('end() invalidates every session (late frames can never update state)', !guard.isActive(s2));
   const s3 = guard.begin();
   check('a fresh connect begins a fresh session', guard.isActive(s3) && !guard.isActive(s1));
+
+  const raw = {};
+  const installed = {};
+  check(
+    'link-down identity guard accepts the installed transport for the active session',
+    M.isCurrentTransportSession(guard, s3, installed, installed),
+  );
+  check(
+    'link-down identity guard rejects an old transport even when its callback is late',
+    !M.isCurrentTransportSession(guard, s3, installed, raw),
+  );
+  guard.end();
+  check(
+    'link-down identity guard rejects callbacks after disconnect',
+    !M.isCurrentTransportSession(guard, s3, installed, installed),
+  );
 }
 
 /* ---------------------------- 8. capability/UI gating (Tasks 6/7/8/9) */

@@ -355,11 +355,11 @@ export function DevicesPage() {
           <Card
             title="Model capabilities"
             subtitle={`${app.profile.name} (${app.profile.sku}) — derived from the documented protocol, per model`}
-            actions={
+            actions={!app.connected && (
               <Button size="sm" onClick={() => setProfileOpen(true)}>
-                {app.connected ? 'Override profile' : 'Preview profiles'}
+                Preview profiles
               </Button>
-            }
+            )}
           >
             <CapabilityList />
             {app.profileNote && (
@@ -379,12 +379,13 @@ export function DevicesPage() {
         </div>
       </div>
 
-      {/* Profile picker — changes the protocol profile the app really uses. */}
+      {/* Profile picker — disconnected previews/simulator runs only. A live
+          session always stays bound to the identity-derived profile. */}
       <Modal open={profileOpen} title="Soundcore model profiles" onClose={() => setProfileOpen(false)} width="max-w-2xl">
         <p className="mb-3 text-xs leading-relaxed text-mute">
-          SoundControl matches the Bluetooth name automatically. Override only if it picked the
-          wrong model — the profile decides which real protocol frames (sound modes, EQ, toggles)
-          are sent, so a wrong override means wrong commands.
+          SoundControl matches the Bluetooth name automatically. These profiles are for a
+          disconnected preview or simulator run; a live device cannot be overridden because a
+          wrong model would send the wrong physical protocol frames.
         </p>
         <ul className="space-y-1.5">
           {DEVICES.map((d) => {

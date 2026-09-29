@@ -218,7 +218,7 @@ Use `npm run electron` with the renderer available when testing the desktop shel
 npm test            # everything below in sequence
 npm run test:ui     # pure UI state derivation (capabilities, earbud presence, battery math, scan machine) + a server-side render smoke of every page
 npm run test:bridge # Python bridge unit tests (channel probe, token/origin auth, WS protocol)
-npm run test:simulator # every registered model profile exercises a checksum-valid local fixture
+npm run test:simulator # documented profiles exercise fixtures; catalog-only profiles are rejected
 npm run test:e2e    # startup/lifecycle e2e: real helper server + real renderer transport against an emulated RFCOMM device (incl. per-side earbud telemetry)
 npm run test:lifecycle # main-process exit/restart races: window close kills the real helper, port 8765 frees, no post-shutdown restart (Electron stubbed; Windows CI repeats this against the packaged app)
 ```
