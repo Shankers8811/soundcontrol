@@ -504,6 +504,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       name: string,
       bat?: Partial<BatteryState> | number | null,
       dspChannel?: number | null,
+      hostPercent?: number | null,
     ) => {
       // Phase 17+18 transport boundary: EVERY transport (real bridge, demo
       // simulator, anything future) is wrapped before installation, so each
@@ -542,7 +543,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // a Bluetooth link is never treated as "both earbuds connected".
       const seed = emptyBattery();
       if (nextProfile.batteryOffset) seed.batteryOffset = nextProfile.batteryOffset;
-      seed.hostPercent = typeof hostBattery === 'number' ? hostBattery : null;
+      seed.hostPercent = typeof hostPercent === 'number' ? hostPercent : null;
       if (typeof bat === 'number') {
         // Host Bluetooth aggregate percent (scale null = already a percentage).
         // It goes to `left` only — copying it to `right` would fabricate a
@@ -762,7 +763,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           },
         );
         linked.transport = transport;
-        await attach(transport, name, b, dspChannel);
+        await attach(transport, name, b, dspChannel, hostBattery ?? null);
         setConnectedMac(mac || null);
         // Settings persistence: remember the last few devices for one-tap
         // reconnect on the next launch.
