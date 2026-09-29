@@ -794,7 +794,10 @@ Get-PnpDevice -Class Bluetooth -PresentOnly -ErrorAction SilentlyContinue | ForE
     $id = [string]$_.InstanceId
     if ($id -match '(?i)DEV_([0-9A-F]{12})') {
         $present[$Matches[1].ToUpper()] = $true
-    } elseif ($id -match '(?i)([0-9A-F]{12})_C[0-9A-F]+
+    } elseif ($id -match '(?i)([0-9A-F]{12})_C[0-9A-F]+$') {
+        $present[$Matches[1].ToUpper()] = $true
+    }
+}
 Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | ForEach-Object {
     $id = [string]$_.InstanceId
     $friendly = [string]$_.FriendlyName
