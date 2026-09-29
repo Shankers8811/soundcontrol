@@ -3,6 +3,7 @@ import { useApp } from '../state/store';
 import { EQ_PRESETS } from '../protocol/presets';
 import { EQ_HZ } from '../types';
 import { EqCurve } from '../components/EqCurve';
+import { DeviceSettingsHeader } from '../components/DeviceSettingsHeader';
 import { IconCheck, IconEqualizer } from '../components/Icons';
 import { Button, CapabilityGate, Card, PageHeader, StatusBadge } from '../components/ui';
 
