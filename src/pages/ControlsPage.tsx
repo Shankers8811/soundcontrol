@@ -13,6 +13,7 @@ import {
 } from '../components/Icons';
 import { Button, Card, Modal, PageHeader, StatusBadge, Toggle, UnavailableNote } from '../components/ui';
 import { NoiseControl } from '../components/NoiseControl';
+import { DeviceSettingsHeader } from '../components/DeviceSettingsHeader';
 import type { ReactNode } from 'react';
 
 /**
@@ -102,10 +103,11 @@ export function ControlsPage() {
         sub={
           <>
             <StatusBadge phase={app.connectionPhase} />
-            {app.connected && <span className="font-medium text-ink/90">{app.deviceName}</span>}
           </>
         }
       />
+
+      <DeviceSettingsHeader />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <div className="space-y-4 xl:col-span-7">
