@@ -51,6 +51,8 @@ export interface BatteryState {
   batteryOffset?: number;
   /** Reported only when the Soundcore telemetry identifies each TWS side. */
   presence?: EarbudPresence;
+  /** Aggregate percentage reported by the host Windows/Linux Bluetooth stack. */
+  hostPercent?: number | null;
 }
 
 /**
