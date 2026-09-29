@@ -6,8 +6,10 @@ export interface NearbyDevice {
   name: string;
   mac?: string;
   source: 'bridge' | 'demo';
-  /** Windows may expose one aggregate Bluetooth battery percentage. */
+  /** Windows or BlueZ may expose one aggregate Bluetooth battery percentage. */
   battery?: number | null;
+  /** Host Bluetooth stack reports that this device is currently connected. */
+  connected?: boolean;
 }
 
 // The packaged Electron app loads via file://, where location.hostname is
@@ -18,8 +20,8 @@ function isLocalHost(): boolean {
   return !h || h === 'localhost' || h === '127.0.0.1';
 }
 
-// Per-session bridge secret. The Windows desktop app's main process mints a
-// fresh token on every launch and hands it to this renderer over IPC.
+// Per-session bridge secret. The desktop app's main process mints a fresh
+// token on every launch and hands it to this renderer over IPC.
 // Fetched once and cached — the token never changes within a session.
 // A *failed* IPC call is deliberately not cached: inside the desktop app the
 // token always exists, so caching a transient failure as null would lock the
@@ -98,21 +100,22 @@ export async function scanBridgeDevices(fresh = false): Promise<NearbyDevice[]> 
   if (!base) return [];
   try {
     const token = await bridgeToken();
-    // Windows PnP/Bluetooth enumeration can take several seconds on a cold
-    // machine; the helper caches for 3s and /health stays the fast probe.
+    // Windows PnP or Linux BlueZ enumeration can take several seconds on a
+    // cold adapter; the helper caches for 3s and /health stays the fast probe.
     const res = await fetch(`${base}/scan${fresh ? '?fresh=1' : ''}`, {
       signal: AbortSignal.timeout(10000),
       headers: authHeaders(token),
     });
     if (!res.ok) return [];
     const json = (await res.json()) as {
-      devices?: Array<{ mac: string; name: string; battery?: number | null }>;
+      devices?: Array<{ mac: string; name: string; battery?: number | null; connected?: boolean }>;
     };
     return (json.devices ?? []).map((d) => ({
       id: d.mac,
       name: d.name || d.mac,
       mac: d.mac,
       battery: d.battery ?? null,
+      connected: d.connected === true,
       source: 'bridge' as const,
     }));
   } catch {
@@ -127,7 +130,7 @@ export interface ScanResult {
 }
 
 /**
- * Same real Windows PnP scan as `scanBridgeDevices`, but it distinguishes
+ * Same real Windows PnP / Linux BlueZ scan as `scanBridgeDevices`, but it distinguishes
  * "helper answered with zero devices" from "the scan failed" so the Devices
  * page can show an honest error + retry instead of an empty-result message
  * for a transport failure. Existing callers keep the old swallow-to-[]
@@ -139,7 +142,7 @@ export async function scanBridgeDevicesDetailed(fresh = false): Promise<ScanResu
     return {
       devices: [],
       error:
-        'Scanning is blocked in this context: a public HTTPS page cannot reach the loopback helper (browser Private Network Access rules). Use the Windows desktop app.',
+        'Scanning is blocked in this context: a public HTTPS page cannot reach the loopback helper (browser Private Network Access rules). Use the SoundControl desktop app.',
     };
   }
   try {
@@ -159,7 +162,7 @@ export async function scanBridgeDevicesDetailed(fresh = false): Promise<ScanResu
       return { devices: [], error: `The Bluetooth helper returned HTTP ${res.status} for the device scan.` };
     }
     const json = (await res.json()) as {
-      devices?: Array<{ mac: string; name: string; battery?: number | null }>;
+      devices?: Array<{ mac: string; name: string; battery?: number | null; connected?: boolean }>;
     };
     return {
       devices: (json.devices ?? []).map((d) => ({
@@ -167,6 +170,7 @@ export async function scanBridgeDevicesDetailed(fresh = false): Promise<ScanResu
         name: d.name || d.mac,
         mac: d.mac,
         battery: d.battery ?? null,
+        connected: d.connected === true,
         source: 'bridge' as const,
       })),
       error: null,
@@ -182,7 +186,7 @@ export async function scanBridgeDevicesDetailed(fresh = false): Promise<ScanResu
 
 interface BridgeHello {
   type?: string;
-  devices?: Array<{ mac: string; name: string; battery?: number | null }>;
+  devices?: Array<{ mac: string; name: string; battery?: number | null; connected?: boolean }>;
   error?: string;
   message?: string;
   channel?: number;
@@ -192,7 +196,7 @@ export async function connectBridge(
   mac: string,
   onRx: (data: Uint8Array) => void,
   name = '',
-  windowsBattery: number | null = null,
+  hostBattery: number | null = null,
   /** Bridge diagnostics ("DSP answered on channel 4", silent-link watchdog…). */
   onSys: (message: string, isError: boolean) => void = () => {},
   /**
@@ -254,7 +258,7 @@ export async function connectBridge(
     const timer = window.setTimeout(
       () =>
         fail(
-          'Could not reach the earbuds. Leave them connected in Windows Bluetooth settings (not in pairing mode), close the Soundcore phone app, and retry.',
+          'Could not reach the earbuds. Leave them connected in this computer’s Bluetooth settings (not in pairing mode), close the Soundcore phone app, and retry.',
         ),
       30000,
     );
@@ -337,8 +341,8 @@ export async function connectBridge(
     transport,
     name: name || mac || 'soundcore',
     battery:
-      windowsBattery !== null
-        ? { left: windowsBattery, right: windowsBattery, batteryScale: null }
+      hostBattery !== null
+        ? { left: hostBattery, right: hostBattery, batteryScale: null }
         : null,
     dspChannel,
   };
@@ -461,7 +465,7 @@ async function openSocket(url: string): Promise<WebSocket> {
       );
     } else if (status === 'online' && ++onlineButRefusing >= 3) {
       throw new Error(
-        'The Windows Bluetooth helper is running but its WebSocket connection keeps failing. Restart SoundControl and try again.',
+        'The Bluetooth helper is running but its WebSocket connection keeps failing. Restart SoundControl and try again.',
       );
     }
     if (Date.now() >= deadline) break;
@@ -471,6 +475,6 @@ async function openSocket(url: string): Promise<WebSocket> {
   // started or needs longer than its 12s Electron-side readiness window
   // (Electron logs the attempt to %AppData%\soundcontrol\main.log).
   throw new Error(
-    'The Windows Bluetooth helper did not become ready within 15 seconds. It starts automatically with the app and may still be booting up — try connecting again in a moment. If it never starts, check %AppData%\\soundcontrol\\main.log and restart SoundControl.',
+    'The Bluetooth helper did not become ready within 15 seconds. It starts automatically with the app and may still be booting up — try connecting again in a moment. If it never starts, open the SoundControl log folder (main.log) from Settings and restart SoundControl.',
   );
 }

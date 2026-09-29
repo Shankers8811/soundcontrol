@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * Phase 18 — model-profile tests for the two target devices.
+ * Phase 18 — model-profile tests for the formal R50i targets plus the
+ * expanded independently authored Soundcore profiles.
  *
  *   Soundcore R50i    (SKU A3949, also sold as P20i / P25i)
  *   Soundcore R50i NC (SKU A3959, also sold as P30i)
- *   …plus the UNKNOWN-model profile.
+ *   …plus documented over-ear/TWS profiles and the UNKNOWN-model profile.
  *
  * Everything here is deterministic — no Bluetooth hardware. Where a status
  * says SUPPORTED it means SUPPORTED BY PROTOCOL EVIDENCE (OpenSCQ30 device
@@ -12,7 +13,7 @@
  * command, and these tests never claim otherwise.
  *
  * Covered (Task 14):
- *   1. registry integrity + the 14-command matrix for both models
+ *   1. registry integrity + the 15-command matrix for both models
  *   2. matrix ↔ DeviceProfile consistency (code cannot drift from evidence)
  *   3. identification (name matching, ambiguity traps, unknown fallback)
  *   4. command gating: allowed/denied per model, custom-EQ FEFE split,
@@ -61,6 +62,7 @@ try {
         export * from './src/protocol/packets.ts';
         export * from './src/protocol/presets.ts';
         export * from './src/protocol/targets.ts';
+        export * from './src/protocol/marketCatalog.ts';
         export * from './src/state/derive.ts';
       `,
       resolveDir: ROOT,
@@ -84,6 +86,14 @@ const A3959 = M.DEVICES.find((d) => d.sku === 'A3959');
 const UNKNOWN = M.UNKNOWN_PROFILE;
 const A3947 = M.DEVICES.find((d) => d.sku === 'A3947');
 const A3952 = M.DEVICES.find((d) => d.sku === 'A3952');
+const A3936 = M.DEVICES.find((d) => d.sku === 'A3936');
+const A3954 = M.DEVICES.find((d) => d.sku === 'A3954');
+const A3955 = M.DEVICES.find((d) => d.sku === 'A3955');
+const A3957 = M.DEVICES.find((d) => d.sku === 'A3957');
+const A3062 = M.DEVICES.find((d) => d.sku === 'A3062');
+const A3004 = M.DEVICES.find((d) => d.sku === 'A3004');
+const A3005 = M.DEVICES.find((d) => d.sku === 'A3005');
+const D1402 = M.DEVICES.find((d) => d.sku === 'D1402');
 
 /* ------------------------------------------- 1. registry integrity */
 
@@ -196,6 +206,60 @@ check(
   A3949.batteryMax === 5 && A3959.batteryMax === 10,
 );
 
+console.log('\nExpanded model profiles — independently authored layouts and safety gates');
+const expanded = [
+  [A3936, 'Space A40', 'tws-a3936', 5, 111],
+  [A3954, 'Liberty 4 Pro', 'tws-l4pro', 100, 125],
+  [A3955, 'P40i', 'tws-p40i', 5, 119],
+  [A3957, 'Liberty 5', 'tws-l5', 10, 119],
+];
+for (const [profile, name, layout, batteryMax, soundModes] of expanded) {
+  check(`${profile?.sku}: profile is present with documented identity`, profile?.name === name && profile?.verified === true);
+  check(`${profile?.sku}: sound-mode layout is model-specific`, profile?.ancLayout === layout);
+  check(`${profile?.sku}: battery/state offsets are documented`, profile?.batteryMax === batteryMax && profile?.state.soundModes === soundModes);
+  const expectedFrameLength = layout === 'tws-l4pro' ? 14 : ['tws-a3936'].includes(layout) ? 16 : 17;
+  check(`${profile?.sku}: a 06:81 frame has the expected payload size`, M.buildAnc(profile.ancLayout, { mode: 'adaptive', level: 4, scene: 'outdoor', transVocal: true, wind: true })?.length === expectedFrameLength);
+}
+check('A3957 uses the Liberty 10:85 gaming command', M.validateOutboundFrame(M.buildGameMode(A3957, true)).ok && M.buildGameMode(A3957, true)[5] === 0x10);
+check('A3062 uses the documented offset-1 single-battery scale and corrected state head', A3062.batteryMax === 10 && A3062.batteryOffset === 1 && A3062.state.batteryLeft === 0 && A3062.state.batteryChargingLeft === 1 && A3062.state.firmware.at === 2 && A3062.state.serial.at === 7 && A3062.state.eqPresetId === 23 && A3062.state.eqBands.at === 25 && A3062.state.soundModes === 69 && A3062.state.dualConnections === 79);
+check('A3005 uses the corrected two-byte battery head and DRC offsets', A3005.state.batteryLeft === 0 && A3005.state.batteryChargingLeft === 1 && A3005.state.firmware.at === 2 && A3005.state.serial.at === 7 && A3005.state.eqPresetId === 23 && A3005.state.eqBands.at === 25 && A3005.state.dualConnections === 41);
+check('A3004 has the classic four-byte sound mode at state offset 35', A3004.ancLayout === 'classic' && A3004.state.batteryLeft === 0 && A3004.state.soundModes === 35 && A3004.state.soundModeLength === 4);
+check('A3004 four-byte state guard does not require a false seventh byte', M.requiredStateLength(A3004.state) === 39);
+check('A3005 exposes only its documented DRC EQ and dual connection features', A3005.eqCommand === '02:83' && A3005.ancLayout === 'none' && A3005.dual === true);
+check('D1402 Space 2 resolves to a read-only profile', D1402.ancLayout === 'none' && D1402.eqCommand === null && D1402.gaming === false);
+check('D1402 universal reads remain allowed', M.gateCommandForProfile('battery.query', M.BATTERY_QUERY, D1402).ok);
+check('D1402 sound-mode writes remain blocked until the unlock handshake exists', !M.gateCommandForProfile('sound-modes.set', M.buildAnc('tws-a3062', { mode: 'anc', level: 5, scene: 'outdoor', transVocal: false, wind: false }), D1402).ok);
+
+/* -------------------------------- market catalog/status registry */
+
+console.log('\nMarket catalog — identity/evidence/coverage are separate');
+const catalog = M.MARKET_CATALOG;
+check('market catalog has 41 deduplicated current/regional rows', catalog.length === 41, `${catalog.length}`);
+check('market catalog SKUs are unique', new Set(catalog.map((entry) => entry.sku)).size === catalog.length);
+for (const entry of catalog) {
+  const profile = M.DEVICES.find((d) => d.id === entry.profileId);
+  check(`${entry.sku}: catalog row links to an exact profile`, Boolean(profile));
+  check(`${entry.sku}: canonical SKU is an alias`, entry.aliases.includes(entry.sku));
+  check(`${entry.sku}: exact SKU/alias resolver is case-insensitive`, M.marketEntryForSku(entry.sku.toLowerCase())?.sku === entry.sku);
+  check(`${entry.sku}: protocol/coverage statuses are explicit`,
+    ['implemented', 'read-only', 'unknown'].includes(entry.protocolStatus) &&
+      ['covered', 'not-covered'].includes(entry.simulatorCoverage) &&
+      ['covered', 'not-covered'].includes(entry.unitTestCoverage) &&
+      entry.physicalValidation === 'pending',
+  );
+  if (profile && entry.protocolStatus === 'unknown') {
+    check(`${entry.sku}: catalog-only row exposes no guessed controls`,
+      profile.verified === false && profile.ancLayout === 'none' && profile.eqCommand === null && profile.batteryMax === null,
+    );
+  }
+}
+check('D1202C regional alias resolves to the D1202 row', M.marketEntryForSku('d1202c')?.sku === 'D1202');
+check('A3874X feature/SKU alias resolves to A3874', M.marketEntryForSku('a3874x')?.sku === 'A3874');
+check('A3213 resolves to the neckband presentation kind', M.matchDevice('soundcore Life U2i').kind === 'neckband');
+check('A3212 resolves to the neckband presentation kind', M.matchDevice('soundcore Life U2').kind === 'neckband');
+check('A3201 resolves to the neckband presentation kind', M.matchDevice('soundcore Life NC').kind === 'neckband');
+console.log(`  ${catalog.length * 5 + 5} market-catalog checks`);
+
 /* -------------------------------------------- 3. identification (Task 5) */
 
 console.log('\nTask 5 — model identification');
@@ -212,6 +276,27 @@ const ID_CASES = [
   ['P30i', 'A3959'],
   ['A3959', 'A3959'],
   ['SOUNDCORE R50I', 'A3949'],
+  ['soundcore Space A40', 'A3936'],
+  ['soundcore Liberty 4 Pro', 'A3954'],
+  ['soundcore P40i', 'A3955'],
+  ['soundcore Liberty 5', 'A3957'],
+  ['soundcore Space One Pro', 'A3062'],
+  ['soundcore Q20i', 'A3004'],
+  ['soundcore Q11i', 'A3005'],
+  ['soundcore Space 2', 'D1402'],
+  ['soundcore C30i', 'A3330'],
+  ['soundcore AeroClip', 'A3388'],
+  ['soundcore V20i', 'A3876'],
+  ['soundcore Sport X20', 'A3968'],
+  ['soundcore C50i', 'D1101'],
+  ['soundcore P31i', 'D1202'],
+  ['soundcore R60i NC', 'D1202'],
+  ['D1202C', 'D1202'],
+  ['soundcore Sleep A30', 'D1301'],
+  ['AeroClip2', 'D1105'],
+  ['AeroFit 2 AI Assistant', 'A3874'],
+  ['Space 2 Pro', 'D1406'],
+  ['Liberty Buds 2', 'D1206'],
 ];
 for (const [name, sku] of ID_CASES) {
   check(`matchDevice("${name}") → ${sku}`, M.matchDevice(name).sku === sku, `got ${M.matchDevice(name).sku}`);

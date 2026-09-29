@@ -57,7 +57,7 @@ export function ReportSection() {
         serial: app.connected ? app.serial : null,
       },
       version: BUILD_VERSION,
-      platform: isDesktop() ? 'Windows desktop app' : 'browser session',
+      platform: isDesktop() ? 'desktop app' : 'browser session',
       diagnostics: includeDiag ? app.log : null,
       attachmentNames: [...images, ...videos],
     });

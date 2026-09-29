@@ -1,5 +1,6 @@
 import { checksum } from '../protocol/codec';
 import type { DeviceProfile, Transport } from '../types';
+import { requiredStateLength } from '../protocol/modelRegistry';
 
 function ack(tx: Uint8Array): Uint8Array {
   const body = Array.from(tx);
@@ -40,16 +41,14 @@ function deviceInfoFrame(): Uint8Array {
  */
 function stateFrame(profile: DeviceProfile): Uint8Array {
   const o = profile.state;
+  // Size the fixture from the same offset contract the real parser enforces;
+  // otherwise a simulator profile with a late toggle/dual-channel EQ field
+  // would be falsely reported as malformed and never exercise its state path.
   const highest = Math.max(
-    o.batteryLeft,
-    o.batteryRight ?? 0,
-    o.batteryCase ?? 0,
-    o.batteryChargingLeft ?? 0,
-    o.batteryChargingRight ?? 0,
-    o.soundModes ?? 0,
-    (o.soundModes ?? 0) + 7,
+    requiredStateLength(o),
+    o.soundModes !== null ? o.soundModes + (o.soundModeLength ?? 7) : 0,
   );
-  const payload = new Uint8Array(Math.max(48, highest + 8));
+  const payload = new Uint8Array(Math.max(48, highest + 2));
   payload[o.batteryLeft] = 4;
   if (o.batteryRight !== null) payload[o.batteryRight] = 4;
   if (o.batteryCase !== null) payload[o.batteryCase] = 3;
@@ -65,9 +64,13 @@ function stateFrame(profile: DeviceProfile): Uint8Array {
 
 /** `06:01` sound-mode report, so the UI's mirror-back path is exercised too. */
 function soundModesFrame(profile: DeviceProfile): Uint8Array {
-  const payload = new Uint8Array(profile.ancLayout === 'tws-l3pro' ? 6 : 7);
+  const payloadLength =
+    profile.ancLayout === 'classic' || profile.ancLayout === 'tws-l4pro'
+      ? 4
+      : profile.state.soundModeLength ?? 7;
+  const payload = new Uint8Array(payloadLength);
   payload[0] = 0x00;
-  payload[1] = 0x50;
+  payload[1] = profile.ancLayout === 'tws-l4pro' ? 5 : 0x50;
   return header(0x06, 0x01, payload);
 }
 

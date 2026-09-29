@@ -183,7 +183,7 @@ byte 6  multi-scene ANC scene: 0x00 Transport · 0x01 Outdoor · 0x02 Indoor
    machine-readable; `gateCommandForProfile` refuses model-unsupported
    frames (including `FE FE` on A3949); `withDeviceBoundary` wraps every
    transport the store installs.
-3. `soundcore_bridge.py` — the Windows helper independently re-validates
+3. `soundcore_bridge.py` — the Windows/Linux helper independently re-validates
    every `tx` frame against the same command set before the RFCOMM socket.
 4. `scripts/test_model_profiles.mjs` + `scripts/test_command_targets.mjs` +
    `scripts/verify-protocol.mjs` — all of the above is asserted on every

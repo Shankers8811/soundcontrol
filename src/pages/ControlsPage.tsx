@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../state/store';
 import { EarbudsArt, OverEarArt, type ArtSideState } from '../components/DeviceArt';
+import { DeviceTypeVisual, deviceKindLabel } from '../components/DeviceTypeVisual';
 import type { EarbudSideState } from '../state/derive';
 import {
   IconAlert,
@@ -209,7 +210,13 @@ export function ControlsPage() {
 
         {/* ------------------------------------------------ right column */}
         <div className="space-y-4 xl:col-span-5">
-          <Card title={app.profile.kind === 'earbuds' ? 'Your earbuds' : 'Your headset'}>
+          <Card title={`Your ${deviceKindLabel(app.profile.kind).toLowerCase()}`}>
+            <div className="mb-3 flex items-center justify-center gap-2 text-accent-soft">
+              <DeviceTypeVisual kind={app.profile.kind} size={26} />
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em]">
+                {deviceKindLabel(app.profile.kind)}
+              </span>
+            </div>
             {/* Non-interactive illustration (PART O). For TWS models with
                 live telemetry the two buds dim/brighten INDEPENDENTLY from
                 the device-reported per-side state — the image mirrors real
@@ -221,6 +228,10 @@ export function ControlsPage() {
                   leftState={artSide(app.earbudState.left.state)}
                   rightState={artSide(app.earbudState.right.state)}
                 />
+              ) : app.profile.kind === 'neckband' ? (
+                <div className="flex justify-center py-5 text-accent-soft">
+                  <DeviceTypeVisual kind="neckband" size={72} />
+                </div>
               ) : (
                 <OverEarArt live={app.connected} />
               )}
@@ -279,7 +290,7 @@ export function ControlsPage() {
                 documented only for the Soundcore Motion+ (A3116) speaker. Sending an
                 undocumented destructive command to headphones or earbuds risks bricking device
                 settings, so SoundControl does not guess. Reset through the Soundcore mobile app
-                or Windows Bluetooth settings instead.
+                or this computer’s Bluetooth settings instead.
               </UnavailableNote>
             )}
           </Card>

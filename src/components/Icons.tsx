@@ -38,6 +38,52 @@ export function IconDevices(p: P) {
   );
 }
 
+/** Compact over-ear/headset silhouette for device detail views. */
+export function IconHeadset(p: P) {
+  return (
+    <S {...p}>
+      <path d="M4.5 13V11a7.5 7.5 0 0 1 15 0v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <rect x="3" y="12" width="4.5" height="7.5" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="16.5" y="12" width="4.5" height="7.5" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M7.5 19.5c1.1 1 2.7 1.5 4.5 1.5h1.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </S>
+  );
+}
+
+/** Left and right earbud glyphs intentionally mirror one another. */
+export function IconEarbudLeft(p: P) {
+  return (
+    <S {...p}>
+      <rect x="7" y="3" width="11" height="14" rx="5.5" fill="currentColor" opacity="0.16" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="12.5" cy="9" r="2.2" fill="currentColor" />
+      <path d="M9.5 16.5c0 3.3-1.1 4.5-3 5.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+    </S>
+  );
+}
+
+export function IconEarbudRight(p: P) {
+  return (
+    <S {...p}>
+      <rect x="6" y="3" width="11" height="14" rx="5.5" fill="currentColor" opacity="0.16" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="11.5" cy="9" r="2.2" fill="currentColor" />
+      <path d="M14.5 16.5c0 3.3 1.1 4.5 3 5.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+    </S>
+  );
+}
+
+/** Behind-the-neck band with the two attached earpieces. */
+export function IconNeckband(p: P) {
+  return (
+    <S {...p}>
+      <path d="M4 7.5v3.5a8 8 0 0 0 16 0V7.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M4 7.5c0-1.4 1-2.5 2.3-2.5S8.5 6.1 8.5 7.5v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M20 7.5c0-1.4-1-2.5-2.3-2.5S15.5 6.1 15.5 7.5v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="6.2" cy="7" r="1.5" fill="currentColor" />
+      <circle cx="17.8" cy="7" r="1.5" fill="currentColor" />
+    </S>
+  );
+}
+
 export function IconEqualizer(p: P) {
   return (
     <S {...p}>

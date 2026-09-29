@@ -211,7 +211,7 @@ check("all silent -> warns about no handshake", any("did not answer" in x for x 
 b, log, err, _, adopted = run({})
 check("nothing accepts -> raises", err is not None)
 check("error names the DSP channel problem", err is not None and "DSP channel" in str(err), str(err))
-check("error tells the user to leave the buds connected", err is not None and "Windows Bluetooth" in str(err), str(err))
+check("error tells the user to leave the buds connected", err is not None and "this computer's Bluetooth" in str(err), str(err))
 check(
     "error no longer tells the user to use pairing mode",
     err is not None and "Put them in pairing mode" not in str(err),
@@ -493,11 +493,11 @@ def _frame(cat: int, typ: int, payload: bytes = b"") -> bytes:
 
 EXPECTED_TX_ALLOWED = {
     "01:01", "01:03", "01:04", "01:05", "01:7F", "01:85", "01:87", "01:FF",
-    "02:81", "02:83", "02:86", "06:81", "0B:84", "10:85",
+    "02:81", "02:83", "02:86", "03:87", "06:81", "0B:84", "10:85",
 }
 
 check(
-    "TX_ALLOWED_FRAMES matches the 14-command Soundcore contract",
+    "TX_ALLOWED_FRAMES matches the 15-command Soundcore contract",
     set(bridge.TX_ALLOWED_FRAMES) == EXPECTED_TX_ALLOWED,
     f"got {sorted(bridge.TX_ALLOWED_FRAMES)}",
 )
@@ -574,6 +574,53 @@ try:
     )
 finally:
     bridge.BRIDGE.send = real_send
+
+# --- Cross-platform host discovery ------------------------------------------
+# Linux production discovery is read-only BlueZ output. Keep its parser
+# covered without requiring bluetoothd or physical hardware in CI.
+linux_devices = bridge._parse_bluetoothctl_devices_output(
+    """Agent registered\nDevice aa:bb:cc:dd:ee:ff soundcore R50i NC\nDevice 11:22:33:44:55:66 Some other headset\nDevice AA:BB:CC:DD:EE:FF soundcore R50i NC\n"""
+)
+check("Linux bluetoothctl parser normalizes and deduplicates MACs", len(linux_devices) == 2 and linux_devices[0]["mac"] == "AA:BB:CC:DD:EE:FF")
+check("Linux bluetoothctl parser preserves names with spaces", linux_devices[0]["name"] == "soundcore R50i NC")
+linux_info = bridge._parse_bluetoothctl_info_output(
+    """Device AA:BB:CC:DD:EE:FF\n\tName: soundcore R50i NC\n\tAlias: R50i NC\n\tConnected: yes\n\tBattery Percentage: 0x5a (90)\n"""
+)
+check("Linux bluetoothctl info parser reads alias and connection state", linux_info.get("name") == "R50i NC" and linux_info.get("connected") is True)
+check("Linux bluetoothctl info parser reads battery percentage", linux_info.get("battery") == 90)
+linux_hex_battery = bridge._parse_bluetoothctl_info_output("\tBattery Percentage: 0x32\n")
+check("Linux bluetoothctl info parser accepts hexadecimal-only battery", linux_hex_battery.get("battery") == 50)
+
+# Exercise the production merge path with paired, cached, and connected views.
+real_bluetoothctl = bridge._bluetoothctl
+bluetoothctl_fixtures = {
+    ("paired-devices",): "Device aa:bb:cc:dd:ee:ff soundcore R50i NC\n",
+    ("devices",): "Device AA:BB:CC:DD:EE:FF soundcore R50i NC\nDevice 11:22:33:44:55:66 AeroClip\n",
+    ("devices", "Connected"): "Device AA:BB:CC:DD:EE:FF soundcore R50i NC\n",
+    ("info", "AA:BB:CC:DD:EE:FF"): "Device AA:BB:CC:DD:EE:FF\n\tName: soundcore R50i NC\n\tAlias: R50i NC\n\tConnected: yes\n\tBattery Percentage: 0x5a (90)\n",
+    ("info", "11:22:33:44:55:66"): "Device 11:22:33:44:55:66\n\tName: AeroClip\n\tConnected: no\n",
+}
+
+def fake_bluetoothctl(*args):
+    return bluetoothctl_fixtures.get(tuple(args), "")
+
+bridge._bluetoothctl = fake_bluetoothctl
+try:
+    merged_linux_devices = bridge._linux_paired_devices()
+finally:
+    bridge._bluetoothctl = real_bluetoothctl
+check(
+    "Linux discovery merges paired/cached/connected views",
+    len(merged_linux_devices) == 2 and merged_linux_devices[0]["mac"] == "AA:BB:CC:DD:EE:FF",
+)
+check(
+    "Linux discovery retains connected and battery metadata",
+    merged_linux_devices[0].get("connected") is True and merged_linux_devices[0].get("battery") == 90,
+)
+check(
+    "Linux discovery keeps a cached device that is not connected",
+    merged_linux_devices[1].get("name") == "AeroClip" and merged_linux_devices[1].get("connected") is False,
+)
 
 print(f"  {passed} checks")
 if failures:
