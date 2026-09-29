@@ -666,7 +666,7 @@ check(
 )
 check(
     "Windows production discovery explicitly queries PnP PresentOnly",
-    "-PresentOnly" in windows_calls[0],
+    "-PresentOnly" in str(windows_calls[0] if windows_calls else ""),
     str(windows_calls[0] if windows_calls else ""),
 )
 
