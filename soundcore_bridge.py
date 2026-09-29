@@ -126,6 +126,7 @@ TX_ALLOWED_FRAMES = frozenset(
         "01:FF",  # ldac.set
         "02:81",  # equalizer.set
         "02:83",  # equalizer.set-drc
+        "03:87",  # equalizer.set-hearid (D1202 disabled HearID form)
         "02:86",  # surround.set
         "06:81",  # sound-modes.set      (ANC / transparency / wind)
         "0B:84",  # dual-audio.set
