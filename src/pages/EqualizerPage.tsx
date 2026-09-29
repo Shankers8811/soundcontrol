@@ -87,8 +87,8 @@ export function EqualizerPage() {
                 <p className="mt-3 rounded-xl border border-edge bg-sunken px-4 py-3 text-xs leading-relaxed text-mute">
                   Custom curves are not supported by{' '}
                   <span className="font-semibold text-ink">{app.profile.name}</span> (
-                  {app.profile.sku}) — the factory presets on the right are everything this model
-                  accepts. SoundControl does not send the{' '}
+                  {app.profile.sku}) — this model supports factory presets only; the factory
+                  presets on the right are everything it accepts. SoundControl does not send the{' '}
                   <span className="font-mono text-[11px]">FE FE</span> custom frame to hardware
                   that has no documented support for it.
                 </p>
