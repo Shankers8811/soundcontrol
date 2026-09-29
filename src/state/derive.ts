@@ -318,6 +318,10 @@ export function mergeBatteryTelemetry(previous: BatteryState, frame: BatteryFram
     rightCharging: r.trusted ? frame.chargingRight ?? previous.rightCharging : undefined,
     batteryScale: frame.scale,
     batteryOffset: frame.offset ?? previous.batteryOffset ?? 0,
+    // Host-reported percentage is independent from the device's raw
+    // telemetry and must survive protocol refreshes for the dedicated
+    // Windows/Linux battery box.
+    hostPercent: previous.hostPercent ?? null,
     presence: presenceFromRaw(frame.rawLeft, frame.rawRight),
   };
 }
