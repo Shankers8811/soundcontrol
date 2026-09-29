@@ -143,7 +143,7 @@ export const MARKET_CATALOG: readonly MarketCatalogEntry[] = [
   {
     sku: 'A3388', name: 'AeroClip', category: 'open-ear', marketStatus: 'current', regions: ['US', 'EU'],
     aliases: ['A3388', 'AeroClip', 'soundcore AeroClip'], profileId: 'aeroclip',
-    protocolStatus: 'implemented', protocolEvidence: `${OPENSCQ30}: A3388 two-channel 02:83 EQ, 10-step battery/case, dual connections and surround.`, simulatorCoverage: 'covered', unitTestCoverage: 'covered', physicalValidation: 'pending',
+    protocolStatus: 'implemented', protocolEvidence: `${OPENSCQ30}: A3388 two-channel outbound 02:83 EQ, one ten-band state EQ block, 10-step battery/case and dual connections; surround is parsed read-only because no 02:86 writer is registered.`, simulatorCoverage: 'covered', unitTestCoverage: 'covered', physicalValidation: 'pending',
   },
   {
     sku: 'A3874', name: 'AeroFit 2', category: 'open-ear', marketStatus: 'current', regions: ['US', 'EU'],

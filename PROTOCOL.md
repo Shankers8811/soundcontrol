@@ -515,12 +515,21 @@ From OpenSCQ30's device definitions and i18n names; `verified` in
 | A3005 | Q11i | classic | none | 02:83 | no | no | yes | no | (raw+1)/10 |
 | D1402 | Space 2 | classic | none (read-only) | — | no | no | no | no | (raw+1)/10 |
 | A3330 | C30i | tws | none | 02:83 single-channel DRC | no | no | yes | no | 0..5 + case |
-| A3388 | AeroClip | tws | none | 02:83 dual-channel | no | no | yes | yes | (raw+1)/10 + case |
+| A3388 | AeroClip | tws | none | 02:83 dual-channel | no | no | yes | no (read-only state byte) | (raw+1)/10 + case |
 | A3876 | V20i | tws | none | 02:83 single-channel DRC | yes | no | yes | no | (raw+1)/10 |
 | A3968 | Sport X20 | tws | tws-a3968 | — (HearID) | no | no | yes | yes | 0..5 + case |
 | D1101 | C50i | tws | none | 02:81 dual-channel | no | yes | yes | no | (raw+1)/10 |
 | D1202 / D1202C | P31i / R60i NC | tws | tws-d1202 | 03:87 factory form; HearID custom read-only | no | yes | yes | no | (raw+1)/10 + case |
 | D1301 | Sleep A30 | tws | none | — (sleep-specific) | no | no | no | no | (raw+1)/10 |
+
+A3330/C30i and A3388/AeroClip state packets place the case byte at 35,
+readable surround at 44, dual-connections at 47, the EQ preset at 50–51,
+and a ten-band state EQ block at 52–61. AeroClip's outbound `02:83` frame
+still has two ten-band channels; that outbound shape must not be used to size
+or parse its state telemetry. AeroClip's state parser may read the surround
+byte for diagnostics, but its OpenSCQ30 module does not register a surround
+writer, so SoundControl advertises and sends no `02:86` for A3388.
+D1101/C50i's dual-connections state flag is at payload offset 53.
 
 SKU traps worth knowing: **A3959 is both the P30i and the R50i NC** while
 **A3949 is the R50i without NC** — matching by name alone attaches the wrong

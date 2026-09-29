@@ -559,7 +559,7 @@ export function buildResetDevice(): Uint8Array {
 }
 
 export function buildDeviceInfoQuery(): Uint8Array {
-  return INIT;
+  return DEVICE_INFO;
 }
 
 export function buildBatteryQuery(): Uint8Array {

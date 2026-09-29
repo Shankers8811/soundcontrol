@@ -344,6 +344,8 @@ const c1 = merge(emptyBattery(), 100, 90, { chargingLeft: true, chargingRight: t
 eq('charging flags stored from a state frame', [c1.leftCharging, c1.rightCharging], [true, true]);
 const c2 = merge(c1, 100, 90); // 01:03-style frame without charging bits
 eq('a frame without charging bits keeps the confirmed flags', [c2.leftCharging, c2.rightCharging], [true, true]);
+const malformedCharging = merge(c2, 100, 90, { chargingLeft: null, chargingRight: null });
+eq('malformed charging flags clear confirmation instead of retaining true', [malformedCharging.leftCharging, malformedCharging.rightCharging], [null, null]);
 const c3 = merge(c2, 100, 0xff);
 eq('absent side loses its charging flag too', c3.rightCharging, undefined);
 const c4 = merge(c3, 100, undefined);
@@ -381,17 +383,17 @@ eq('classic ANC + transport scene + vocal', parseSoundModes([0x00, 0x00, 0x01, 0
 eq('classic transparency + indoor', parseSoundModes([0x01, 0x02, 0x00, 0x00], 'classic'), {
   mode: 'transparency', transVocal: false, scene: 'indoor',
 });
-eq('l4nc: manual level 3 + wind on', parseSoundModes([0x00, 0x30, 0x00, 0x00, 0x01], 'tws-l4nc'), {
-  mode: 'anc', level: 3, transVocal: false, wind: true,
+eq('l4nc: manual level 3 + wind on', parseSoundModes([0x00, 0x30, 0x00, 0x00, 0x01, 0x00, 0x00], 'tws-l4nc'), {
+  mode: 'anc', level: 3, transVocal: false, wind: true, scene: 'transport',
 });
-eq('p30i: adaptive nibble below 1 is not a level', parseSoundModes([0x02, 0x00, 0x00, 0x00, 0x00], 'tws-p30i'), {
+eq('p30i: adaptive nibble below 1 is not a level', parseSoundModes([0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], 'tws-p30i'), {
   mode: 'normal', wind: false, scene: 'transport',
 });
-eq('p30i: automation byte confirms adaptive ANC', parseSoundModes([0x00, 0x53, 0x00, 0x01, 0x00], 'tws-p30i'), {
+eq('p30i: automation byte confirms adaptive ANC', parseSoundModes([0x00, 0x53, 0x00, 0x01, 0x00, 0x00, 0x00], 'tws-p30i'), {
   mode: 'adaptive', level: 5, wind: false, scene: 'transport',
 });
-eq('l4nc: automation byte confirms adaptive ANC', parseSoundModes([0x00, 0x32, 0x00, 0x01, 0x00], 'tws-l4nc'), {
-  mode: 'adaptive', level: 3, transVocal: false, wind: false,
+eq('l4nc: automation byte confirms adaptive ANC', parseSoundModes([0x00, 0x32, 0x00, 0x01, 0x00, 0x00, 0x00], 'tws-l4nc'), {
+  mode: 'adaptive', level: 3, transVocal: false, wind: false, scene: 'transport',
 });
 eq('A3035 mirror parses wind while keeping custom transparency opaque', parseSoundModes([0x00, 0x50, 0x00, 0x01, 0x01, 0x05], 'classic-a3035'), {
   mode: 'adaptive', level: 5, wind: true,
@@ -403,6 +405,8 @@ eq('A3040 mirror parses Talk transparency and wind', parseSoundModes([0x01, 0x50
 // mode survives (the store only moves ANC state on a non-null report).
 eq('garbage mode byte → null (confirmed state untouched)', parseSoundModes([0x07, 0x00, 0x00, 0x00], 'classic'), null);
 eq('short payload → null', parseSoundModes([0x00], 'classic'), null);
+eq('six-byte layout rejects a five-byte prefix', parseSoundModes([0x00, 0x50, 0x00, 0x01, 0x00], 'tws-a3968'), null);
+eq('eight-byte D1202 layout rejects a seven-byte prefix', parseSoundModes([0x00, 0x50, 0x00, 0x01, 0x00, 0x00, 0x00], 'tws-d1202'), null);
 eq('layouts without ANC never parse', parseSoundModes([0x00, 0x00, 0x00, 0x00], 'none'), null);
 
 console.log('\n[3d] single-earbud ANC capability');

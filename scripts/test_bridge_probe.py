@@ -7,7 +7,8 @@ The bug these guard against: accepting an RFCOMM socket is not proof the
 channel is the Soundcore DSP. Hands-free and A2DP control channels accept a
 connection and then never answer, which used to leave the app showing
 "Connected" with no battery and no ANC. `Bridge.connect` now handshakes every
-candidate and keeps the first channel that actually replies.
+candidate and keeps only a channel that returns the exact state response; it
+refuses to adopt a socket that merely accepts and stays silent.
 
 No Bluetooth hardware and no Windows are required: `socket.socket` is replaced
 with a fake that scripts what each channel does.
@@ -19,6 +20,7 @@ import contextlib
 import importlib.util
 import io
 import os
+import re
 import socket
 import sys
 import time
@@ -112,8 +114,7 @@ def run(behaviours: dict, requested: int = 4, hold: float = 0.0):
     """Drive Bridge.connect with `behaviours` mapping channel -> behaviour.
 
     `hold` keeps the adopted link open that many seconds before closing, so
-    time-based behaviour (the silent-link watchdog) gets to fire while stderr
-    is still captured.
+    reader/session behavior can be observed while stderr is still captured.
     """
     log: list[str] = []
     created: list[FakeSocket] = []
@@ -202,10 +203,12 @@ check("noise before the frame -> adopted", err is None and b.channel == 4, str(e
 b, log, err, _, adopted = run({4: "garbage", 12: "answer"})
 check("garbage on ch4 is not a reply -> falls through to ch12", err is None and b.channel == 12, f"{err} ch={b.channel}")
 
-# 7. Nothing answers but something accepts: fall back and say so loudly.
+# 7. Nothing answers but sockets accept: strict safety policy refuses to
+#    adopt an unproven hands-free/A2DP/firmware service.
 b, log, err, _, adopted = run({4: "silent", 12: "silent"})
-check("all silent -> still connects (manual use)", err is None and b.channel == 4, f"{err}")
-check("all silent -> warns about no handshake", any("did not answer" in x for x in log), str(log))
+check("all silent -> refuses to connect", err is not None and not adopted and b.sock is None, f"{err}")
+check("all silent -> explains the missing handshake", err is not None and "never answered" in str(err), str(err))
+check("all silent -> does not claim a connected channel", b.mac == "", f"mac={b.mac}")
 
 # 8. Nothing at all accepts: the error must explain what to do.
 b, log, err, _, adopted = run({})
@@ -226,6 +229,16 @@ check(
 # 9. A requested channel is tried first, so --channel still works.
 b, log, err, _, adopted = run({15: "answer", 4: "answer"}, requested=15)
 check("requested channel wins", err is None and b.channel == 15, f"{err} ch={b.channel}")
+unsupported_channel_error = None
+try:
+    bridge.Bridge().connect("AA:BB:CC:DD:EE:FF", 13)
+except Exception as exc:  # noqa: BLE001
+    unsupported_channel_error = exc
+check(
+    "firmware channel 13 cannot be injected through --channel",
+    unsupported_channel_error is not None and "Unsupported RFCOMM channel" in str(unsupported_channel_error),
+    str(unsupported_channel_error),
+)
 
 # 10. The whole probe must fit inside the renderer's connect timeout.
 worst = len(bridge.DSP_CHANNEL_CANDIDATES) * (
@@ -247,6 +260,10 @@ check(
 check("empty buffer is not an answer", bridge._answers_handshake(b"") is False)
 check("partial header is not an answer", bridge._answers_handshake(b"\x09") is False)
 check("valid frame is an answer", bridge._answers_handshake(INFO_REPLY) is True)
+wrong_command = bytearray(INFO_REPLY)
+wrong_command[6] = 0x05
+wrong_command[-1] = sum(wrong_command[:-1]) & 0xFF
+check("valid checksum for a different response is not a handshake", bridge._answers_handshake(bytes(wrong_command)) is False)
 check("truncated frame is not an answer", bridge._answers_handshake(INFO_REPLY[:-1]) is False)
 check("bad checksum is not an answer", bridge._answers_handshake(INFO_REPLY[:-1] + b"\x00") is False)
 check("frame after noise is an answer", bridge._answers_handshake(b"\x01\x02\x03" + INFO_REPLY) is True)
@@ -371,58 +388,41 @@ check("stream loop parks exactly the incomplete tail", held == INFO_REPLY[:half]
 frame_t, rest_t = bridge.split_frame(held + INFO_REPLY[half:])
 check("arriving tail completes the third frame with nothing left over", frame_t == INFO_REPLY and rest_t == b"")
 
-# 13. Silent-link watchdog: a silent fallback link must be named out loud
-#     instead of leaving the UI at a fake "Connected".
-old_watchdog = bridge.SILENT_LINK_WATCHDOG_S
-bridge.SILENT_LINK_WATCHDOG_S = 0.3
-try:
-    b, log, err, _, adopted = run({4: "silent"}, hold=0.8)
-    check("silent fallback stays adopted for manual use", err is None and adopted, str(err))
-    stderr_text = next((x for x in log if x.startswith("stderr:")), "")
-    check(
-        "silent-link watchdog fires on a dead link",
-        "silent-link watchdog" in stderr_text,
-        stderr_text[:400],
-    )
-    check(
-        "watchdog tells the user what holds the control slot",
-        "control slot" in stderr_text,
-        stderr_text[:400],
-    )
-    # An answering link must never trip the watchdog.
-    b, log, err, _, adopted = run({4: "answer"}, hold=0.8)
-    stderr_text = next((x for x in log if x.startswith("stderr:")), "")
-    check("answering link -> no watchdog", "silent-link watchdog" not in stderr_text, stderr_text[:400])
+# 12d. A stale reader must not broadcast its close after a reconnect has
+#       already replaced Bridge.sock. That notification belongs only to the
+#       currently owned link; otherwise the renderer clears the new device.
+stale_bridge = bridge.Bridge()
+new_socket = object()
+stale_events: list[dict] = []
 
-    # 14. Self-healing: the slot frees up mid-session, the device answers a
-    #     background retry, and the bridge must announce it — no manual
-    #     reconnect needed.
-    b, log, err, _, adopted = run({4: "late-answer"}, hold=1.2)
-    check("late answer -> adopted", err is None and adopted, str(err))
-    stderr_text = next((x for x in log if x.startswith("stderr:")), "")
-    check("late answer -> watchdog reported the silence first", "silent-link watchdog" in stderr_text, stderr_text[:400])
-    check(
-        "late answer -> promotion message says battery/ANC are live",
-        "after retry" in stderr_text and "live now" in stderr_text,
-        stderr_text[:400],
-    )
-    check(
-        "late answer -> device frame reached the renderer",
-        any(x.startswith("broadcast:rx") for x in log),
-        str([x for x in log if "broadcast" in x][:6]),
-    )
+class ReplacedDuringRead:
+    def recv(self, _n: int) -> bytes:
+        stale_bridge.sock = new_socket  # type: ignore[assignment]
+        raise OSError("old link closed")
 
-    # 15. The silent-fallback message must not swallow the refused channels.
-    b, log, err, _, adopted = run({4: "silent", 12: "silent"}, hold=0.4)
-    stderr_text = next((x for x in log if x.startswith("stderr:")), "")
-    check("fallback -> still warns about the missing handshake", "did not answer" in stderr_text, stderr_text[:400])
-    check(
-        "fallback -> names the refused channels too",
-        "ch15" in stderr_text and "Host is down" in stderr_text,
-        stderr_text[:400],
-    )
-finally:
-    bridge.SILENT_LINK_WATCHDOG_S = old_watchdog
+stale_bridge.sock = ReplacedDuringRead()  # type: ignore[assignment]
+stale_bridge.broadcast = lambda payload: stale_events.append(payload)  # type: ignore[method-assign]
+stale_bridge._reader()
+check(
+    "stale RFCOMM reader does not announce RFCOMM closed for the replacement link",
+    stale_bridge.sock is new_socket and stale_events == [],
+    repr(stale_events),
+)
+
+# 13. A socket that accepts and later answers is still rejected: the bridge
+#     does not keep an unproven channel open and does not send retry traffic.
+b, log, err, _, adopted = run({4: "late-answer"}, hold=0.2)
+check("late answer -> strict probe refuses before retry", err is not None and not adopted, str(err))
+check(
+    "late answer -> no silent-link watchdog or background retry",
+    all("watchdog" not in x.lower() for x in log),
+    str(log),
+)
+check(
+    "late answer -> refusal names the accepted silent channel",
+    err is not None and "ch4" in str(err) and "never answered" in str(err),
+    str(err),
+)
 
 # 16. WS command robustness: malformed or non-object JSON must receive a clean
 #     error reply. An exception escaping _handle (e.g. AttributeError from
@@ -492,20 +492,49 @@ def _frame(cat: int, typ: int, payload: bytes = b"") -> bytes:
 
 
 EXPECTED_TX_ALLOWED = {
-    "01:01", "01:03", "01:04", "01:05", "01:7F", "01:85", "01:87", "01:FF",
+    "01:01", "01:03", "01:04", "01:05", "01:7F", "01:87", "01:FF",
     "02:81", "02:83", "02:86", "03:87", "06:81", "0B:84", "10:85",
 }
 
 check(
-    "TX_ALLOWED_FRAMES matches the 15-command Soundcore contract",
+    "TX_ALLOWED_FRAMES excludes destructive 01:85 without model authorization",
     set(bridge.TX_ALLOWED_FRAMES) == EXPECTED_TX_ALLOWED,
     f"got {sorted(bridge.TX_ALLOWED_FRAMES)}",
 )
 
+VALID_TX_PAYLOADS = {
+    "01:01": b"",
+    "01:03": b"",
+    "01:04": b"",
+    "01:05": b"",
+    "01:7F": b"",
+    "01:87": b"\x01",
+    "01:FF": b"\x01",
+    "02:81": bytes(10),
+    "02:83": bytes(22),
+    "02:86": b"\x01",
+    "03:87": bytes(114),
+    "06:81": bytes(7),
+    "0B:84": b"\x01",
+    "10:85": b"\x01",
+}
 for key in sorted(EXPECTED_TX_ALLOWED):
     cat, typ = (int(x, 16) for x in key.split(":"))
-    reason = bridge.validate_tx_frame(_frame(cat, typ))
+    reason = bridge.validate_tx_frame(_frame(cat, typ, VALID_TX_PAYLOADS[key]))
     check(f"validate_tx_frame accepts registered command {key}", reason is None, str(reason))
+
+reset_reason = bridge.validate_tx_frame(_frame(0x01, 0x85))
+check(
+    "validate_tx_frame rejects destructive factory reset at the helper boundary",
+    reset_reason is not None and "not a recognized supported earbud command" in reset_reason,
+    str(reset_reason),
+)
+
+check(
+    "validate_tx_frame rejects a registered command with the wrong payload shape",
+    "payload shape" in str(bridge.validate_tx_frame(_frame(0x02, 0x81, bytes(10 + 20))))
+    and "02:81" in str(bridge.validate_tx_frame(_frame(0x02, 0x81, bytes(10 + 20)))),
+)
 
 check(
     "validate_tx_frame accepts the real INIT handshake frame",
@@ -623,17 +652,19 @@ check(
 )
 
 # --- Windows host discovery --------------------------------------------------
-# Production Windows enumeration uses the paired registry plus Get-PnpDevice
-# -PresentOnly. The latter is the host-side connected-state signal; these tests
-# prove the parser keeps a paired-but-disconnected device separate from a
-# currently connected one without requiring Windows or Bluetooth hardware.
+# Production Windows enumeration uses the paired registry plus the Bluetooth
+# connection-state PnP property (DEVPROPKEY_Bluetooth_IsConnected, property 15).
+# PnP -PresentOnly alone means present in the PnP tree, not necessarily
+# connected over Bluetooth; these tests prove the parser keeps a
+# paired-but-disconnected device separate from a currently connected one
+# without requiring Windows or Bluetooth hardware.
 windows_scan = (
     "AA:BB:CC:DD:EE:FF|soundcore R50i NC|90|true\n"
     "11:22:33:44:55:66|AeroClip|75|false\n"
 )
 parsed_windows = bridge._parse_windows_scan_output(windows_scan)
 check(
-    "Windows parser reports connected=true from PresentOnly output",
+    "Windows parser reports connected=true from the explicit connection field",
     parsed_windows[0]["connected"] is True and parsed_windows[0]["battery"] == 90,
     str(parsed_windows),
 )
@@ -665,8 +696,16 @@ check(
     str(discovered_windows),
 )
 check(
-    "Windows production discovery explicitly queries PnP PresentOnly",
-    "-PresentOnly" in str(windows_calls[0] if windows_calls else ""),
+    "Windows production discovery queries the Bluetooth connection-state property",
+    "83DA6326-97A6-4088-9453-A1923F573B29} 15" in str(windows_calls[0] if windows_calls else ""),
+    str(windows_calls[0] if windows_calls else ""),
+)
+check(
+    "Windows production discovery does not use PresentOnly as its connected signal",
+    not any(
+        re.search(r"Get-PnpDevice[^\\r\\n]*-PresentOnly", line, re.IGNORECASE)
+        for line in str(windows_calls[0] if windows_calls else "").splitlines()
+    ),
     str(windows_calls[0] if windows_calls else ""),
 )
 

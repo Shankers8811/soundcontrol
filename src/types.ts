@@ -31,8 +31,9 @@ export type EarbudPresence = 'both' | 'left' | 'right' | 'none' | 'unknown';
 export interface BatteryState {
   left: number | null;
   right: number | null;
-  leftCharging?: boolean;
-  rightCharging?: boolean;
+  /** `null` means a documented charging field was present but malformed. */
+  leftCharging?: boolean | null;
+  rightCharging?: boolean | null;
   // No case level on purpose: many Soundcore models never report one (the
   // official app hides it too) and over-ears have no case, so displaying a
   // number here would mostly show guesses.
@@ -152,10 +153,12 @@ export interface StateOffsets {
    */
   gaming?: number | null;
   /**
-   * 3D Surround flag byte inside the `01:01` state update (a3959 at 74).
+   * Readable surround flag byte inside the `01:01` state update. A parsed
+   * offset does not imply that the SKU accepts the `02:86` write; capability
+   * advertising remains controlled by `DeviceProfile.surround`.
    */
   surround?: number | null;
-  /** Dual-connections-enabled flag byte inside the `01:01` state update (a3959 at 73). */
+  /** Dual-connections-enabled flag byte inside the `01:01` state update. */
   dualConnections?: number | null;
   /**
    * A3959 only: OpenSCQ30 gates the gaming byte on
