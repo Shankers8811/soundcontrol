@@ -7,7 +7,7 @@ export type AncScene = 'transport' | 'outdoor' | 'indoor';
 export type DeviceFamily = 'classic' | 'tws';
 
 /** Physical presentation used by the detail views; protocol family stays separate. */
-export type DeviceKind = 'earbuds' | 'overear' | 'neckband';
+export type DeviceKind = 'earbuds' | 'open-ear' | 'overear' | 'neckband';
 
 /**
  * Desktop sidebar pages. Five top-level destinations (Pass 8 information
