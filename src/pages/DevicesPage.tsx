@@ -5,9 +5,9 @@ import {
   nextScanState,
   type ScannedDevice,
 } from '../state/derive';
-import { DEVICES } from '../protocol/devices';
+import { DEVICES, matchDevice } from '../protocol/devices';
 import { MARKET_CATALOG, type MarketCatalogEntry } from '../protocol/marketCatalog';
-import { deviceKindLabel } from '../components/DeviceTypeVisual';
+import { DeviceTypeVisual, deviceKindLabel } from '../components/DeviceTypeVisual';
 import { bridgeHealth, scanBridgeDevicesDetailed } from '../transports/bridge';
 import { IconBolt, IconBt, IconCheck, IconClose, IconRefresh } from '../components/Icons';
 import {
@@ -242,33 +242,43 @@ export function DevicesPage() {
                         isActive ? 'border-accent/55 bg-accent/8' : 'border-edge bg-sunken hover:border-accent/35'
                       }`}
                     >
-                      <span
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${
-                          isActive ? 'border-accent/40 bg-accent/12 text-accent' : 'border-edge bg-panel text-mute'
-                        }`}
-                      >
-                        <IconBt size={19} />
-                      </span>
+                      {(() => {
+                        const matched = matchDevice(device.name);
+                        const knownProfile = matched.id !== 'unknown' ? matched : null;
+                        return (
+                          <span
+                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${isActive ? 'border-accent/40 bg-accent/12 text-accent' : 'border-edge bg-panel text-mute'}`}
+                            title={knownProfile ? deviceKindLabel(knownProfile.kind) : 'Unknown device type'}
+                          >
+                            {knownProfile ? <DeviceTypeVisual kind={knownProfile.kind} size={19} /> : <IconBt size={19} />}
+                          </span>
+                        );
+                      })()}
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-2">
                           <span className="truncate text-sm font-semibold text-ink">{device.name}</span>
-                          {isActive && (
+                          {isActive ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-bold text-accent-soft">
-                              <IconCheck size={10} /> Connected to SoundControl
+                              <IconCheck size={10} /> RFCOMM connected · SoundControl
                             </span>
-                          )}
-                          {!isActive && device.connected && (
+                          ) : device.connected ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-accent/8 px-2 py-0.5 text-[10px] font-semibold text-accent-soft">
                               <IconCheck size={10} /> Bluetooth connected
                             </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-sunken px-2 py-0.5 text-[10px] font-medium text-faint">
+                              Paired
+                            </span>
                           )}
                         </span>
-                        <span className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-faint">
-                          {device.mac}
+                        <span className="mt-0.5 flex items-center gap-2 text-[11px] text-faint">
+                          {knownProfile && (
+                            <span>{deviceKindLabel(knownProfile.kind)} · {knownProfile.sku}</span>
+                          )}
+                          {device.mac && <span className="font-mono">{device.mac}</span>}
                           {typeof device.battery === 'number' && (
                             <span className="inline-flex items-center gap-1 text-mute">
-                              · {device.battery}%
-                              <IconBolt size={10} className="text-warn/80" /> host
+                              · {device.battery}% host
                             </span>
                           )}
                         </span>
@@ -419,9 +429,9 @@ export function DevicesPage() {
         </ul>
       </Modal>
 
-      <Modal open={catalogOpen} title="Soundcore market compatibility" onClose={() => setCatalogOpen(false)} width="max-w-4xl">
+      <Modal open={catalogOpen} title="US/EU market snapshot" onClose={() => setCatalogOpen(false)} width="max-w-4xl">
         <p className="mb-4 text-xs leading-relaxed text-mute">
-          Catalog identity, exact protocol evidence, local simulator/tests, and physical hardware
+          Catalog identity, protocol evidence, simulator/tests, and physical hardware
           validation are separate statuses. A catalog row with unknown protocol evidence is
           intentionally read-only: SoundControl will not guess ANC, EQ, codec, or state offsets.
         </p>
@@ -454,7 +464,7 @@ function MarketCoverageCard({ onOpen }: { onOpen: () => void }) {
   return (
     <Card
       title="Market compatibility"
-      subtitle={`${MARKET_CATALOG.length} deduplicated catalog identities · snapshot 2026-09-29`}
+      subtitle={`${MARKET_CATALOG.length} deduplicated US/EU catalog identities · snapshot 2026-09-29`}
       actions={<Button size="sm" onClick={onOpen}>View status</Button>}
     >
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
