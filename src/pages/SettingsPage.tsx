@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../state/store';
+import { DEVICES } from '../protocol/devices';
 import { getAppVersion, isDesktop, openLogFolder } from '../lib/appSettings';
 import { HexConsole } from '../components/HexConsole';
 import { ThemeSection } from '../components/ThemeSection';
@@ -278,14 +279,10 @@ export function SettingsPage() {
               everywhere and cannot be reached from a production install.
             </p>
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {[
-                ['p30i', 'P30i / R50i NC'],
-                ['liberty-4-nc', 'Liberty 4 NC'],
-                ['space-one', 'Space One'],
-                ['q30', 'Life Q30'],
-              ].map(([id, name]) => (
-                <Button key={id} size="sm" disabled={app.connecting} onClick={() => void app.connectSim(id).catch(() => {})}>
-                  {name}
+              {DEVICES.map((device) => (
+                <Button key={device.id} size="sm" disabled={app.connecting} onClick={() => void app.connectSim(device.id).catch(() => {})}>
+                  <span className="truncate">{device.name}</span>
+                  <span className="font-mono text-[9px] text-faint">{device.sku}</span>
                 </Button>
               ))}
             </div>

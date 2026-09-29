@@ -206,6 +206,7 @@ console.log('\n[controls]');
 const controls = render(React.createElement(M.ControlsPage));
 check('page title (Pass 8: Noise Control)', controls.includes('>Noise Control<') && !controls.includes('>Controls<'));
 check('ANC component is embedded in the Noise Control page', controls.includes('Noise control is not available on this model'));
+check('non-ANC profile keeps all three noise-mode icons visible but faded/disabled', controls.includes('Noise control options unavailable') && (controls.match(/data-noise-mode-disabled="true"/g) ?? []).length === 3 && (controls.match(/data-noise-mode-option="true"/g) ?? []).length === 3);
 check('gesture customization is explicitly unsupported — no decorative remap UI', controls.includes('Gesture customization is not supported by this protocol'));
 // 01:85 is documented only for the Motion+ (A3116); no profile in the table
 // may fire an undocumented destructive frame — the card must explain instead.
