@@ -47,7 +47,7 @@ export function Sidebar() {
         <div className="leading-tight">
           <p className="text-[15px] font-bold tracking-tight text-ink">SoundControl</p>
           <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-faint">
-            for {typeof window !== 'undefined' && window.electronAPI?.platform === 'linux' ? 'Linux' : 'desktop'}
+            for {typeof window !== 'undefined' && window.electronAPI?.platform === 'linux' ? 'Linux' : typeof window !== 'undefined' && window.electronAPI?.platform === 'win32' ? 'Windows' : 'Windows + Linux'}
           </p>
         </div>
       </div>
