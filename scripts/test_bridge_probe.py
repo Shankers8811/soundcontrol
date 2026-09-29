@@ -493,11 +493,11 @@ def _frame(cat: int, typ: int, payload: bytes = b"") -> bytes:
 
 EXPECTED_TX_ALLOWED = {
     "01:01", "01:03", "01:04", "01:05", "01:7F", "01:85", "01:87", "01:FF",
-    "02:81", "02:83", "02:86", "06:81", "0B:84", "10:85",
+    "02:81", "02:83", "02:86", "03:87", "06:81", "0B:84", "10:85",
 }
 
 check(
-    "TX_ALLOWED_FRAMES matches the 14-command Soundcore contract",
+    "TX_ALLOWED_FRAMES matches the 15-command Soundcore contract",
     set(bridge.TX_ALLOWED_FRAMES) == EXPECTED_TX_ALLOWED,
     f"got {sorted(bridge.TX_ALLOWED_FRAMES)}",
 )

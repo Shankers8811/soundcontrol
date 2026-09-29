@@ -6,6 +6,7 @@ import {
   type ScannedDevice,
 } from '../state/derive';
 import { DEVICES } from '../protocol/devices';
+import { MARKET_CATALOG, type MarketCatalogEntry } from '../protocol/marketCatalog';
 import { bridgeHealth, scanBridgeDevicesDetailed } from '../transports/bridge';
 import { IconBolt, IconBt, IconCheck, IconClose, IconRefresh } from '../components/Icons';
 import {
@@ -52,6 +53,7 @@ export function DevicesPage() {
   const [macHint, setMacHint] = useState<string | null>(null);
   const [connectingMac, setConnectingMac] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
 
   /* ---------------------------------------------------------- scanning */
 
@@ -361,6 +363,8 @@ export function DevicesPage() {
               </p>
             )}
           </Card>
+
+          <MarketCoverageCard onOpen={() => setCatalogOpen(true)} />
         </div>
       </div>
 
@@ -407,7 +411,92 @@ export function DevicesPage() {
           })}
         </ul>
       </Modal>
+
+      <Modal open={catalogOpen} title="Soundcore market compatibility" onClose={() => setCatalogOpen(false)} width="max-w-4xl">
+        <p className="mb-4 text-xs leading-relaxed text-mute">
+          Catalog identity, exact protocol evidence, local simulator/tests, and physical hardware
+          validation are separate statuses. A catalog row with unknown protocol evidence is
+          intentionally read-only: SoundControl will not guess ANC, EQ, codec, or state offsets.
+        </p>
+        <div className="space-y-4">
+          {(['tws', 'sleep', 'open-ear', 'headphones'] as const).map((category) => {
+            const entries = MARKET_CATALOG.filter((entry) => entry.category === category);
+            return (
+              <section key={category}>
+                <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.12em] text-accent-soft">
+                  {category === 'tws' ? 'Traditional TWS earbuds' : category === 'sleep' ? 'Sleep earbuds' : category === 'open-ear' ? 'Open-ear / clip-on' : 'Over-ear / on-ear'}
+                </h3>
+                <ul className="space-y-1.5">
+                  {entries.map((entry) => <CatalogStatusRow key={entry.sku} entry={entry} />)}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
+      </Modal>
     </div>
+  );
+}
+
+/** Summary card for the deduplicated official-market registry. */
+function MarketCoverageCard({ onOpen }: { onOpen: () => void }) {
+  const protocol = MARKET_CATALOG.filter((entry) => entry.protocolStatus === 'implemented').length;
+  const readOnly = MARKET_CATALOG.filter((entry) => entry.protocolStatus === 'read-only').length;
+  const unknown = MARKET_CATALOG.filter((entry) => entry.protocolStatus === 'unknown').length;
+  const tested = MARKET_CATALOG.filter((entry) => entry.unitTestCoverage === 'covered').length;
+  return (
+    <Card
+      title="Market compatibility"
+      subtitle={`${MARKET_CATALOG.length} deduplicated catalog identities · snapshot 2026-09-29`}
+      actions={<Button size="sm" onClick={onOpen}>View status</Button>}
+    >
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <MarketMetric value={protocol} label="protocol" tone="good" />
+        <MarketMetric value={readOnly} label="read-only" tone="warn" />
+        <MarketMetric value={unknown} label="catalog only" tone="muted" />
+        <MarketMetric value={tested} label="unit-tested" tone="good" />
+      </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-faint">
+        Physical validation: <span className="font-semibold text-warn">pending for every model</span>.
+        Regional names and model-number aliases are grouped into one canonical SKU row.
+      </p>
+    </Card>
+  );
+}
+
+function MarketMetric({ value, label, tone }: { value: number; label: string; tone: 'good' | 'warn' | 'muted' }) {
+  const style = tone === 'good' ? 'text-accent-soft' : tone === 'warn' ? 'text-warn' : 'text-mute';
+  return (
+    <div className="rounded-lg border border-edge bg-sunken px-2.5 py-2">
+      <div className={`font-mono text-lg font-semibold ${style}`}>{value}</div>
+      <div className="text-[10px] text-faint">{label}</div>
+    </div>
+  );
+}
+
+function CatalogStatusRow({ entry }: { entry: MarketCatalogEntry }) {
+  const protocol = entry.protocolStatus === 'implemented' ? 'protocol' : entry.protocolStatus === 'read-only' ? 'read-only' : 'catalog only';
+  const protocolStyle = entry.protocolStatus === 'implemented'
+    ? 'border-accent/30 bg-accent/8 text-accent-soft'
+    : entry.protocolStatus === 'read-only'
+      ? 'border-warn/30 bg-warn/8 text-warn'
+      : 'border-edge bg-sunken text-faint';
+  return (
+    <li className="rounded-xl border border-edge bg-sunken px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-[11px] font-semibold text-ink">{entry.sku}</span>
+        <span className="text-xs font-semibold text-ink">{entry.name}</span>
+        <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase ${protocolStyle}`}>{protocol}</span>
+        <span className="ml-auto text-[10px] text-faint">{entry.regions.join(' / ')}</span>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-faint">
+        <span>simulator: <b className={entry.simulatorCoverage === 'covered' ? 'text-accent-soft' : 'text-faint'}>{entry.simulatorCoverage}</b></span>
+        <span>unit tests: <b className={entry.unitTestCoverage === 'covered' ? 'text-accent-soft' : 'text-faint'}>{entry.unitTestCoverage}</b></span>
+        <span>physical: <b className="text-warn">{entry.physicalValidation}</b></span>
+      </div>
+      <p className="mt-1 text-[10px] leading-relaxed text-faint">Aliases: {entry.aliases.join(' · ')}</p>
+      <p className="mt-1 text-[10px] leading-relaxed text-mute">{entry.protocolEvidence}</p>
+    </li>
   );
 }
 
