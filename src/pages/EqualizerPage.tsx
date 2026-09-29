@@ -33,22 +33,7 @@ export function EqualizerPage() {
     <div>
       <PageHeader
         title="Equalizer"
-        sub={
-          <>
-            <StatusBadge phase={app.connectionPhase} />
-            {app.connected && (
-              <span className="font-medium text-ink/90">
-                {app.eqId === 'custom' ? 'Custom curve active' : `Preset: ${activePreset?.name ?? app.eqId}`}
-              </span>
-            )}
-            {caps.supportsEqualizer && (
-              <span className="font-mono text-[10px] text-faint">
-                wire {app.profile.eqCommand}
-                {caps.supportsCustomEq ? ' · custom FE FE' : ' · factory presets only'}
-              </span>
-            )}
-          </>
-        }
+        sub={<StatusBadge phase={app.connectionPhase} />}
       />
 
       <DeviceSettingsHeader />
