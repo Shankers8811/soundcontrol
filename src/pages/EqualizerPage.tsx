@@ -51,6 +51,8 @@ export function EqualizerPage() {
         }
       />
 
+      <DeviceSettingsHeader />
+
       <CapabilityGate
         supported={caps.supportsEqualizer}
         noteTitle="The equalizer is not available on this model"
