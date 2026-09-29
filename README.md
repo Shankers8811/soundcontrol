@@ -68,6 +68,32 @@ freshly downloaded app — it is not hung. If SmartScreen appears, choose **More
 
 ---
 
+## Model support
+
+SoundControl keeps a separate profile for each verified SKU instead of
+assuming that a shared marketing name implies a shared packet layout. The
+current table includes R50i/P20i/A20i, C30i, AeroClip, V20i, Sport X20,
+C50i, P31i/R60i NC, Sleep A30, Liberty 4 NC, Liberty 3 Pro, Space A40,
+Liberty 4 Pro, P40i, Liberty 5, Q20i, Space One, Space Q45, Life Q35, Life
+Q30, Life Tune, Space One Pro and Q11i, plus the read-only Space 2 profile. Profiles carry their aliases, battery scale/offset, state offsets,
+`06:81` layout, EQ command and toggle capabilities together; the transport
+gate refuses a command that does not belong to the connected profile.
+
+Space 2 (D1402) is identified as a **read-only** profile. Its published
+channel-30 transport, unlock handshake and 53-byte `03:87` HearID template
+are documented in `PROTOCOL.md`, but the current Windows bridge does not
+attempt that transport or send those writes yet. Unknown and unverified model
+names remain read-only universal telemetry rather than borrowing a sibling's
+protocol.
+
+The layouts and evidence matrix are pinned by `npm run verify:protocol`,
+`npm run test:models`, `npm run test:simulator`, and `npm run test:ui`; see the
+state-offset table in [PROTOCOL.md](PROTOCOL.md) for the exact offsets and
+source projects. The current-market inventory, regional aliases, catalog-only
+rows, simulator/unit-test status, and physical-validation status are tracked
+in [`docs/MARKET-COMPATIBILITY.md`](docs/MARKET-COMPATIBILITY.md). Catalog-only
+models are identified exactly but do not get guessed device controls.
+
 ## 🎧 Windows desktop feature coverage
 
 Every ✅ below is a command verified in [PROTOCOL.md](PROTOCOL.md); every ⚠️/❌ is a control the
@@ -75,13 +101,13 @@ UI shows **disabled with the protocol reason** — SoundControl never renders a 
 
 | Feature | Official Android App | SoundControl for Windows |
 |---|:---:|:---:|
-| **Ambient Sound (ANC)** | ✅ 5-Level Manual, Adaptive, Multi-Scene | ✅ Real `06:81` frames with per-model layouts: scenes + transparency sub-modes on classic over-ears; manual level, adaptive and wind-noise bytes on TWS |
+| **Ambient Sound (ANC)** | ✅ 5-Level Manual, Adaptive, Multi-Scene | ✅ Real `06:81` frames with per-model layouts: classic four-byte modes, Space/Q45 six-byte modes, and model-specific TWS six-/seven-byte modes; only profiles whose evidence exposes scenes, vocal transparency, adaptive, or wind controls render them |
 | **Transparency Mode** | ✅ Fully Transparent & Talk Mode | ✅ Fully Transparent & Talk Mode (vocal byte where the model documents one) |
-| **Equalizer Presets** | ✅ 22 Soundcore Curated Presets | ✅ All 22 presets on EQ-capable models (`02:81` / `02:83`); HearID models (`03:87`) get a disabled page with the reason — never a guessed frame |
+| **Equalizer Presets** | ✅ 22 Soundcore Curated Presets | ✅ All 22 presets on EQ-capable models (`02:81` / `02:83` / D1202 `03:87` disabled-HearID form); other HearID models get a disabled page with the reason — never a guessed frame |
 | **Custom Graphic EQ** | ✅ 8-Band Slider Curve (-6 to +6 dB) | ✅ 8-band −6…+6 dB curve sent as the real `FE FE` custom preset (same model gating) |
 | **Per-earbud connection state** | ✅ Live per-side status | ✅ Derived from the device's own battery bytes (`0xFF` = that side is not connected); "Status unavailable" stays distinct from "Not connected" |
 | **BassUp™ Technology** | ✅ Dynamic Low-End Boost | ⚠️ No `02:82` command exists in any public capture — bass curves live in the preset table (Bass Booster / Reducer) |
-| **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ⚠️ No HearID test/write command in any public capture — no fake audiogram UI; the `03:87` EQ is left untouched to protect measured profiles |
+| **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ⚠️ No HearID test/custom-curve command in any public capture — no fake audiogram UI; personalised `03:87` profiles remain untouched (D1202 factory presets use the disabled-HearID form) |
 | **Superior Sleep** | ✅ Ambient White Noise Mixer | ❌ Not implemented — the earlier claim was UI-only and was removed; the protocol has no sleep command |
 | **Touch Remapping** | ✅ 1-Tap, 2-Tap, 3-Tap, Hold per ear | ⚠️ No gesture-write command is publicly documented — the Noise Control page says so explicitly instead of offering remaps that cannot reach the device |
 | **Game Mode** | ✅ 80ms Low Latency | ✅ Real `01:87` toggle (`10:85` on Liberty 4 NC / Liberty 5) |
@@ -133,9 +159,9 @@ Every packet transmitted between the host application and the hardware device fo
   - `0x83`: 10-band EQ + DRC compensation channel (P20i/P30i family) — byte-identical to 22 live captures.
   - `0x86`: 3D Surround Sound toggle.
   - ~~`0x82` BassUp~~ and any "find my device" opcode: **no public capture in any surveyed project contains them; SoundControl does not invent frames.**
-- **Category `0x03`**: `0x87` is the model-specific HearID EQ (Liberty 4 NC / Space One / Space Q45). Layout differs per model and risks overwriting measured hearing profiles, so SoundControl disables EQ there instead of guessing.
+- **Category `0x03`**: `0x87` is the model-specific HearID EQ used by Liberty 4 NC, Space One, Space Q45, Space A40, Liberty 4 Pro, P40i, Liberty 5, Space One Pro and Space 2. Layout differs per model and risks overwriting measured hearing profiles, so SoundControl disables those writes instead of guessing.
 - **Category `0x06` (Ambient Sound & ANC)**:
-  - `0x81`: sound-mode selector, four per-model layouts. Classic over-ears: mode `0x00` = ANC, `0x01` = Transparency, `0x02` = Normal, plus NC scene (Transport/Outdoor/Indoor) and transparency sub-mode bytes. TWS models use 6–7 byte layouts (manual level, adaptive, wind, scenes). Inbound mirror is `06:01`.
+  - `0x81`: sound-mode selector with per-model layouts. Classic Q20i/Q30/Q35/Life Tune models use the four-byte body; Space One/Space Q45, Space One Pro, Space A40, Liberty 4 Pro, P40i and Liberty 5 use their documented six- or seven-byte bodies (manual level, adaptive, wind and model-specific scene fields). Inbound mirror is `06:01`.
 - **Category `0x08` (Touch & Button Controls)**:
   - **No write command is publicly documented.** Button mappings appear in some *inbound* state
     parses only; no capture shows how to send new mappings. SoundControl therefore displays

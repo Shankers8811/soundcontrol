@@ -14,8 +14,9 @@ import { IconAdaptive, IconAnc, IconNormal, IconTalk, IconTrans, IconWind } from
  *  - Every click sends the real per-model frame through the bridge.
  *  - The store rolls the selection back when the write fails, so the
  *    animation and the settled ring always end on the REAL device state.
- *  - Models without a sound-mode module (P20i/P25i/R50i/A20i) get an
- *    explanatory unsupported note instead of buttons.
+ *  - Models without a sound-mode module (P20i/P25i/R50i/A20i) keep the
+ *    familiar mode icons visible but faded and disabled, with an explanatory
+ *    note; no guessed command can be sent.
  */
 
 const MODES: Array<{
@@ -66,6 +67,8 @@ function ModeIcon({
       onClick={onClick}
       disabled={disabled}
       aria-pressed={active}
+      data-noise-mode-option="true"
+      data-noise-mode-disabled={disabled ? 'true' : 'false'}
       className="group flex flex-col items-center gap-2.5 disabled:cursor-not-allowed disabled:opacity-40"
     >
       <span className={`nc-icon h-[68px] w-[68px] ${active ? 'nc-active' : ''}`}>
@@ -150,6 +153,30 @@ export function NoiseControl() {
         ) : undefined
       }
     >
+      {!caps.supportsNoiseControl && (
+        <>
+          <div
+            className="flex items-start justify-center gap-8 py-2 sm:gap-12"
+            aria-label="Noise control options unavailable"
+          >
+            {MODES.map((m) => (
+              <ModeIcon
+                key={m.id}
+                active={false}
+                pulsing={false}
+                label={m.label}
+                icon={m.icon}
+                disabled
+                onClick={() => {}}
+              />
+            ))}
+          </div>
+          <p className="mb-4 text-center text-[11px] text-faint">
+            Noise-control options are shown for consistency but disabled for this model.
+          </p>
+        </>
+      )}
+
       <CapabilityGate
         supported={caps.supportsNoiseControl}
         noteTitle="Noise control is not available on this model"
@@ -166,8 +193,8 @@ export function NoiseControl() {
             <>
               {app.profile.name} ({app.profile.sku}) registers no sound-mode module — its firmware
               has no noise-cancelling hardware to command (documented per model in PROTOCOL.md).
-              SoundControl never sends a frame the device would silently discard, so no mode buttons
-              are shown.
+              SoundControl never sends a frame the device would silently discard, so the mode buttons
+              remain visible only as faded, disabled indicators.
             </>
           )
         }
