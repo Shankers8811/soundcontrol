@@ -156,7 +156,19 @@ const ANC_INTENTS = [
   ['normal', { mode: 'normal', level: 1, scene: 'transport', transVocal: false, wind: false }],
   ['adaptive', { mode: 'adaptive', level: 4, scene: 'outdoor', transVocal: false, wind: true }],
 ];
-for (const layout of ['classic', 'tws-p30i', 'tws-l4nc', 'tws-l3pro']) {
+for (const layout of [
+  'classic',
+  'classic-a3035',
+  'classic-a3040',
+  'tws-p30i',
+  'tws-l4nc',
+  'tws-l3pro',
+  'tws-a3062',
+  'tws-a3936',
+  'tws-l4pro',
+  'tws-p40i',
+  'tws-l5',
+]) {
   for (const [name, intent] of ANC_INTENTS) {
     legit.push([`ANC ${layout} · ${name}`, M.buildAnc(layout, intent)]);
   }

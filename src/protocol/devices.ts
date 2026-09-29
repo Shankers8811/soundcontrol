@@ -82,6 +82,7 @@ const LIBERTY4NC_STATE: StateOffsets = {
   eqPresetId: 37,
   eqBands: { at: 39, count: 10 },
   soundModes: 126,
+  soundModeLength: 7,
 };
 
 /**
@@ -104,16 +105,16 @@ const LIBERTY3PRO_STATE: StateOffsets = {
   eqPresetId: 32,
   eqBands: { at: 34, count: 10 },
   soundModes: 120,
+  soundModeLength: 6,
 };
 
 /**
- * Over-ear models (Life Q30, Life Q35, Life Tune, Space One, Space Q45) all
- * use `single_battery(5)`: one 0..5 step, not a percentage. Their state
- * layouts differ per model and are not published byte-for-byte, so only the
- * battery is read here — firmware and serial come from the `01:05` request,
- * which every one of these models implements.
+ * Over-ear models report one battery level. The OpenSCQ30 A3004/A3027/
+ * A3028/A3035/A3040 state bodies all begin with `BatteryLevel` at offset 0.
+ * Firmware and serial still come from the `01:05` request, which every one
+ * of these models implements.
  */
-function overEarState(batteryAt = 2): StateOffsets {
+function overEarState(batteryAt = 0): StateOffsets {
   return {
     batteryLeft: batteryAt,
     batteryRight: null,
@@ -130,6 +131,139 @@ function overEarState(batteryAt = 2): StateOffsets {
 
 const OPENSCQ30 = 'OpenSCQ30 device definition';
 
+/** Shared TWS state head: tws status (2), dual battery (4), firmware (10), serial (16). */
+function twsState(overrides: Partial<StateOffsets> = {}): StateOffsets {
+  return {
+    batteryLeft: 2,
+    batteryRight: 3,
+    batteryChargingLeft: 4,
+    batteryChargingRight: 5,
+    batteryCase: null,
+    firmware: { at: 6, length: 10 },
+    serial: { at: 16, length: 16 },
+    eqPresetId: null,
+    eqBands: null,
+    soundModes: null,
+    soundModeLength: 7,
+    ...overrides,
+  };
+}
+
+/** A3005/A3062-style single-body state with a two-byte battery head. */
+function singleBodyState(
+  firmware: { at: number; length: number },
+  serial: { at: number; length: number },
+  overrides: Partial<StateOffsets> = {},
+): StateOffsets {
+  return {
+    batteryLeft: 0,
+    batteryRight: null,
+    batteryChargingLeft: 1,
+    batteryChargingRight: null,
+    batteryCase: null,
+    firmware,
+    serial,
+    eqPresetId: null,
+    eqBands: null,
+    soundModes: null,
+    soundModeLength: 7,
+    ...overrides,
+  };
+}
+
+const SPACE_A40_STATE = twsState({
+  batteryCase: 118,
+  eqPresetId: 32,
+  eqBands: { at: 34, count: 20 },
+  soundModes: 111,
+  soundModeLength: 6,
+  dualConnections: 121,
+  gaming: 124,
+});
+
+const LIBERTY4PRO_STATE = twsState({
+  batteryCase: 37,
+  eqPresetId: 44,
+  eqBands: { at: 46, count: 20 },
+  soundModes: 125,
+  soundModeLength: 4,
+  dualConnections: 142,
+});
+
+const P40I_STATE = twsState({
+  batteryCase: 37,
+  eqPresetId: 38,
+  eqBands: { at: 40, count: 20 },
+  soundModes: 119,
+  soundModeLength: 7,
+  dualConnections: 135,
+});
+
+const LIBERTY5_STATE = twsState({
+  batteryCase: 37,
+  eqPresetId: 38,
+  eqBands: { at: 40, count: 20 },
+  soundModes: 119,
+  dualConnections: 130,
+  gaming: 146,
+});
+
+const SPACE_ONE_PRO_STATE = singleBodyState(
+  { at: 2, length: 5 },
+  { at: 7, length: 16 },
+  {
+    eqPresetId: 23,
+    eqBands: { at: 25, count: 10 },
+    soundModes: 69,
+    soundModeLength: 6,
+    dualConnections: 79,
+  },
+);
+
+const Q11I_STATE = singleBodyState(
+  { at: 2, length: 5 },
+  { at: 7, length: 16 },
+  {
+    eqPresetId: 23,
+    eqBands: { at: 25, count: 10 },
+    dualConnections: 41,
+  },
+);
+
+const SPACE2_STATE = singleBodyState(
+  { at: 2, length: 5 },
+  { at: 11, length: 12 },
+  { batteryChargingLeft: null },
+);
+
+const Q20I_STATE: StateOffsets = {
+  batteryLeft: 0,
+  batteryRight: null,
+  batteryChargingLeft: 1,
+  batteryChargingRight: null,
+  batteryCase: null,
+  firmware: { at: 2, length: 5 },
+  serial: { at: 7, length: 16 },
+  eqPresetId: 23,
+  eqBands: { at: 25, count: 10 },
+  soundModes: 35,
+  soundModeLength: 4,
+};
+
+const LIFE_Q_STATE: StateOffsets = {
+  batteryLeft: 0,
+  batteryRight: null,
+  batteryChargingLeft: 1,
+  batteryChargingRight: null,
+  batteryCase: null,
+  firmware: { at: 39, length: 5 },
+  serial: { at: 44, length: 16 },
+  eqPresetId: 2,
+  eqBands: { at: 4, count: 8 },
+  soundModes: 35,
+  soundModeLength: 4,
+};
+
 export const DEVICES: DeviceProfile[] = [
   {
     id: 'p30i',
@@ -139,7 +273,7 @@ export const DEVICES: DeviceProfile[] = [
     family: 'tws',
     gaming: true,
     ancLevels: true,
-    scenes: false,
+    scenes: true,
     ldac: false,
     dual: true,
     surround: true,
@@ -254,6 +388,194 @@ export const DEVICES: DeviceProfile[] = [
     verified: true,
   },
   {
+    id: 'space-a40',
+    name: 'Space A40',
+    sku: 'A3936',
+    kind: 'earbuds',
+    family: 'tws',
+    gaming: true,
+    ancLevels: true,
+    scenes: false,
+    ldac: true,
+    dual: true,
+    surround: false,
+    wind: true,
+    transparency: true,
+    batteryMax: 5,
+    names: ['Space A40', 'A3936', 'soundcore Space A40'],
+    ancLayout: 'tws-a3936',
+    eqCommand: null,
+    customEq: false,
+    state: SPACE_A40_STATE,
+    source: `${OPENSCQ30} (a3936): six-byte sound modes, dual_battery(5), LDAC, dual_connections, gaming, case battery, custom HearID EQ module (not emitted by this app)`,
+    verified: true,
+  },
+  {
+    id: 'liberty-4-pro',
+    name: 'Liberty 4 Pro',
+    sku: 'A3954',
+    kind: 'earbuds',
+    family: 'tws',
+    gaming: false,
+    ancLevels: true,
+    scenes: false,
+    ldac: true,
+    dual: true,
+    surround: false,
+    wind: true,
+    transparency: false,
+    batteryMax: 100,
+    names: ['Liberty 4 Pro', 'A3954', 'soundcore Liberty 4 Pro'],
+    ancLayout: 'tws-l4pro',
+    eqCommand: null,
+    customEq: false,
+    state: LIBERTY4PRO_STATE,
+    source: `${OPENSCQ30} (a3954): four-byte slider sound modes (ANC 1..5 maps to slider 5..1; transparency 7..11), LDAC, dual connections; model-specific HearID EQ is intentionally read-only`,
+    verified: true,
+  },
+  {
+    id: 'p40i',
+    name: 'P40i',
+    sku: 'A3955',
+    kind: 'earbuds',
+    family: 'tws',
+    gaming: false,
+    ancLevels: true,
+    scenes: true,
+    ldac: false,
+    dual: true,
+    surround: false,
+    wind: true,
+    transparency: true,
+    batteryMax: 5,
+    names: ['P40i', 'A3955', 'soundcore P40i'],
+    ancLayout: 'tws-p40i',
+    eqCommand: null,
+    customEq: false,
+    state: P40I_STATE,
+    source: `${OPENSCQ30} (a3955): seven-byte sound modes with multi-scene ANC, dual_battery(5), dual connections; specialized EQ/HearID fields are not guessed`,
+    verified: true,
+  },
+  {
+    id: 'liberty-5',
+    name: 'Liberty 5',
+    sku: 'A3957',
+    kind: 'earbuds',
+    family: 'tws',
+    gaming: true,
+    ancLevels: true,
+    scenes: false,
+    ldac: true,
+    dual: true,
+    surround: false,
+    wind: true,
+    transparency: true,
+    batteryMax: 10,
+    batteryOffset: 1,
+    names: ['Liberty 5', 'A3957', 'soundcore Liberty 5'],
+    ancLayout: 'tws-l5',
+    eqCommand: null,
+    customEq: false,
+    state: LIBERTY5_STATE,
+    source: `${OPENSCQ30} (a3957): seven-byte sound modes, dual_battery_custom(max 10, offset 1), LDAC, dual connections, gaming over 10:85; EQ/HearID writes intentionally disabled`,
+    verified: true,
+  },
+  {
+    id: 'space-one-pro',
+    name: 'Space One Pro',
+    sku: 'A3062',
+    kind: 'overear',
+    family: 'classic',
+    gaming: false,
+    ancLevels: true,
+    scenes: false,
+    ldac: true,
+    dual: true,
+    surround: false,
+    wind: true,
+    transparency: false,
+    batteryMax: 10,
+    batteryOffset: 1,
+    names: ['Space One Pro', 'A3062', 'soundcore Space One Pro'],
+    ancLayout: 'tws-a3062',
+    eqCommand: null,
+    customEq: false,
+    state: SPACE_ONE_PRO_STATE,
+    source: `${OPENSCQ30} (a3062): six-byte custom-transparency sound modes, single_battery_custom(max 10, offset 1), LDAC, dual connections; model-specific EQ/HearID is not guessed`,
+    verified: true,
+  },
+  {
+    id: 'q20i',
+    name: 'Q20i',
+    sku: 'A3004',
+    kind: 'overear',
+    family: 'classic',
+    gaming: false,
+    ancLevels: false,
+    scenes: false,
+    ldac: false,
+    dual: false,
+    surround: false,
+    wind: false,
+    transparency: false,
+    batteryMax: 5,
+    names: ['Q20i', 'A3004', 'soundcore Q20i'],
+    ancLayout: 'classic',
+    eqCommand: '02:83',
+    customEq: true,
+    state: Q20I_STATE,
+    source: `${OPENSCQ30} (a3004): four-byte ambient sound modes, single_battery(5), equalizer_with_drc; no ANC level/scene or transparency sub-mode controls are exposed`,
+    verified: true,
+  },
+  {
+    id: 'q11i',
+    name: 'Q11i',
+    sku: 'A3005',
+    kind: 'overear',
+    family: 'classic',
+    gaming: false,
+    ancLevels: false,
+    scenes: false,
+    ldac: false,
+    dual: true,
+    surround: false,
+    wind: false,
+    transparency: false,
+    batteryMax: 10,
+    batteryOffset: 1,
+    names: ['Q11i', 'A3005', 'soundcore Q11i'],
+    ancLayout: 'none',
+    eqCommand: '02:83',
+    customEq: true,
+    state: Q11I_STATE,
+    source: `${OPENSCQ30} (a3005): equalizer_with_drc, dual connections, auto power-off, single_battery_custom(max 10, offset 1); no sound-mode module`,
+    verified: true,
+  },
+  {
+    id: 'space-2-readonly',
+    name: 'Space 2 (read-only)',
+    sku: 'D1402',
+    kind: 'overear',
+    family: 'classic',
+    gaming: false,
+    ancLevels: false,
+    scenes: false,
+    ldac: false,
+    dual: false,
+    surround: false,
+    wind: false,
+    transparency: false,
+    batteryMax: 10,
+    batteryOffset: 1,
+    names: ['Space 2', 'D1402', 'soundcore Space 2'],
+    ancLayout: 'none',
+    eqCommand: null,
+    customEq: false,
+    state: SPACE2_STATE,
+    source: 'soundcorebridge protocol-map.md: D1402 read state/battery/LDAC responses are known, but every write requires the verified 05:01/05:81/18:85 unlock sequence and specialized 03:87 EQ template; this profile is deliberately read-only until that transport is implemented',
+    verified: true,
+  },
+  {
     id: 'space-one',
     name: 'Space One',
     sku: 'A3035',
@@ -261,15 +583,15 @@ export const DEVICES: DeviceProfile[] = [
     family: 'classic',
     gaming: false,
     ancLevels: true,
-    scenes: true,
+    scenes: false,
     ldac: true,
     dual: true,
     surround: false,
-    wind: false,
-    transparency: true,
+    wind: true,
+    transparency: false,
     batteryMax: 5,
     names: ['Space One', 'A3035', 'soundcore Space One'],
-    ancLayout: 'classic',
+    ancLayout: 'classic-a3035',
     eqCommand: null,
     customEq: false,
     state: overEarState(),
@@ -284,15 +606,15 @@ export const DEVICES: DeviceProfile[] = [
     family: 'classic',
     gaming: false,
     ancLevels: true,
-    scenes: true,
+    scenes: false,
     ldac: true,
     dual: true,
     surround: false,
-    wind: false,
+    wind: true,
     transparency: true,
     batteryMax: 5,
     names: ['Q45', 'Space Q45', 'A3040', 'soundcore Space Q45'],
-    ancLayout: 'classic',
+    ancLayout: 'classic-a3040',
     eqCommand: null,
     customEq: false,
     state: overEarState(),
@@ -312,7 +634,7 @@ export const DEVICES: DeviceProfile[] = [
     dual: false,
     surround: false,
     wind: false,
-    transparency: true,
+    transparency: false,
     batteryMax: 5,
     names: ['Q35', 'Life Q35', 'A3027', 'soundcore Life Q35'],
     ancLayout: 'classic',
@@ -320,8 +642,8 @@ export const DEVICES: DeviceProfile[] = [
     // FEFE custom curves documented for the 02:81 command (OpenSCQ30
     // set_equalizer custom test vector, SoundcoreDesktop EQGain()).
     customEq: true,
-    state: overEarState(),
-    source: `${OPENSCQ30} (a3027): classic 4-byte sound modes, equalizer(common_settings), single_battery(5)`,
+    state: LIFE_Q_STATE,
+    source: `${OPENSCQ30} (a3027): classic 4-byte sound modes at state offset 35, single_battery(5) at offset 0, equalizer(common_settings)`,
     verified: true,
   },
   {
@@ -337,7 +659,7 @@ export const DEVICES: DeviceProfile[] = [
     dual: false,
     surround: false,
     wind: false,
-    transparency: true,
+    transparency: false,
     batteryMax: 5,
     names: ['Q30', 'Life Q30', 'A3028', 'Soundcore Life Q30'],
     ancLayout: 'classic',
@@ -345,8 +667,8 @@ export const DEVICES: DeviceProfile[] = [
     // FEFE custom curves documented for the 02:81 command (OpenSCQ30
     // set_equalizer custom test vector, SoundcoreDesktop EQGain()).
     customEq: true,
-    state: overEarState(),
-    source: `${OPENSCQ30} (a3028) + live frames in JordanViknar/Noiseclapper-GNOME and DamienStaebler/SoundcoreDesktop`,
+    state: LIFE_Q_STATE,
+    source: `${OPENSCQ30} (a3028) + live frames in JordanViknar/Noiseclapper-GNOME and DamienStaebler/SoundcoreDesktop: classic 4-byte modes at state offset 35, battery at offset 0`,
     verified: true,
   },
   {
@@ -362,7 +684,7 @@ export const DEVICES: DeviceProfile[] = [
     dual: false,
     surround: false,
     wind: false,
-    transparency: true,
+    transparency: false,
     batteryMax: 5,
     names: ['Life Tune', 'A3029', 'soundcore Life Tune'],
     ancLayout: 'classic',
@@ -370,9 +692,9 @@ export const DEVICES: DeviceProfile[] = [
     // FEFE custom curves documented for the 02:81 command (OpenSCQ30
     // set_equalizer custom test vector, SoundcoreDesktop EQGain()).
     customEq: true,
-    state: overEarState(),
+    state: LIFE_Q_STATE,
     source:
-      'OpenSCQ30 routes A3029 through the A3028 (Life Q30) implementation; name from its own i18n entry',
+      'OpenSCQ30 routes A3029 through the A3028 (Life Q30) implementation: classic 4-byte modes at state offset 35 and battery at offset 0; name from its own i18n entry',
     verified: true,
   },
 ];
@@ -388,8 +710,9 @@ export const DEVICES: DeviceProfile[] = [
  *    an approximate marketing name is not evidence, and borrowing the NC
  *    profile would assert its battery scale, ANC layout and capabilities
  *    without proof.
- *  - Sport X10 (A3961) and Sleep A10 (A6610) are likewise not A3949
- *    (P20i); their wiring is unproven, so nothing is assumed.
+ *  - Sport X10 (A3961), Sleep A10 (A6610), Life A2 NC (A3935), Life P3
+ *    (A3939) and Life Note 3 (A3933) are likewise not a verified sibling;
+ *    their wiring is unproven, so nothing is assumed.
  *
  * If a future capture verifies one of these layouts, promote it to a real
  * `DEVICES` entry with its own `source:` evidence instead of re-adding a
@@ -410,6 +733,21 @@ export const UNVERIFIED_ALIASES: Array<{ names: string[]; note: string }> = [
     names: ['Sleep A10', 'A6610'],
     note:
       'Sleep A10 (A6610) has no published protocol capture, so SoundControl treats it as an unknown model rather than borrowing another device’s battery scale or ANC layout: firmware, serial and earbud presence still work, but battery percentages and model-specific controls stay unavailable.',
+  },
+  {
+    names: ['Life A2 NC', 'A3935'],
+    note:
+      'Life A2 NC (A3935) has no independently verified packet layout in the sources used here, so SoundControl keeps it on the unknown profile rather than borrowing the Liberty or Life-Q layouts.',
+  },
+  {
+    names: ['Life P3', 'A3939'],
+    note:
+      'Life P3 (A3939) has no independently verified packet layout in the sources used here, so SoundControl keeps it on the unknown profile rather than borrowing the P20i or Life-Q layouts.',
+  },
+  {
+    names: ['Life Note 3', 'A3933'],
+    note:
+      'Life Note 3 (A3933) has no independently verified packet layout in the sources used here, so SoundControl keeps it on the unknown profile rather than borrowing the P20i or Life-Q layouts.',
   },
 ];
 
