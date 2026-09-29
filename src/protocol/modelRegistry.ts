@@ -4,12 +4,15 @@ import { commandForFrameKey, validateOutboundFrame, withEarbudOnlyBoundary } fro
 import type { EarbudCommandSpec, OutboundFrameCheck } from './targets';
 
 /* -------------------------------------------------------------------------- */
-/* Phase 18 — model registry for the two target devices                       */
+/* Phase 18 — formal target matrix + generic gates for every profile       */
 /* -------------------------------------------------------------------------- */
 
 /**
- * SoundControl was built for exactly two earbud families, and they are
- * DIFFERENT hardware with DIFFERENT capability sets:
+ * The original formal command matrix covers the two R50i target families,
+ * which are DIFFERENT hardware with DIFFERENT capability sets. The same
+ * model gate below also applies the evidence-backed capability flags carried
+ * by the expanded DeviceProfile table (Space A40, Liberty 4 Pro, P40i,
+ * Liberty 5, classic over-ears and the read-only Space 2 profile):
  *
  *   - Soundcore R50i (SKU A3949, also sold as P20i / P25i): NO ANC, NO
  *     transparency, NO wind toggle, NO surround, NO dual audio, NO LDAC;
@@ -57,13 +60,13 @@ export interface ModelRegistryEntry {
   };
   /** No physical device has been validated yet — every status is protocol-level. */
   physicalValidation: 'PENDING' | 'VERIFIED';
-  /** Per-command support matrix for the 14 registered earbud commands. */
+  /** Per-command support matrix for the 15 registered earbud commands. */
   commands: Record<string, ModelCommandStatus>;
   /** Capability distinctions that are not whole commands. */
   notes: string[];
 }
 
-/** The two target models, in phase order. */
+/** Formal matrix for the two original R50i target models, in phase order. */
 export const TARGET_MODELS: readonly ModelRegistryEntry[] = [
   {
     id: 'R50I_A3949',
@@ -100,6 +103,10 @@ export const TARGET_MODELS: readonly ModelRegistryEntry[] = [
         status: 'SUPPORTED',
         evidence:
           'OpenSCQ30 a3949: equalizer_with_drc_tws; 22 live 02:83 factory-preset captures from a P20i (victor-oliveira1/soundcore_anker_equalyzer, RFCOMM ch 10)',
+      },
+      'equalizer.set-hearid': {
+        status: 'UNSUPPORTED',
+        evidence: 'A3949 has no D1202 03:87 HearID module; the model gate rejects the long HearID transaction.',
       },
       'game-mode.set': {
         status: 'SUPPORTED',
@@ -188,6 +195,10 @@ export const TARGET_MODELS: readonly ModelRegistryEntry[] = [
         evidence:
           'OpenSCQ30 a3959: equalizer_with_drc_tws with common_settings_type_2() (custom_preset_id Some(0xFEFE)); same wire format as the 22 live P20i captures of the shared module',
       },
+      'equalizer.set-hearid': {
+        status: 'UNSUPPORTED',
+        evidence: 'A3959 uses 02:83 equalizer_with_drc_tws; the D1202 03:87 HearID transaction is a different model-specific layout.',
+      },
       'game-mode.set': {
         status: 'SUPPORTED',
         evidence:
@@ -269,8 +280,8 @@ export type ModelGateResult = { ok: true; command: EarbudCommandSpec } | { ok: f
  * shows, say, ANC controls for an R50i (A3949 — no ANC) still cannot get a
  * 06:81 frame onto the wire.
  *
- * The two target models are decided by the evidence-based registry above;
- * every other profile falls back to its documented capability flags, which
+ * The two original target models are decided by the evidence-based registry
+ * above; every expanded profile falls back to its documented capability flags, which
  * are themselves evidence-cited in src/protocol/devices.ts.
  */
 export function gateCommandForProfile(
@@ -287,7 +298,7 @@ export function gateCommandForProfile(
   if (UNIVERSAL_COMMANDS.has(commandId)) return { ok: true, command: spec };
 
   // Registry decisions for the two target models, with the profile flags as
-  // the general rule (they are consistent by test — see
+  // the general rule for the expanded table (they are consistent by test — see
   // scripts/test_model_profiles.mjs — so both paths agree).
   switch (commandId) {
     case 'sound-modes.set':
@@ -297,9 +308,15 @@ export function gateCommandForProfile(
           )
         : { ok: true, command: spec };
     case 'equalizer.set':
-    case 'equalizer.set-drc': {
+    case 'equalizer.set-drc':
+    case 'equalizer.set-hearid': {
       const frameKey = `${frame[5].toString(16).toUpperCase().padStart(2, '0')}:${frame[6].toString(16).toUpperCase().padStart(2, '0')}`;
-      if (profile.eqCommand !== frameKey) {
+      // Some source-backed layouts share a CAT:TYPE frame while differing in
+      // channel/DRC shape (for example 02:83-dual for AeroClip). The suffix
+      // is an internal packet-shape discriminator; the wire key remains the
+      // ordinary 02:81/02:83 command.
+      const profileFrameKey = profile.eqCommand?.split('-')[0] ?? null;
+      if (profileFrameKey !== frameKey) {
         return deny(
           `${profile.name} (${profile.sku}) writes its equalizer via ${profile.eqCommand ?? 'no documented EQ command'} — not ${frameKey}`,
         );
@@ -317,9 +334,9 @@ export function gateCommandForProfile(
         ? { ok: true, command: spec }
         : deny(`${profile.name} (${profile.sku}) has no documented gaming mode`);
     case 'game-mode.set-a3947':
-      return profile.sku === 'A3947'
+      return profile.sku === 'A3947' || profile.sku === 'A3957'
         ? { ok: true, command: spec }
-        : deny('10:85 is the Liberty 4 NC (A3947) gaming variant only');
+        : deny('10:85 is the Liberty 4 NC (A3947) / Liberty 5 (A3957) gaming variant only');
     case 'ldac.set':
     case 'ldac.query':
       return profile.ldac
@@ -407,7 +424,11 @@ export function requiredStateLength(state: StateOffsets): number {
   if (state.serial) end = Math.max(end, state.serial.at + state.serial.length);
   take(state.eqPresetId);
   if (state.eqBands) end = Math.max(end, state.eqBands.at + state.eqBands.count);
-  take(state.soundModes !== null ? state.soundModes + 6 : null); // 7-byte sound-mode block
+  take(
+    state.soundModes !== null
+      ? state.soundModes + Math.max(0, (state.soundModeLength ?? 7) - 1)
+      : null,
+  ); // model-specific sound-mode block
   take(state.gaming);
   take(state.surround);
   take(state.dualConnections);

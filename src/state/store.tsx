@@ -27,7 +27,7 @@ import {
   type AncIntent,
 } from '../protocol/packets';
 import { presetById, type EqPreset } from '../protocol/presets';
-import { requiredStateLength, targetModelForProfile, withDeviceBoundary } from '../protocol/modelRegistry';
+import { requiredStateLength, withDeviceBoundary } from '../protocol/modelRegistry';
 import { createSessionGuard, parseDeviceToggles } from '../protocol/responses';
 import { isTransportBusyError } from '../lib/transportErrors';
 import { connectBridge } from '../transports/bridge';
@@ -445,6 +445,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // An unidentified model has no proven scale: levels stay raw and
           // every percent readout degrades to the honest "unavailable".
           scale: profileRef.current.batteryMax ?? 'unknown',
+          offset: profileRef.current.batteryOffset ?? 0,
         }),
       );
 
@@ -459,7 +460,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? []
           : [batteryLevel(rawLeft), batteryLevel(rawRight)]
               .filter((v): v is number => v !== null)
-              .map((v) => (v / scale) * 100)
+              .map((v) => ((v + (profileRef.current.batteryOffset ?? 0)) / scale) * 100)
               .filter((p) => p < 20);
       if (!lowBatteryWarned.current && low.length > 0) {
         lowBatteryWarned.current = true;
@@ -540,15 +541,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // sides stay `unknown` until the device's own telemetry confirms them;
       // a Bluetooth link is never treated as "both earbuds connected".
       const seed = emptyBattery();
+      if (nextProfile.batteryOffset) seed.batteryOffset = nextProfile.batteryOffset;
       if (typeof bat === 'number') {
         // Windows PnP aggregate percent (scale null = already a percentage).
         // It goes to `left` only — copying it to `right` would fabricate a
         // per-side value Windows never reported.
         seed.left = bat;
+        seed.batteryOffset = 0;
       } else if (bat && typeof bat === 'object') {
         if (bat.left != null) seed.left = bat.left;
         if (bat.right != null) seed.right = bat.right;
         seed.batteryScale = bat.batteryScale ?? null;
+        seed.batteryOffset = bat.batteryScale == null ? 0 : nextProfile.batteryOffset ?? 0;
         seed.presence = bat.presence ?? 'unknown';
       }
       setBattery(seed);
@@ -575,7 +579,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // Honest evidence level (Phase 18): the target models' commands are
           // protocol-verified against OpenSCQ30, but no physical device has
           // been validated yet — the UI must never imply otherwise.
-          (targetModelForProfile(nextProfile.id)
+          (nextProfile.verified
             ? ' · protocol-verified · physical validation pending'
             : ''),
       );
