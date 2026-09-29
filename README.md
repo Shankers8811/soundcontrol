@@ -1,4 +1,4 @@
-# SoundControl — Windows/Linux Desktop Companion
+# SoundControl — Windows & Linux Desktop Companion
 
 <p align="center">
   <img src="public/icon-512.png" width="128" height="128" alt="SoundControl">
@@ -13,7 +13,7 @@
 
 ---
 
-## Windows/Linux Desktop App
+## Windows & Linux Desktop App
 
 **⬇️ Direct downloads (recommended) — no build required:**
 
@@ -21,7 +21,7 @@
 
 [**Download `SoundControl-Setup.exe`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup.exe)
 
-The Windows download is the NSIS installer with Start-menu and desktop shortcuts. Release builds are gated on Authenticode signing. It ships its own Bluetooth runtime; users do not need Python or Node.js.
+The Windows download is the NSIS installer with Start-menu and desktop shortcuts. Release builds are gated on Authenticode signing; the stable download link is populated only when a signed Windows release asset exists. It ships its own Bluetooth runtime; users do not need Python or Node.js.
 
 ### 🐧 Linux AppImage
 
@@ -42,7 +42,7 @@ Install the Debian package with your distribution's package installer. It bundle
 The Linux release also keeps electron-builder's version/architecture-named files attached to each release; the stable aliases above are provided for direct latest-release links. If the latest existing release predates Linux packaging, use the releases page to choose a release that contains the Linux assets.
 
 - Release links are built into the app under **Settings → About**.
-- Windows SmartScreen may show an unsigned-publisher prompt for the current (unsigned) release; choose **More info → Run anyway** — see [Code signing & SmartScreen](#-code-signing--smartscreen). Release builds are now gated on Authenticode signing, so the prompt disappears once a certificate is configured and a signed release ships.
+- Windows releases are required to pass Authenticode signing before publication. If no signed Windows installer is attached to the latest release yet, use the releases page for the current available assets.
 - **Lifecycle is deliberately boring:** SoundControl starts only when you launch it (it never
   registers a Windows startup entry, and a startup entry left by an older version is removed at
   launch), and closing the window exits completely — the Bluetooth helper is terminated, port
@@ -118,12 +118,12 @@ rows, simulator/unit-test status, and physical-validation status are tracked
 in [`docs/MARKET-COMPATIBILITY.md`](docs/MARKET-COMPATIBILITY.md). Catalog-only
 models are identified exactly but do not get guessed device controls.
 
-## 🎧 Windows/Linux desktop feature coverage
+## 🎧 Windows & Linux desktop feature coverage
 
 Every ✅ below is a command verified in [PROTOCOL.md](PROTOCOL.md); every ⚠️/❌ is a control the
 UI shows **disabled with the protocol reason** — SoundControl never renders a fake switch.
 
-| Feature | Official Android App | SoundControl for Windows/Linux |
+| Feature | Official Android App | SoundControl for Windows & Linux |
 |---|:---:|:---:|
 | **Ambient Sound (ANC)** | ✅ 5-Level Manual, Adaptive, Multi-Scene | ✅ Real `06:81` frames with per-model layouts: classic four-byte modes, Space/Q45 six-byte modes, and model-specific TWS six-/seven-byte modes; only profiles whose evidence exposes scenes, vocal transparency, adaptive, or wind controls render them |
 | **Transparency Mode** | ✅ Fully Transparent & Talk Mode | ✅ Fully Transparent & Talk Mode (vocal byte where the model documents one) |
@@ -316,19 +316,7 @@ The in-app download button and the links above resolve through
 `releases/latest/download/...`, so they always point at the newest Release.
 
 ### 🔏 Code signing & SmartScreen
-The currently published installer is **unsigned**, so first-time downloaders see
-the SmartScreen "Windows protected your PC — Unknown publisher" prompt. It is not
-a virus check failure; click **More info → Run anyway**, or right-click the file →
-**Properties → Unblock** before launching. The prompt can only be removed with an
-Authenticode code-signing certificate — nothing in the build config can suppress
-it, and SoundControl will never try to bypass or weaken SmartScreen.
-
-The signing pipeline is fully implemented and enforced: **release builds are
-gated on signing** — the release workflow refuses to build without credentials,
-electron-builder runs with `forceCodeSigning`, and the actual generated EXE is
-verified (`Get-AuthenticodeSignature` + `signtool verify /pa`, publisher
-identity, SHA-256 recorded, every shipped executable signed) before the GitHub
-Release is published. All details: **[docs/WINDOWS-CODE-SIGNING.md](docs/WINDOWS-CODE-SIGNING.md)**.
+The Windows signing pipeline is fully implemented and enforced: **release builds are gated on signing** — the release workflow refuses to build without credentials, electron-builder runs with `forceCodeSigning`, and the generated EXE is verified (`Get-AuthenticodeSignature` + `signtool verify /pa`, publisher identity, SHA-256 recorded, every shipped executable signed) before the GitHub Release is published. All details: **[docs/WINDOWS-CODE-SIGNING.md](docs/WINDOWS-CODE-SIGNING.md)**.
 
 What is still missing is the **certificate**: no signing credential is
 configured in this repository yet, so releases cannot be signed until one is
