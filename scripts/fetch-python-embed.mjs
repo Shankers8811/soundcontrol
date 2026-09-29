@@ -32,7 +32,14 @@ const marker = path.join(outDir, 'VERSION.txt');
 
 const INDEX = (process.env.SOUNDCONTROL_PYTHON_INDEX || 'https://www.python.org/ftp/python/').replace(/\/*$/, '/');
 const REQUIRED = process.env.SOUNDCONTROL_PYTHON_REQUIRED === '1';
-// Keep the packaged Windows runtime on the Python line we have actually smoke-tested.\n// Discovering the newest CPython automatically caused a CI-only regression when\n// the Python 3.14 embeddable package became the newest release: the helper\n// process could start, but the packaged bridge never became ready on the hosted\n// Windows runner. Upgrade this pin deliberately after validating the new runtime.\nconst PINNED = '3.12.10';\nconst FALLBACKS = ['3.12.9', '3.12.8', '3.12.7', '3.11.9'];
+// Keep the packaged Windows runtime on the Python line we have actually
+// smoke-tested. Discovering the newest CPython automatically caused a CI-only
+// regression when the Python 3.14 embeddable package became the newest release:
+// the helper process could start, but the packaged bridge never became ready
+// on the hosted Windows runner. Upgrade this pin deliberately after validating
+// the new runtime.
+const PINNED = '3.12.10';
+const FALLBACKS = ['3.12.9', '3.12.8', '3.12.7', '3.11.9'];
 
 const log = (msg) => console.log(`[python-embed] ${msg}`);
 const warn = (msg) => console.warn(`[python-embed] ${msg}`);
@@ -108,23 +115,34 @@ async function main() {
     mkdirSync(outDir, { recursive: true });
     return;
   }
-  if (hasRuntime() && installedVersion()) {
-    log(`already staged: Python ${installedVersion()} in python-embed/ — reusing it.`);
+  const installed = installedVersion();
+  if (hasRuntime() && installed === PINNED) {
+    log(`already staged: pinned Python ${installed} in python-embed/ — reusing it.`);
     return;
   }
+  if (hasRuntime()) {
+    log(`replacing staged Python ${installed ?? '(unknown version)'} with pinned Python ${PINNED}.`);
+  }
 
-  let candidates = [];
+  // Discovery is diagnostic only. It must never determine the package that
+  // gets downloaded: a new python.org release should not silently change the
+  // runtime used by the installed app.
   try {
     const latest = await discoverLatest();
-    if (latest) candidates.push(latest);
-    log(`index reports Python ${latest ?? '(unknown)'} as newest`);
+    log(`index reports Python ${latest ?? '(unknown)'} as newest; configured pin is ${PINNED}`);
+    if (latest && latest !== PINNED) {
+      warn(`ignoring newer Python ${latest}; the packaged runtime remains pinned to ${PINNED}`);
+    }
   } catch (err) {
-    warn(`could not list ${INDEX} (${err.message}); falling back to known versions`);
+    warn(`could not list ${INDEX} (${err.message}); using the configured pin ${PINNED}`);
   }
-  for (const v of FALLBACKS) if (!candidates.includes(v)) candidates.push(v);
+  const candidates = [PINNED, ...FALLBACKS.filter((version) => version !== PINNED)];
 
   let zip = null;
   for (const version of candidates) {
+    if (version !== PINNED) {
+      warn(`pinned Python ${PINNED} was unavailable; trying explicit compatibility fallback ${version}`);
+    }
     const url = `${INDEX}${version}/python-${version}-embed-amd64.zip`;
     try {
       log(`downloading ${url}`);
