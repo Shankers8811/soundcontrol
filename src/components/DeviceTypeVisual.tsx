@@ -3,6 +3,7 @@ import { IconEarbudLeft, IconEarbudRight, IconHeadset, IconNeckband } from './Ic
 
 export function deviceKindLabel(kind: DeviceKind): string {
   if (kind === 'earbuds') return 'Earbuds';
+  if (kind === 'open-ear') return 'Open-ear';
   if (kind === 'neckband') return 'Neckband';
   return 'Headset';
 }
@@ -17,6 +18,15 @@ export function DeviceTypeVisual({ kind, size = 34 }: { kind: DeviceKind; size?:
   if (kind === 'earbuds') {
     return (
       <span className="inline-flex items-center gap-0.5" role="img" aria-label="Left and right earbuds">
+        <IconEarbudLeft size={size} />
+        <IconEarbudRight size={size} />
+      </span>
+    );
+  }
+
+  if (kind === 'open-ear') {
+    return (
+      <span className="inline-flex items-center gap-0.5" role="img" aria-label="Open-ear earbuds">
         <IconEarbudLeft size={size} />
         <IconEarbudRight size={size} />
       </span>
