@@ -26,8 +26,16 @@ function BatteryPill() {
 
   // TWS with live per-side telemetry: show each connected side.
   if (caps.supportsPerEarbudBattery && presence !== 'unknown') {
-    const l = batteryPercent(presence === 'right' ? null : app.battery.left, app.battery.batteryScale);
-    const r = batteryPercent(presence === 'left' ? null : app.battery.right, app.battery.batteryScale);
+    const l = batteryPercent(
+      presence === 'right' ? null : app.battery.left,
+      app.battery.batteryScale,
+      app.battery.batteryOffset ?? 0,
+    );
+    const r = batteryPercent(
+      presence === 'left' ? null : app.battery.right,
+      app.battery.batteryScale,
+      app.battery.batteryOffset ?? 0,
+    );
     const parts: string[] = [];
     if (presence === 'both' || presence === 'left') parts.push(l !== null ? `L ${l}%` : 'L —');
     if (presence === 'both' || presence === 'right') parts.push(r !== null ? `R ${r}%` : 'R —');
@@ -41,7 +49,11 @@ function BatteryPill() {
 
   // Over-ears, or a Windows-reported aggregate before device telemetry: one
   // real number.
-  const single = batteryPercent(app.battery.left, app.battery.batteryScale);
+  const single = batteryPercent(
+    app.battery.left,
+    app.battery.batteryScale,
+    app.battery.batteryOffset ?? 0,
+  );
   if (single !== null) {
     return (
       <span className="inline-flex items-center gap-2 rounded-full border border-edge bg-sunken px-3 py-1 font-mono text-xs font-semibold text-ink">
@@ -144,7 +156,11 @@ function DeviceSummaryCard() {
 
 function HeadsetBatteryCard() {
   const app = useApp();
-  const level = batteryPercent(app.battery.left, app.battery.batteryScale);
+  const level = batteryPercent(
+    app.battery.left,
+    app.battery.batteryScale,
+    app.battery.batteryOffset ?? 0,
+  );
   return (
     <Card title="Battery" subtitle="Reported by the headset over 01:03 / 01:01">
       <div className="flex items-center gap-5">

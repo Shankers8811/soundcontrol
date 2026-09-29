@@ -87,7 +87,7 @@ export const EARBUD_COMMANDS: readonly EarbudCommandSpec[] = [
   { id: 'device.info', label: 'Serial + firmware query', target: 'earbud', frames: ['01:05'] },
   { id: 'device.factory-reset', label: 'Factory reset', target: 'earbud', frames: ['01:85'] },
   { id: 'game-mode.set', label: 'Gaming / low-latency mode', target: 'earbud', frames: ['01:87'] },
-  { id: 'game-mode.set-a3947', label: 'Gaming mode (Liberty 4 NC variant)', target: 'earbud', frames: ['10:85'] },
+  { id: 'game-mode.set-a3947', label: 'Gaming mode (Liberty variant)', target: 'earbud', frames: ['10:85'] },
   { id: 'ldac.query', label: 'LDAC codec state query', target: 'earbud', frames: ['01:7F'] },
   { id: 'ldac.set', label: 'LDAC codec enable/disable', target: 'earbud', frames: ['01:FF'] },
   { id: 'equalizer.set', label: 'Equalizer preset/bands', target: 'earbud', frames: ['02:81'] },
