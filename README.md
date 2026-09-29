@@ -15,14 +15,32 @@
 
 ## Windows/Linux Desktop App
 
-**⬇️ Direct download (recommended) — no build required:**
+**⬇️ Direct downloads (recommended) — no build required:**
 
-| Download | File | Notes |
-|---|---|---|
-| 🪟 **Windows app (installer)** | [**Download the latest `SoundControl-Setup.exe`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup.exe) | NSIS setup, Start-menu & desktop shortcuts. Ships its own built-in Bluetooth runtime — no Python needed |
-| 🐧 **Linux app** | [**Open the latest release assets**](https://github.com/Shankers8811/soundcontrol/releases/latest) | AppImage/deb builds bundle the Python bridge runtime and use the host BlueZ stack plus `bluetoothctl` |
+### 🪟 Windows
 
-- All builds and release notes live on the **[Releases page](https://github.com/Shankers8811/soundcontrol/releases/latest)**. Downloaded desktop packages include Electron and the Python bridge runtime; end users do not need to install Node.js or Python.
+[**Download `SoundControl-Setup.exe`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup.exe)
+
+The Windows download is the NSIS installer with Start-menu and desktop shortcuts. Release builds are gated on Authenticode signing. It ships its own Bluetooth runtime; users do not need Python or Node.js.
+
+### 🐧 Linux AppImage
+
+[**Download the latest `SoundControl.AppImage`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl.AppImage)
+
+Run the AppImage on a Linux desktop with a working BlueZ adapter, `bluetoothd`, and `bluetoothctl`.
+
+### 📦 Debian / Ubuntu
+
+[**Download the latest `SoundControl.deb`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl.deb)
+
+Install the Debian package with your distribution's package installer. It bundles Electron and the Python bridge runtime; the host still supplies the BlueZ Bluetooth stack.
+
+### 🔗 Release history
+
+[**View all releases and release notes**](https://github.com/Shankers8811/soundcontrol/releases)
+
+The Linux release also keeps electron-builder's version/architecture-named files attached to each release; the stable aliases above are provided for direct latest-release links. If the latest existing release predates Linux packaging, use the releases page to choose a release that contains the Linux assets.
+
 - Release links are built into the app under **Settings → About**.
 - Windows SmartScreen may show an unsigned-publisher prompt for the current (unsigned) release; choose **More info → Run anyway** — see [Code signing & SmartScreen](#-code-signing--smartscreen). Release builds are now gated on Authenticode signing, so the prompt disappears once a certificate is configured and a signed release ships.
 - **Lifecycle is deliberately boring:** SoundControl starts only when you launch it (it never
