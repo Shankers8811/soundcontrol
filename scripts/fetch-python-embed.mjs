@@ -32,7 +32,7 @@ const marker = path.join(outDir, 'VERSION.txt');
 
 const INDEX = (process.env.SOUNDCONTROL_PYTHON_INDEX || 'https://www.python.org/ftp/python/').replace(/\/*$/, '/');
 const REQUIRED = process.env.SOUNDCONTROL_PYTHON_REQUIRED === '1';
-const FALLBACKS = ['3.12.10', '3.12.9', '3.12.8', '3.12.7', '3.11.9'];
+// Keep the packaged Windows runtime on the Python line we have actually smoke-tested.\n// Discovering the newest CPython automatically caused a CI-only regression when\n// the Python 3.14 embeddable package became the newest release: the helper\n// process could start, but the packaged bridge never became ready on the hosted\n// Windows runner. Upgrade this pin deliberately after validating the new runtime.\nconst PINNED = '3.12.10';\nconst FALLBACKS = ['3.12.9', '3.12.8', '3.12.7', '3.11.9'];
 
 const log = (msg) => console.log(`[python-embed] ${msg}`);
 const warn = (msg) => console.warn(`[python-embed] ${msg}`);
