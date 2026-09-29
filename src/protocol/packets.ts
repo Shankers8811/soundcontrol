@@ -84,12 +84,12 @@ export interface AncIntent {
   scene: AncScene;
   /** Transparency sub-mode: `true` = vocal/talk mode. */
   transVocal: boolean;
-  /** Wind-noise suppression. Not available on the classic over-ears. */
+  /** Wind-noise suppression where the selected model layout exposes it. */
   wind: boolean;
 }
 
 /**
- * Life Q30 / Q35 / Life Tune / Space One / Space Q45.
+ * Q20i / Life Q30 / Life Q35 / Life Tune.
  * `[ambient, nc_scene_or_transparency, transparency_mode, custom_nc]`
  *
  * Byte-for-byte identical to OpenSCQ30's `SetSoundModes` unit tests and to the
@@ -109,6 +109,42 @@ export function buildClassicAnc(intent: AncIntent): Uint8Array {
   return frame(0x06, 0x81, [CLASSIC_MODE[mode], sceneByte, transByte, 0x00]);
 }
 
+/**
+ * Space One (A3035) — six-byte `a3035::structures::SoundModes` body:
+ * `[ambient, manual<<4|adaptive, ambient, nc_mode, wind, transparency]`.
+ * It is not the four-byte classic over-ear layout.
+ */
+export function buildSpaceOneAnc(intent: AncIntent): Uint8Array {
+  const mode = intent.mode === 'adaptive' ? 'anc' : intent.mode;
+  const adaptive = intent.mode === 'adaptive';
+  return frame(0x06, 0x81, [
+    CLASSIC_MODE[mode],
+    manualAdaptiveByte(intent.mode === 'anc' ? intent.level : 5, adaptive ? adaptiveDirectLevel(intent.level) : 0),
+    CLASSIC_MODE[mode],
+    adaptive ? 0x01 : 0x00,
+    intent.wind ? 0x01 : 0x00,
+    mode === 'transparency' ? 0x05 : 0x01,
+  ]);
+}
+
+/**
+ * Space Q45 (A3040) — six-byte body:
+ * `[ambient, manual<<4|adaptive, transparency_mode, nc_mode, wind,
+ * transparency_level]`.
+ */
+export function buildSpaceQ45Anc(intent: AncIntent): Uint8Array {
+  const mode = intent.mode === 'adaptive' ? 'anc' : intent.mode;
+  const adaptive = intent.mode === 'adaptive';
+  return frame(0x06, 0x81, [
+    CLASSIC_MODE[mode],
+    manualAdaptiveByte(intent.mode === 'anc' ? intent.level : 5, adaptive ? adaptiveDirectLevel(intent.level) : 0),
+    intent.transVocal ? 0x00 : 0x01,
+    adaptive ? 0x01 : 0x00,
+    intent.wind ? 0x01 : 0x00,
+    mode === 'transparency' ? 0x05 : 0x01,
+  ]);
+}
+
 /** `(manual << 4) | adaptive`, the shared nibble byte on every TWS layout. */
 function manualAdaptiveByte(manual: number, adaptive: number): number {
   const m = Math.max(1, Math.min(5, Math.round(manual)));
@@ -116,11 +152,23 @@ function manualAdaptiveByte(manual: number, adaptive: number): number {
   return ((m << 4) | a) & 0xff;
 }
 
-/** Adaptive strength derived from the user-facing 1..5 level. */
+/** Adaptive strength enum used by layouts whose valid values are 1, 2, 3. */
 function adaptiveFromLevel(level: number): number {
   if (level <= 2) return 1;
   if (level <= 4) return 2;
   return 3;
+}
+
+/** Adaptive strength enum used by A3936/A3952/A3957: low, medium, high = 0, 1, 2. */
+function adaptiveNamedLevel(level: number): number {
+  if (level <= 2) return 0;
+  if (level <= 4) return 1;
+  return 2;
+}
+
+/** Direct five-step adaptive fields used by the A3035/A3040/A3062 structures. */
+function adaptiveDirectLevel(level: number): number {
+  return Math.max(1, Math.min(5, Math.round(level)));
 }
 
 /**
@@ -146,11 +194,12 @@ export function buildP30iAnc(intent: AncIntent): Uint8Array {
   const nibble = adaptive
     ? manualAdaptiveByte(5, 1)
     : manualAdaptiveByte(intent.mode === 'anc' ? intent.level : 5, intent.mode === 'anc' ? 5 : 1);
+  const automation = adaptive ? 0x01 : intent.mode === 'anc' ? 0x02 : 0x00;
   return frame(0x06, 0x81, [
     ambient,
     nibble,
     ambient,
-    adaptive ? 0x01 : 0x00,
+    automation,
     intent.wind ? 0x01 : 0x00,
     0x00,
     CLASSIC_SCENE[intent.scene],
@@ -173,11 +222,12 @@ export function buildLiberty4NcAnc(intent: AncIntent): Uint8Array {
   const adaptive = intent.mode === 'adaptive';
   const nibble = manualAdaptiveByte(intent.level, adaptive ? adaptiveFromLevel(intent.level) : 0);
   const transportation = intent.scene === 'transport' ? 0x00 : intent.scene === 'outdoor' ? 0x03 : 0x02;
+  const automation = adaptive ? 0x01 : intent.mode === 'anc' && intent.scene === 'transport' ? 0x02 : 0x00;
   return frame(0x06, 0x81, [
     ambient,
     nibble,
     intent.transVocal ? 0x01 : 0x00,
-    adaptive ? 0x01 : 0x00,
+    automation,
     intent.wind ? 0x01 : 0x00,
     0x00,
     transportation,
@@ -191,7 +241,7 @@ export function buildLiberty4NcAnc(intent: AncIntent): Uint8Array {
 export function buildLiberty3ProAnc(intent: AncIntent): Uint8Array {
   const ambient = intent.mode === 'anc' || intent.mode === 'adaptive' ? 0x00 : intent.mode === 'transparency' ? 0x01 : 0x02;
   const adaptive = intent.mode === 'adaptive';
-  const nibble = manualAdaptiveByte(intent.level, adaptive ? adaptiveFromLevel(intent.level) : 0);
+  const nibble = manualAdaptiveByte(intent.level, adaptive ? adaptiveNamedLevel(intent.level) : 0);
   return frame(0x06, 0x81, [
     ambient,
     nibble,
@@ -202,16 +252,98 @@ export function buildLiberty3ProAnc(intent: AncIntent): Uint8Array {
   ]);
 }
 
+/** Space One Pro (A3062) — six-byte custom-transparency layout. */
+export function buildSpaceOneProAnc(intent: AncIntent): Uint8Array {
+  const ambient = intent.mode === 'anc' || intent.mode === 'adaptive' ? 0x00 : intent.mode === 'transparency' ? 0x01 : 0x02;
+  const adaptive = intent.mode === 'adaptive';
+  return frame(0x06, 0x81, [
+    ambient,
+    manualAdaptiveByte(intent.mode === 'anc' ? intent.level : 5, adaptive ? adaptiveDirectLevel(intent.level) : 0),
+    0x01, // custom transparency is the only transparency mode on A3062
+    adaptive ? 0x01 : 0x00,
+    intent.wind ? 0x01 : 0x00,
+    ambient === 0x01 ? 0x05 : 0x01,
+  ]);
+}
+
+/** Space A40 (A3936) — six-byte manual/adaptive layout. */
+export function buildSpaceA40Anc(intent: AncIntent): Uint8Array {
+  const ambient = intent.mode === 'anc' || intent.mode === 'adaptive' ? 0x00 : intent.mode === 'transparency' ? 0x01 : 0x02;
+  const adaptive = intent.mode === 'adaptive';
+  return frame(0x06, 0x81, [
+    ambient,
+    manualAdaptiveByte(intent.mode === 'anc' ? intent.level : 5, adaptive ? adaptiveNamedLevel(intent.level) : 0),
+    intent.transVocal ? 0x01 : 0x00,
+    adaptive ? 0x01 : 0x00,
+    intent.wind ? 0x01 : 0x00,
+    adaptive ? adaptiveFromLevel(intent.level) : 0x00,
+  ]);
+}
+
+/** Liberty 4 Pro (A3954) — slider/airplane four-byte layout. */
+export function buildLiberty4ProAnc(intent: AncIntent): Uint8Array {
+  const mode = intent.mode === 'adaptive' ? 'anc' : intent.mode;
+  const ambient = CLASSIC_MODE[mode];
+  const slider = mode === 'anc' ? 6 - Math.max(1, Math.min(5, Math.round(intent.level))) : mode === 'transparency' ? 6 + Math.max(1, Math.min(5, Math.round(intent.level))) : 6;
+  return frame(0x06, 0x81, [ambient, slider, 0x00, intent.wind ? 0x01 : 0x00]);
+}
+
+/** P40i (A3955) — seven-byte multi-scene ANC layout. */
+export function buildP40iAnc(intent: AncIntent): Uint8Array {
+  const ambient = intent.mode === 'anc' || intent.mode === 'adaptive' ? 0x00 : intent.mode === 'transparency' ? 0x01 : 0x02;
+  const adaptive = intent.mode === 'adaptive';
+  const automation = adaptive ? 0x01 : intent.mode === 'anc' ? 0x02 : 0x00;
+  return frame(0x06, 0x81, [
+    ambient,
+    manualAdaptiveByte(intent.level, adaptive ? adaptiveFromLevel(intent.level) : 0),
+    intent.transVocal ? 0x01 : 0x00,
+    automation,
+    intent.wind ? 0x01 : 0x00,
+    adaptive ? adaptiveFromLevel(intent.level) : 0x00,
+    CLASSIC_SCENE[intent.scene],
+  ]);
+}
+
+/** Liberty 5 (A3957) — seven-byte transportation-aware ANC layout. */
+export function buildLiberty5Anc(intent: AncIntent): Uint8Array {
+  const ambient = intent.mode === 'anc' || intent.mode === 'adaptive' ? 0x00 : intent.mode === 'transparency' ? 0x01 : 0x02;
+  const adaptive = intent.mode === 'adaptive';
+  const automation = adaptive ? 0x01 : intent.mode === 'anc' && intent.scene === 'transport' ? 0x02 : 0x00;
+  return frame(0x06, 0x81, [
+    ambient,
+    manualAdaptiveByte(intent.level, adaptive ? adaptiveNamedLevel(intent.level) : 0),
+    intent.transVocal ? 0x01 : 0x00,
+    automation,
+    intent.wind ? 0x01 : 0x00,
+    adaptive ? adaptiveFromLevel(intent.level) : 0x00,
+    intent.scene === 'transport' ? 0x00 : 0x03,
+  ]);
+}
+
 export function buildAnc(layout: AncLayout, intent: AncIntent): Uint8Array | null {
   switch (layout) {
     case 'classic':
       return buildClassicAnc(intent);
+    case 'classic-a3035':
+      return buildSpaceOneAnc(intent);
+    case 'classic-a3040':
+      return buildSpaceQ45Anc(intent);
     case 'tws-p30i':
       return buildP30iAnc(intent);
     case 'tws-l4nc':
       return buildLiberty4NcAnc(intent);
     case 'tws-l3pro':
       return buildLiberty3ProAnc(intent);
+    case 'tws-a3062':
+      return buildSpaceOneProAnc(intent);
+    case 'tws-a3936':
+      return buildSpaceA40Anc(intent);
+    case 'tws-l4pro':
+      return buildLiberty4ProAnc(intent);
+    case 'tws-p40i':
+      return buildP40iAnc(intent);
+    case 'tws-l5':
+      return buildLiberty5Anc(intent);
     case 'none':
       // This model exposes no sound-mode control. Returning null keeps the
       // caller from sending a frame the firmware would silently discard.
@@ -290,7 +422,7 @@ export function buildCustomEq(profile: DeviceProfile, bandsDb: number[]): Uint8A
  * Liberty 4 NC (A3947) and Liberty 5 (A3957) use `10:85` instead.
  */
 export function buildGameMode(profile: DeviceProfile, on: boolean): Uint8Array {
-  return profile.sku === 'A3947'
+  return profile.sku === 'A3947' || profile.sku === 'A3957'
     ? frame(0x10, 0x85, [on ? 0x01 : 0x00])
     : frame(0x01, 0x87, [on ? 0x01 : 0x00]);
 }

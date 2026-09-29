@@ -65,9 +65,22 @@ function stateFrame(profile: DeviceProfile): Uint8Array {
 
 /** `06:01` sound-mode report, so the UI's mirror-back path is exercised too. */
 function soundModesFrame(profile: DeviceProfile): Uint8Array {
-  const payload = new Uint8Array(profile.ancLayout === 'tws-l3pro' ? 6 : 7);
+  const sixByte = new Set([
+    'classic-a3035',
+    'classic-a3040',
+    'tws-l3pro',
+    'tws-a3062',
+    'tws-a3936',
+  ]);
+  const payloadLength =
+    profile.ancLayout === 'classic' || profile.ancLayout === 'tws-l4pro'
+      ? 4
+      : sixByte.has(profile.ancLayout)
+        ? 6
+        : 7;
+  const payload = new Uint8Array(payloadLength);
   payload[0] = 0x00;
-  payload[1] = 0x50;
+  payload[1] = profile.ancLayout === 'tws-l4pro' ? 5 : 0x50;
   return header(0x06, 0x01, payload);
 }
 
