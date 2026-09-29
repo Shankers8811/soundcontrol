@@ -9,7 +9,7 @@ import { DEVICES, matchDevice } from '../protocol/devices';
 import { MARKET_CATALOG, type MarketCatalogEntry } from '../protocol/marketCatalog';
 import { DeviceTypeVisual, deviceKindLabel } from '../components/DeviceTypeVisual';
 import { bridgeHealth, scanBridgeDevicesDetailed } from '../transports/bridge';
-import { IconBolt, IconBt, IconCheck, IconClose, IconRefresh } from '../components/Icons';
+import { IconBt, IconCheck, IconClose, IconRefresh } from '../components/Icons';
 import {
   Button,
   Card,
@@ -235,25 +235,19 @@ export function DevicesPage() {
                 {scan.devices.map((device) => {
                   const isActive = app.connected && device.mac !== undefined && device.mac === app.connectedMac;
                   const isConnecting = connectingMac === device.mac;
+                  const matched = matchDevice(device.name);
+                  const knownProfile = matched.id !== 'unknown' ? matched : null;
                   return (
                     <li
                       key={device.id}
-                      className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors duration-200 ${
-                        isActive ? 'border-accent/55 bg-accent/8' : 'border-edge bg-sunken hover:border-accent/35'
-                      }`}
+                      className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors duration-200 ${isActive ? 'border-accent/55 bg-accent/8' : 'border-edge bg-sunken hover:border-accent/35'}`}
                     >
-                      {(() => {
-                        const matched = matchDevice(device.name);
-                        const knownProfile = matched.id !== 'unknown' ? matched : null;
-                        return (
-                          <span
-                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${isActive ? 'border-accent/40 bg-accent/12 text-accent' : 'border-edge bg-panel text-mute'}`}
-                            title={knownProfile ? deviceKindLabel(knownProfile.kind) : 'Unknown device type'}
-                          >
-                            {knownProfile ? <DeviceTypeVisual kind={knownProfile.kind} size={19} /> : <IconBt size={19} />}
-                          </span>
-                        );
-                      })()}
+                      <span
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${isActive ? 'border-accent/40 bg-accent/12 text-accent' : 'border-edge bg-panel text-mute'}`}
+                        title={knownProfile ? deviceKindLabel(knownProfile.kind) : 'Unknown device type'}
+                      >
+                        {knownProfile ? <DeviceTypeVisual kind={knownProfile.kind} size={19} /> : <IconBt size={19} />}
+                      </span>
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-2">
                           <span className="truncate text-sm font-semibold text-ink">{device.name}</span>
