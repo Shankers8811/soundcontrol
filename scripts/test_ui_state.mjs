@@ -120,7 +120,7 @@ for (const d of DEVICES) {
   eq(
     `${d.id}: supportsEarbudState`,
     c.supportsEarbudState,
-    d.kind === 'earbuds' && d.state.batteryRight !== null,
+    (d.kind === 'earbuds' || d.kind === 'open-ear') && d.state.batteryRight !== null,
   );
   eq(`${d.id}: gaming/surround/dual/ldac flags`, [c.supportsGaming, c.supportsSurround, c.supportsDual, c.supportsLdac], [d.gaming, d.surround, d.dual, d.ldac]);
   // 01:85 is documented ONLY for the Motion+ (A3116) speaker — no profile in
@@ -280,6 +280,14 @@ eq('emptyBattery: no levels, no flags, presence unknown', emptyBattery(), {
   left: null, right: null, leftCharging: undefined, rightCharging: undefined,
   batteryScale: null, presence: 'unknown',
 });
+const hostBattery = { ...emptyBattery(), hostPercent: 87 };
+const hostMerged = merge(hostBattery, 8, 7);
+check(
+  'host battery percentage survives Soundcore telemetry refresh',
+  hostMerged.hostPercent === 87,
+  JSON.stringify(hostMerged),
+);
+
 
 // TEST 10 — fresh connection: unknown until the first valid frame, then confirmed.
 const t10a = merge(emptyBattery(), undefined, undefined);
