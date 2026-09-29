@@ -111,7 +111,7 @@ export interface Capabilities {
 }
 
 export function deriveCapabilities(profile: DeviceProfile): Capabilities {
-  const tws = profile.kind === 'earbuds' && profile.state.batteryRight !== null;
+  const tws = (profile.kind === 'earbuds' || profile.kind === 'open-ear') && profile.state.batteryRight !== null;
   return {
     supportsNoiseControl: profile.ancLayout !== 'none',
     supportsEqualizer: profile.eqCommand !== null,
