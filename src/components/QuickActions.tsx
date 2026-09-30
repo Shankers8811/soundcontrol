@@ -30,11 +30,11 @@ export function QuickActions() {
         supported={caps.supportsEqualizer}
         noteTitle="No quick sound actions on this model"
         note={
-          app.profile.id === 'unknown' ? (
+          app.profile.id === 'unknown' || (app.connected && app.identification !== 'verified') ? (
             <>
-              This device’s model could not be identified, so SoundControl sends no equalizer
+              This device’s model identification is uncertain or mismatched, so SoundControl sends no equalizer
               frames — a guessed EQ command or payload for unknown firmware could write a wrong
-              hearing profile. Preset shortcuts become available as soon as the model is known.
+              hearing profile. Preset shortcuts require a confirmed model-specific state layout; manual selection cannot enable them.
             </>
           ) : (
             <>
