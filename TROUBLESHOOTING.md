@@ -13,14 +13,13 @@ messages, offsets). If a message you see is not covered here, export the log
 2. **Close the Soundcore phone app.** The headset serves exactly one control
    client; while the phone holds the slot, new clients are accepted but stay
    silent.
-3. Use the Windows/Linux desktop app (or the web app **plus** a manually
-   running helper). Web Bluetooth alone cannot drive ANC reliably — that is a
-   browser API limitation, not a bug.
+3. Use the Windows/Linux desktop app; a browser tab alone is not the packaged
+   Bluetooth application and is not a physical-hardware validation run.
 
 ## "The helper is not responding"
 
-The desktop app starts its Python helper automatically; the web app expects it
-on the loopback port. If ConnectSheet shows *Bluetooth helper: not responding*:
+The desktop app starts its Python helper automatically. If Devices shows
+*Helper not responding* (or Connect reports a helper error):
 
 - restart SoundControl;
 - check the platform log folder (`%AppData%\soundcontrol\main.log` on Windows,

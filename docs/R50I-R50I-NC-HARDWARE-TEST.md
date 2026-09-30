@@ -18,14 +18,16 @@ results between them.
   connected — not in pairing mode.
 - The Soundcore mobile app closed on any nearby phone (it holds the one
   control slot).
-- A SoundControl build installed from the CI artifact (or `npm run build:win`
-  locally).
+- A SoundControl build installed from an identified CI test artifact (or
+  `npm run build:win -- --publish never` locally). Record the exact SHA, app
+  version and whether the build is unsigned; it is not a signed release.
 - Evidence capture: `%AppData%\soundcontrol\main.log`, the in-app Hex Console
   (TX/RX frames), and screenshots.
 
 ## Windows-audio regression harness (run it around EVERY section)
 
-SoundControl must never touch Windows audio. The read-only harness proves it:
+SoundControl must not change Windows audio state. The read-only harness can
+compare host state **only when the test PC has audio endpoints**:
 
 ```powershell
 # before connecting / before each feature section:
@@ -34,24 +36,27 @@ SoundControl must never touch Windows audio. The read-only harness proves it:
 ./scripts/capture-windows-audio-state.ps1 -Baseline audio-before.txt
 ```
 
-Exit `0` + "UNCHANGED" = pass. Exit `1` (state changed: default device,
-master volume, mute, per-app sessions) = **REGRESSION — stop and record
-FAIL**. The harness only reads (its read-only property is itself
-machine-checked in CI); it never changes audio state. Note: Windows itself
-or other apps may legitimately change volume while you test — if a
-comparison fails, check what else was running, re-run the comparison after a
-quiet minute, and record the observation honestly.
+Exit `0` with a captured baseline and `UNCHANGED` comparison supports a
+host-state check. Capture exit `0` with `AUDIO_STATE_CAPTURE=UNAVAILABLE`
+creates **no baseline**; compare exit `2` (missing baseline) or `3` (no
+endpoints) means **NOT TESTED**, not unchanged. Exit `1` (difference or
+harness defect) means stop and investigate, then record the actual outcome.
+The harness only reads (its read-only property is machine-checked in CI);
+it never changes audio state. Windows or other apps may change volume during
+testing: preserve the first diff, check what else ran and re-run after a
+quiet minute rather than silently calling it a SoundControl regression.
+This host comparison does not measure ANC acoustics or microphone quality.
 
 ## A. Connect + identify (both models)
 
 | # | Step | Expected |
 |---|---|---|
-| A1 | Capture audio state (harness) | UNCHANGED baseline recorded |
+| A1 | Capture audio state (harness) | Baseline recorded if endpoints exist; otherwise NOT TESTED |
 | A2 | Devices page → Scan devices | Device listed with its host-reported name + MAC |
 | A3 | Click Connect | Console: channel probe, then `DSP answered on channel N`; log `Linked via … · profile …` |
 | A4 | **Identification** | R50i → profile line `P20i / P25i / R50i · A3949`; R50i NC → `P30i / R50i NC · A3959` — plus the automatically verified protocol-profile identification label. If the model shows as **Unknown model**, record it: do NOT force a profile |
-| A5 | Telemetry | Console shows `01:01` state, `01:05` serial+firmware, `01:03` battery TX and the device's RX replies; firmware + serial appear in the UI; battery matches the Soundcore app (R50i scale 0–5, R50i NC scale 0–10) |
-| A6 | Audio harness compare | UNCHANGED |
+| A5 | Telemetry | Record `01:01`, `01:05` and `01:03` TX and **only replies actually received**; firmware, serial and battery remain unavailable until a valid reply. Record reported per-model battery scale (A3949 0–5, A3959 0–10). If comparing with the Soundcore phone app, close one control client before using the other, note both timestamps, and do not claim accuracy from one reading. |
+| A6 | Audio harness compare | UNCHANGED only with comparable baseline; otherwise NOT TESTED |
 
 ## B. R50i (A3949) feature tests
 
@@ -61,8 +66,8 @@ quiet minute, and record the observation honestly.
 | B2 | EQ factory preset (e.g. Bass Booster) | Frame `02:83` TX in the console; preset id `02 00` on the wire; the device's state mirror updates the UI |
 | B3 | EQ custom curve | **Must be refused**: "Custom curves are not supported by … — factory presets only". No `FE FE` frame in the console |
 | B4 | Gaming mode toggle | Frame `01:87` TX; state mirror byte 65 confirms on/off in the next `01:01` reply |
-| B5 | Attempted unsupported features | Surround / dual / LDAC toggles **not shown** (Controls page explains why); injecting a `06:81` or `0B:84` frame in the Hex Console is refused with a model-gate message |
-| B6 | Audio harness compare after B2–B5 | UNCHANGED |
+| B5 | Unsupported-feature gate (no injection) | Surround / dual / LDAC toggles **not shown**; do not type or send unsupported frames in the Hex Console on hardware. Record UI and absence of TX. |
+| B6 | Audio harness compare after B2–B5 | UNCHANGED only with comparable baseline; otherwise NOT TESTED |
 
 ## C. R50i NC (A3959) feature tests
 
@@ -77,7 +82,7 @@ quiet minute, and record the observation honestly.
 | C7 | Dual connection | `0B:84`; state byte 73 confirms |
 | C8 | 3D Surround | `02:86`; state byte 74 confirms |
 | C9 | LDAC / factory reset | LDAC toggle **not shown** (no LDAC on this model); Factory reset shows the honest "not offered" note |
-| C10 | Audio harness compare after C1–C9 | UNCHANGED |
+| C10 | Audio harness compare after C1–C9 | UNCHANGED only with comparable baseline; otherwise NOT TESTED |
 
 ## D. Disconnect / reconnect / session isolation (both models)
 
@@ -86,27 +91,29 @@ quiet minute, and record the observation honestly.
 | D1 | Disconnect | State clears (no stale battery/mode); "Disconnected" badge |
 | D2 | Connect the OTHER model (or any device) | Profile re-derived from the new device; **no capability from the previous session survives** (e.g. after R50i NC → R50i, ANC controls must be gone) |
 | D3 | Rapid disconnect→reconnect | No error; telemetry belongs to the new session only |
-| D4 | Audio harness compare | UNCHANGED |
+| D4 | Audio harness compare | UNCHANGED only with comparable baseline; otherwise NOT TESTED |
 
 ## E. Record results — one row per test above
 
-Copy this table per model and fill it in. A feature is promoted to
-**PHYSICALLY VERIFIED** only with a completed row and the evidence attached.
+Copy this table per model and fill it in. A device/firmware-specific feature
+can be considered physically verified only after its completed row and attached
+evidence are reviewed; no model-wide promotion follows automatically.
 
 | MODEL | FIRMWARE | DEVICE NAME | DATE | FEATURE | COMMAND | EXPECTED RESULT | ACTUAL RESULT | PASS/FAIL | WINDOWS AUDIO CHANGED? | NOTES |
 |---|---|---|---|---|---|---|---|---|---|---|
-| A3949 | | | | | | | | | YES/NO | |
-| A3949 | | | | | | | | | YES/NO | |
-| A3959 | | | | | | | | | YES/NO | |
-| A3959 | | | | | | | | | YES/NO | |
+| A3949 | | | | | | | | NOT TESTED | NOT TESTED | |
+| A3959 | | | | | | | | NOT TESTED | NOT TESTED | |
 
 ## Promotion rules
 
-- "PASS" rows with attached evidence (log + console frames + screenshot)
-  promote the corresponding `SUPPORTED` in `docs/R50I-PROTOCOL.md` to
-  **PHYSICALLY VERIFIED** — update that document and the model registry's
-  `physicalValidation` field (`src/protocol/modelRegistry.ts`).
+- A `PASS` row is specific to the tested unit, firmware, app build and
+  feature. For a write, require a valid same-session response/ACK body, fresh
+  readback/state change and reconnect confirmation in addition to log, console
+  frames and screenshot. Review evidence before proposing any change to
+  `docs/R50I-PROTOCOL.md` or the registry's `physicalValidation` field; a
+  simulator run, TX alone, or a partially completed row cannot promote it.
 - Any FAIL on a safety row (B1, B3, B5, C9, D2, any audio comparison) is a
   release blocker: record it and file it — do not adjust the test to pass.
-- "WINDOWS AUDIO CHANGED = YES" is always a blocker, whatever the cause;
-  diagnose before continuing.
+- "WINDOWS AUDIO CHANGED = YES" is a blocker pending investigation; preserve
+  the diff and diagnose the cause before continuing. An unavailable baseline
+  is NOT TESTED, never NO.
