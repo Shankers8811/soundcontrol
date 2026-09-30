@@ -27,13 +27,20 @@ When available, the Windows download is an NSIS installer with Start-menu and de
 
 [**Download the latest `SoundControl.AppImage`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl.AppImage)
 
-Run the AppImage on a Linux desktop with a working BlueZ adapter, `bluetoothd`, and `bluetoothctl`.
+On a Linux desktop with a working BlueZ adapter, `bluetoothd`, and `bluetoothctl`:
+
+```bash
+chmod +x SoundControl.AppImage
+./SoundControl.AppImage
+```
 
 ### 📦 Debian / Ubuntu
 
 [**Download the latest `SoundControl.deb`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl.deb)
 
-Install the Debian package with your distribution's package installer. It bundles Electron and the Python bridge runtime; the host still supplies the BlueZ Bluetooth stack.
+On Debian or Ubuntu, install the downloaded file with `sudo apt install ./SoundControl.deb`
+(or use your package installer), then launch SoundControl from the application menu.
+It bundles Electron and the Python bridge runtime; the host still supplies the BlueZ Bluetooth stack.
 
 ### 🔗 Release history
 
