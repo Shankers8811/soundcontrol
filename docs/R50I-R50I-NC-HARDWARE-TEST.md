@@ -49,7 +49,7 @@ quiet minute, and record the observation honestly.
 | A1 | Capture audio state (harness) | UNCHANGED baseline recorded |
 | A2 | Devices page → Scan devices | Device listed with its host-reported name + MAC |
 | A3 | Click Connect | Console: channel probe, then `DSP answered on channel N`; log `Linked via … · profile …` |
-| A4 | **Identification** | R50i → profile line `P20i / P25i / R50i · A3949`; R50i NC → `P30i / R50i NC · A3959` — plus `protocol-verified · physical validation pending`. If the model shows as **Unknown model**, record it: do NOT force a profile |
+| A4 | **Identification** | R50i → profile line `P20i / P25i / R50i · A3949`; R50i NC → `P30i / R50i NC · A3959` — plus the automatically verified protocol-profile identification label. If the model shows as **Unknown model**, record it: do NOT force a profile |
 | A5 | Telemetry | Console shows `01:01` state, `01:05` serial+firmware, `01:03` battery TX and the device's RX replies; firmware + serial appear in the UI; battery matches the Soundcore app (R50i scale 0–5, R50i NC scale 0–10) |
 | A6 | Audio harness compare | UNCHANGED |
 
