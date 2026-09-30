@@ -139,8 +139,29 @@ jobs:
         run: |
           ./scripts/verify-windows-signing.ps1 -ReleaseDir release
           if ($LASTEXITCODE -ne 0) { throw "signature status step failed (exit $LASTEXITCODE)" }
+      # This is an unsigned, private-test CI artifact, NOT a GitHub Release.
+      # Stage only the NSIS installer (not the much larger win-unpacked tree),
+      # with a predictable download filename for Windows hardware testers.
+      - name: Stage unsigned NSIS installer for local testing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installers = @(Get-ChildItem 'release\*.exe' -File)
+          if ($installers.Count -ne 1) { throw "Expected exactly one NSIS installer in release/, found $($installers.Count)" }
+          foreach ($required in @('release\win-unpacked\SoundControl.exe', 'release\win-unpacked\resources\app.asar', 'release\win-unpacked\resources\app.asar.unpacked\soundcore_bridge.py', 'release\win-unpacked\resources\python\python.exe')) {
+            if (-not (Test-Path $required -PathType Leaf)) { throw "Missing packaged app/bridge/runtime file: $required" }
+          }
+          $signature = Get-AuthenticodeSignature -FilePath $installers[0].FullName
+          if ($signature.Status -ne 'NotSigned') { throw "Expected an unsigned CI test installer, got: $($signature.Status)" }
+          New-Item -ItemType Directory -Path 'test-installer' -Force | Out-Null
+          Copy-Item -LiteralPath $installers[0].FullName -Destination 'test-installer\SoundControl-Setup.exe'
+          $installer = Get-Item 'test-installer\SoundControl-Setup.exe'
+          if ($installer.Length -lt 1048576) { throw "Installer is unexpectedly small: $($installer.Length) bytes" }
+          $sha256 = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash
+          Write-Host "NSIS_TEST_INSTALLER source=$($installers[0].Name) file=$($installer.Name) bytes=$($installer.Length) sha256=$sha256 signature=$($signature.Status)"
+          Write-Host "::notice title=Unsigned Windows test installer::SoundControl-Setup.exe bytes=$($installer.Length) sha256=$sha256 (local testing only)"
       - uses: actions/upload-artifact@v4
         with:
-          name: SoundControl-Windows
-          path: release/
+          name: SoundControl-Windows-Test-Unsigned
+          path: test-installer/SoundControl-Setup.exe
           if-no-files-found: error
