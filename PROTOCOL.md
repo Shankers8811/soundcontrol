@@ -170,9 +170,10 @@ its charging flag comes from the separate `01:04` read rather than a state
 byte. SoundControl records that state address as the serial field only for
 read decoding and still does not expose any D1402 write.
 
-Case charge is **read-only** and visible only for the ten verified SKUs in the
-case-scale table below, after a checksum/length-valid `01:01` state update
-confirms the current transport’s layout and identity. OpenSCQ30’s
+Case charge is **read-only** and visible for 11 verified SKUs: the ten in the
+case-scale table below plus A3945 Life Note 3S (documented in the audit below).
+A checksum/length-valid `01:01` state update must confirm the current
+transport’s layout and identity. OpenSCQ30’s
 `case_battery_level` module supplies independent scales (some differ from the
 bud scale). `0xFF`, missing or out-of-range case bytes clear the case value;
 `01:03` is buds-only and never refreshes or clears it. Reconnect, disconnect
