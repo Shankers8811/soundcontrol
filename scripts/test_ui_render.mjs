@@ -195,6 +195,18 @@ check('manual candidate mismatch cannot be presented as verified device code',
   mismatchDevices.includes('Connected with identification mismatch') && mismatchDevices.includes('does not authorize commands') && mismatchDevices.includes('Not verified'));
 const unknownDevices = connectedView(M.DevicesPage, { identification: 'uncertain' });
 check('uncertain identification is explicit', unknownDevices.includes('Connected but identification uncertain'));
+const limitedCaps = M.deriveCapabilities(M.UNKNOWN_PROFILE);
+const uncertainControls = connectedView(M.ControlsPage, { identification: 'uncertain', capabilities: limitedCaps });
+const mismatchControls = connectedView(M.ControlsPage, { identification: 'mismatch', capabilities: limitedCaps });
+check('unconfirmed model disables ANC and feature switches with a reason',
+  uncertainControls.includes('Noise-control options are shown') && uncertainControls.includes('model identification is uncertain') &&
+  uncertainControls.includes('No feature switches for this model'));
+check('manual mismatch cannot reveal an ANC control',
+  mismatchControls.includes('model identification is uncertain') && mismatchControls.includes('No feature switches for this model'));
+const uncertainEq = connectedView(M.EqualizerPage, { identification: 'uncertain', capabilities: limitedCaps });
+check('unconfirmed model hides EQ write controls',
+  uncertainEq.includes('Equalizer commands and byte layouts') && !uncertainEq.includes('class="eq-fader"'));
+
 
 console.log('\n[device visuals] exact-profile family artwork');
 for (const [profileId, expectedLabel] of [
