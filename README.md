@@ -145,9 +145,11 @@ The layouts and evidence matrix are pinned by `npm run verify:protocol`,
 `npm run test:models`, `npm run test:simulator`, and `npm run test:ui`; see the
 state-offset table in [PROTOCOL.md](PROTOCOL.md) for the exact offsets and
 source projects. The current-market inventory, regional aliases, catalog-only
-rows, simulator/unit-test status, and physical-validation status are tracked
-in [`docs/MARKET-COMPATIBILITY.md`](docs/MARKET-COMPATIBILITY.md). Catalog-only
-models are identified exactly but do not get guessed device controls.
+rows, and simulator/unit-test status are tracked in
+[`docs/MARKET-COMPATIBILITY.md`](docs/MARKET-COMPATIBILITY.md). The separate
+[Windows hardware validation record](HARDWARE-VALIDATION.md) tracks the
+unperformed physical-device test plan. Catalog-only models are identified
+exactly but do not get guessed device controls.
 
 The detailed follow-up per-model query/write/ACK/readback audit is in
 [docs/ANDROID-PARITY-INVESTIGATION.md](docs/ANDROID-PARITY-INVESTIGATION.md).

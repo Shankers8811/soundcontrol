@@ -1,137 +1,189 @@
-# Physical Hardware Validation Checklist
+# Windows + Soundcore hardware validation record
 
-**Status: physical Soundcore hardware validation remains unverified.**
+> **Physical Soundcore validation: NOT YET PERFORMED.**
+>
+> This is an **unexecuted test plan and blank result record**, not a certificate,
+> release approval, or claim that any Soundcore unit has been connected. Do not
+> change this status based on reference captures, a simulator, a green CI badge,
+> or a Windows runner with no Bluetooth device/audio endpoints.
 
-Everything in this repository is tested deterministically without hardware —
-unit tests, emulator-driven end-to-end runs, jsdom UI harnesses and desktop CI
-smoke/launch workflows (see README → Testing). What no sandbox can do is talk
-to a real earbud over RFCOMM. This checklist is the plan for whoever has a
-Windows or Linux machine and physical Soundcore devices: run it top to bottom
-and record the evidence column against each step.
+**Evidence separation:** Protocol/reference evidence documented; automated tests validated when run; simulator validated where applicable; Windows CI validated only for exact successful SHA; **Physical Soundcore-device validation: NOT YET PERFORMED.**
 
-Evidence to capture per step:
+| Evidence category | What it can establish | What it cannot establish |
+| --- | --- | --- |
+| Protocol/reference | Per-model packet layouts and upstream observations ([PROTOCOL.md](PROTOCOL.md), [Android feature audit](docs/ANDROID-PARITY-INVESTIGATION.md)); these are not SoundControl sessions. | That a write, ACK, readback or persistent change worked on this unit. |
+| Automated tests | Parser, capability, session, UI and helper behavior against test inputs; attach command, date, SHA and results. | Real Bluetooth, firmware compatibility, audio or battery accuracy. |
+| Simulator | Local fixture and transport behavior for documented profiles. | A physical Soundcore response. |
+| Windows CI | Exact-commit `tests`, `build-win` and `launch-win` checks, if those check runs actually conclude successfully. Smoke tests exercise a packaged desktop app, not Soundcore hardware; audio comparison may be `UNAVAILABLE` on a runner. | A signed public release, a real device connection, Windows audio safety on hardware, or all future commits. |
+| Real Windows + physical device | Only dated, device/firmware-specific observations with attached evidence collected by a tester on a Windows PC. | Universal support for untested SKUs/firmware, acoustic ANC performance, microphone quality or battery/case accuracy without separate measurements. |
 
-- the platform log (`%AppData%\soundcontrol\main.log` on Windows or `~/.config/soundcontrol/main.log` on Linux) (helper lifecycle, DSP channel adoption)
-- the in-app Hex Console (TX/RX frames — every claim below maps to real frames)
-- screenshots of the stated UI state
+## Scope and setup (fill in before a run)
 
-A step **fails** if the UI ever shows a value the device did not report:
-a battery percentage without telemetry, a side “Connected” without a wire
-byte, a firmware version before `01:05` answers, or an ANC state the device
-never mirrored (`06:01`).
+Test the actual desktop app on Windows 10/11 with a paired, connected device and
+an available Bluetooth adapter. Use an identifiable build from an exact commit;
+record whether it is a local/CI **unsigned test build**, not a signed release.
+The existing Windows workflows build and launch/smoke the app but do not attach
+a physical device. On a Windows test PC, a source build can be prepared with
+`npm ci` and `npm run build:win -- --publish never` (do not run a release or
+signing workflow for this test). Before testing, verify the packaged
+`release/win-unpacked/resources/python/python.exe` exists; the CI build sets
+`SOUNDCONTROL_PYTHON_REQUIRED=1` to make a missing bundled helper runtime a
+hard failure. Follow the existing installer safety policy; do not bypass
+Windows signing gates or present an unsigned build as trusted.
+Record the actual installed app version (About), not just `package.json`.
 
----
+| Environment field | Tester entry (leave blank until observed) |
+| --- | --- |
+| Tester, date/time and timezone | |
+| Windows edition/build and architecture | |
+| PC identifier (non-sensitive) and Bluetooth adapter model/driver/firmware | |
+| SoundControl Git commit SHA / app version / build or installer artifact ID | |
+| Artifact origin; locally built / CI test artifact / signed release; signer if present | |
+| CI workflow run URLs, exact SHA, conclusions and audio-endpoint availability (if consulted) | |
+| Test location, nearby Bluetooth devices/interference and phone-app state | |
+| Windows default audio endpoint, baseline capture path and whether audio endpoints exist | |
+| Evidence folder / issue ID; data retention and redaction owner | |
 
-## Evidence legend — how to read every claim in this repository
+Before each device row, record the **printed SKU/model code** (not just its
+marketing alias), firmware of each bud/side if available, and a non-public
+identifier for the physical unit. Pair in Windows Settings and close the
+Soundcore mobile app before connecting so it does not occupy the control
+channel. Do not infer model identity from a similar product name or use the
+manual fallback to conceal failed automatic identification. Repeat the
+identity check after a restart and after switching devices.
 
-Every capability sits at exactly one of five evidence levels. Nothing in this
-repository is currently above level 4: level 5 needs physical Soundcore
-hardware, which no sandbox has.
+## Per-device execution matrix
 
-| Level | Meaning | Where it is proven |
-|-------|---------|--------------------|
-| 1 — implemented | The code exists and its wire formats cite published captures | `PROTOCOL.md`; the per-profile `source:` evidence in `src/protocol/devices.ts` |
-| 2 — auto-tested | Deterministic unit/parser/state tests pass | `npm run test:ui` (state + render), `npm run test:bridge`, `scripts/verify-protocol.mjs` |
-| 3 — emulator-tested | End-to-end runs against the scripted loopback bridge — no radio involved | `npm run test:e2e`, `npm run test:lifecycle`, jsdom UI harness segments |
-| 4 — desktop-CI-tested | A real desktop runner installs, launches and smoke-tests the packaged app | GitHub Actions `tests` / `build-win` / `launch-win` workflows plus the Linux release runner |
-| 5 — physically verified | A real Soundcore device answered over RFCOMM and the UI matched the wire | **Nothing yet — this checklist is how a flow gets promoted to level 5** |
+Copy a row **per physical unit + firmware + app build + test session**. Do not
+pre-fill results from source code, reference implementations or the simulator.
+`NOT TESTED` is the initial value of every check, including audio. `NOT
+APPLICABLE` means the check does not apply to that form factor/session; `NOT
+SUPPORTED` means the exact model is deliberately gated (verify the control is
+absent and no write is sent); `OBSERVED ONLY` means a read-only on-device value
+was seen but has not met the independent confirmation criteria below. `PASS`
+requires recorded on-device evidence for that **specific** check; `FAIL` needs
+a failure record; `BLOCKED` needs a reason (e.g. unavailable hardware/endpoint,
+missing firmware, or a prerequisite failure). Leave overall result `NOT
+TESTED` until the session is actually run; a partial session is `BLOCKED` or
+`FAIL` with the outstanding checks identified, not a blanket pass. Track
+separate audio, microphone and acoustic/accuracy experiments elsewhere; they
+are not implied by a feature's UI result.
 
-Levels stack (4 implies a healthy launch path; it does not imply any earbud
-ever answered). When you record a result below, cite the step number and keep
-the listed evidence: that is what promotes one specific flow from level 4 to
-level 5. A claim of “works” without level-5 evidence must always be written
-as “implemented and tested without hardware”.
+| Device/unit ID | Model code | Firmware | PC | Bluetooth adapter | Auto identification | Manual verified-model fallback | Connect | Disconnect | Reconnect | Firmware/serial telemetry | L/R battery | Case battery | ANC | Transparency | EQ presets | Custom EQ | Game Mode | LDAC | Dual connection | Spatial state | Safe Volume state | BassUp state | Other model-specific read-only features | Diagnostics | Overall result | Evidence/log reference | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+|  |  |  |  |  | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED |  |  |
 
----
+**Initial candidate units, not tested/approved hardware:** Select only devices
+actually available, and add other exact SKUs from
+[`src/protocol/devices.ts`](src/protocol/devices.ts). A named alias is not a
+substitute for reading the unit's model code.
 
-## 1. Pairing
+| Exact SKU | Candidate profile | Reason to prioritize (not an expected outcome) |
+| --- | --- | --- |
+| A3949 | P20i / P25i / R50i | Factory EQ and Game Mode; ANC/custom EQ must remain gated. Follow [R50i procedure](docs/R50I-R50I-NC-HARDWARE-TEST.md). |
+| A3959 | P30i / R50i NC | ANC, transparency, EQ and firmware-dependent Game Mode; same targeted procedure. |
+| A3947 | Liberty 4 NC | Case telemetry plus ANC/other model-specific controls. |
+| A3040 | Space Q45 | Over-ear battery, noise modes, LDAC/dual connection; double-press BassUp assignment is **read-only**. |
+| A3954 | Liberty 4 Pro | Case telemetry and read-only safe-volume/spatial observations; test supported controls separately. |
+| A3945 | Life Note 3S | Case telemetry; BassUp and button assignments are **read-only**, not EQ Bass Booster or gesture editing. |
+| D1301 | Sleep A30 | Sleep/after-sleep observation is **read-only**; do not send timer/alarm/mixer commands. |
+| D1202 / D1202C | P31i / R60i NC | Exact identity/alias and read-only safe-volume/spatial fields; only supported EQ controls. |
 
-| # | Step | Expected |
-|---|------|----------|
-| 1.1 | Pair the earbuds/headset in the host's Bluetooth settings (Windows Settings → Bluetooth & devices; Linux BlueZ/`bluetoothctl`) | Device listed as *Paired*; keep it **connected** (not in pairing mode) |
-| 1.2 | Close the Soundcore mobile app on any nearby phone | The RFCOMM channel is not held by the phone |
-| 1.3 | Launch SoundControl | Window appears; helper starts (log: `bridge started via …`); no tray icon, no autostart entry created (`openAtLogin=false` is enforced every launch) |
+The **11** profiles with case-battery layout evidence are A3945, A3330,
+A3388, A3968, D1202, A3947, A3952, A3936, A3954, A3955 and A3957.
+This means an implemented parser/eligible read, **not** measured accuracy on
+any case. The case value is parsed from validated full `01:01` state for the
+exact profile, not inferred from `01:03`, a generic scale or stale telemetry.
+If the case is absent or a fresh read does not contain its value, record
+unavailable rather than synthesizing a percentage.
 
-## 2. Discovery
+## Run sequence and feature-level evidence rules
 
-| # | Step | Expected |
-|---|------|----------|
-| 2.1 | Devices page → **Scan devices** | Paired Soundcore device listed with its host-reported name, MAC, connected state and (when available) an aggregate battery |
-| 2.2 | Compare the listed name against the device label | Name matches; the profile line shows the right model family (e.g. *Liberty 4 NC · A3947*) |
-| 2.3 | If the name is missing/garbled, use **Connect by address** | The device connects under its MAC; if the app has never learned a name for that MAC it shows **Unknown model** and *Battery unavailable* — never a guessed percentage |
+1. **Startup and discovery:** record app/helper startup, paired-device listing
+   (Devices scans automatically and has a **Scan devices** refresh button),
+   helper health, and any diagnostic error. Identify from the device reply;
+   log automatic match, unknown identity or the reason for a deliberate,
+   documented **verified-model** manual fallback separately. An unknown or
+   catalog-only identity is universal read-only, not permission to try a
+   neighboring model's controls.
+2. **Connection and telemetry:** record connection/disconnection and reconnect
+   on the same unit, then a different unit if available. Capture fresh
+   `01:01` state, `01:05` firmware/serial and battery/presence reads where
+   received; check missing, malformed or stale values remain unavailable.
+   Check side/case values only when the correct exact-SKU field is reported.
+3. **Feature check, one row per feature/action:** record the model/profile,
+   firmware, UI before/after, capability gate, fresh device read, frame
+   direction and checksum validity (if exposed), and whether a setting
+   survives reconnect. A *read-only* observation requires a valid same-session
+   reply for that exact model and a displayed value that agrees with the
+   parsed field; record `OBSERVED ONLY` if not independently corroborated.
+   A **write PASS** additionally requires a supported model-specific query,
+   parsed current state, allowed TX, validated response/ACK body, fresh
+   post-write re-read/state change and reconnect confirmation. A TX frame, a
+   matching command ID, a simulated ACK or a click animation alone is not a
+   device-confirmed change. If any confirmation is missing, mark `BLOCKED`,
+   `OBSERVED ONLY` or `FAIL` with the missing evidence, not `PASS`.
+4. **Audio baseline (separate result):** where actual Windows audio endpoints
+   exist, run `scripts/capture-windows-audio-state.ps1` before/after a quiet
+   test segment and record files, exit codes and diff. If endpoints are
+   unavailable, mark the comparison `NOT TESTED`/`BLOCKED`, never unchanged.
+   A changed endpoint/volume/mute/session requires investigation, not a claim
+   of audio regression or safety from UI behavior alone. This read-only host
+   comparison does not prove acoustic ANC, microphone or battery accuracy.
+5. **Diagnostics and teardown:** Settings → Diagnostics → **Open console** →
+   **Export JSON** or **Export CSV** captures timestamped TX/RX and checksum
+   validity; Settings exposes the Windows log folder containing
+   `%AppData%\soundcontrol\main.log` (helper lifecycle/errors). Also save
+   screenshots, Windows/adapter identifiers, app build/SHA, firmware, expected
+   vs actual, reproduction steps, session timeline and redacted relevant
+   logs. Note absent replies explicitly. Disconnect/reconnect and close the
+   app; record any failure to restore normal Windows audio state.
 
-## 3. Connection
+Do not use the console's manual injection for this plan. **No undocumented,
+unsupported or cross-model writes** to probe an unknown SKU. Do not force a
+model profile to make a toggle appear, bypass the independent helper gate,
+spoof an ACK, send invalid frames to live hardware, flash firmware, factory
+reset, or alter a device's saved gestures. Obtain owner permission and a
+recovery plan before even considering disruptive tests. Firmware update
+requires a complete safe lifecycle and is **not a test step** here. HearID
+editing, touch editing, A3116 device-volume/reset writes and other withheld
+operations are not implemented tests. Find My Device is intentionally outside
+desktop scope; do not treat its absence as a defect or test target. A3945
+BassUp is a distinct read-only state, not the Bass Booster EQ preset; Q45
+double-press, safe-volume, spatial and D1301 after-sleep are observations,
+not editable controls. Mobile/cloud features are not on-device tests.
 
-| # | Step | Expected |
-|---|------|----------|
-| 3.1 | Click **Connect** on the device row | Console shows the channel probe; log: `DSP answered on channel N` (N may be 4, 10, 12… — the first channel that answers the handshake is adopted) |
-| 3.2 | Wait for identification | Status badge → **Connected**; header shows the device name; `Linked via … · profile … · DSP chN` in the console |
-| 3.3 | Verify telemetry requests went out | Console TX: `01:01` state request, `01:05` serial+firmware, `01:03` battery query — and the device’s RX replies |
+## Failure evidence checklist and classification
 
-## 4. Battery
+For every `FAIL`/`BLOCKED`, capture: **(1)** row/feature and expected versus
+observed outcome; **(2)** exact SKU, reported identity, firmware, app version,
+commit, Windows/adapter information; **(3)** chronological actions,
+connection/session boundary and time; **(4)** relevant redacted screenshot,
+JSON/CSV TX/RX excerpt including response length/checksum and correlation to
+that session (or a clear note that no response arrived); **(5)** redacted
+`main.log` and error/timeout; **(6)** fresh reread/reconnect result (or why it
+could not be attempted); **(7)** whether Windows audio baseline existed and
+comparison result. Keep raw serials, MACs, tokens and private logs out of
+public issues; never invent frames or attach another device's session.
+Classify the **first verified failure**; link multiple classes if needed.
 
-| # | Step | Expected |
-|---|------|----------|
-| 4.1 | Both buds in ears / lid open | Earbud Connection card: Left **Connected**, Right **Connected**, percentages matching the Soundcore mobile app (scale-5 models: raw 4 = 80%) |
-| 4.2 | Remove/switch off the right bud | Within one poll (≤30 s): Right → **Disconnected**, right percentage gone; left unchanged — no stale value |
-| 4.3 | Put it back | Right → **Connected** with a fresh percentage — only after real telemetry |
-| 4.4 | Charging state (models that expose it) | Bolt icon matches the mobile app; a side reported absent (`0xFF`) never shows charging |
-| 4.5 | Over-ear models (Space One/Q45/Q35/Q30…) | No L/R card at all; a single aggregate level; “Battery unavailable” until the device answers |
-| 4.6 | Unknown model (2.3 path) | Sides may show presence (Connected/Disconnected per `0xFF`) but **Battery unavailable** — a raw level is never converted against a guessed scale |
+| Code | Failure class | Examples / next check |
+| --- | --- | --- |
+| A | Setup / environment | No supported Windows/adapter, endpoint or reproducible build; document blockers. |
+| B | Helper launch / health | Helper fails to start/respond; collect `main.log` and health state. |
+| C | Discovery / pairing | Host cannot find a paired device; check Windows pairing and refresh. |
+| D | Identification / profile gate | Unexpected SKU, ambiguous identity or unsupported control offered; stop writes. |
+| E | Connection / transport / session | Probe/channel timeout, stale session, disconnect/reconnect identity leak. |
+| F | Framing / parser / telemetry | Bad length/checksum, missing state, wrong scale, stale or fabricated battery/firmware. |
+| G | Read-only observation | Display disagrees with fresh exact-SKU field; missing evidence must remain unavailable. |
+| H | Supported write / confirmation | TX denied, invalid ACK, failed reread or no reconnect persistence; do not count click as success. |
+| I | Diagnostics / evidence | Export missing/corrupt, timestamps uncorrelatable, redaction/logging gap. |
+| J | Windows host/audio or other safety | Changed audio state, unsafe operation, installer/signing concern; stop and investigate separately. |
 
-## 5. Noise Control
-
-| # | Step | Expected |
-|---|------|----------|
-| 5.1 | Open Noise Control (or the Home ANC card) | Mode buttons only for models with a documented `06:81` layout; A3949/A3948 show the honest “not available” note |
-| 5.2 | Switch Normal → Transparency → Noise Cancellation | Each click sends one `06:81` frame (console TX); the device audibly changes; a `06:01` mirror confirms the state in the UI |
-| 5.3 | Model-specific extras (manual level, wind noise, scenes on classic over-ears) | Only the toggles the model documents; state survives re-polls only when the device confirms |
-| 5.4 | Change ANC from the **phone app** while SoundControl is connected | The `06:01` mirror updates the desktop UI — the device report is the only source of confirmed state |
-
-## 6. Equalizer
-
-| # | Step | Expected |
-|---|------|----------|
-| 6.1 | EQ-capable model (`02:81`/`02:83`) | 22 presets listed; applying one sends the real frame; the device’s EQ mirror updates the UI |
-| 6.2 | HearID model (Liberty 4 NC, Liberty 3 Pro, Space One, Q45) | EQ page shows the capability gate explaining the `03:87` frame is not sent — no controls, no guessed payloads |
-| 6.3 | Unknown model | EQ gated with the “model could not be identified” note — nothing is sent |
-
-## 7. Disconnect
-
-| # | Step | Expected |
-|---|------|----------|
-| 7.1 | Switch the earbuds off (or remove the Bluetooth connection from the host) | The app leaves **Connected** out loud: link-down banner, header → *No device / Not connected* |
-| 7.2 | Inspect every surface | Battery, L/R, firmware, serial, ANC and EQ state all cleared — nothing stale survives the dead link |
-| 7.3 | Devices → **Disconnect** (manual) | Same cleared state; helper releases the RFCOMM link (log: `disconnected`) |
-
-## 8. Reconnect
-
-| # | Step | Expected |
-|---|------|----------|
-| 8.1 | Reconnect Bluetooth on the host, then use the one-tap **Reconnect …** action | Fresh session: probe → DSP channel → identification → telemetry; percentages arrive only from new frames |
-| 8.2 | Kill/restart the helper mid-session (advanced) | UI reports the drop honestly; connecting again works; no duplicate sessions, no runaway retry loop |
-
-## 9. Multi-device
-
-| # | Step | Expected |
-|---|------|----------|
-| 9.1 | Connect device A, note its state; connect device B (scan row or address field) | A’s session is torn down first; B starts from defaults — none of A’s name/battery/L-R/firmware/ANC/capabilities visible |
-| 9.2 | Switch back to A | A re-identified (scan name or persisted recents), correct profile and battery scale, fresh telemetry |
-| 9.3 | A → disconnect → B, and A → disconnect → reconnect A | Same guarantees through the explicit-disconnect path |
-
-## 10. Shutdown
-
-| # | Step | Expected |
-|---|------|----------|
-| 10.1 | Close the window (X) | App exits fully: no tray icon, no background helper, no hidden process (Task Manager: no `SoundControl.exe`, no bundled `python.exe`), port 8765 released |
-| 10.2 | Reopen | Clean start; the helper is spawned again with a **new** per-session token |
-| 10.3 | Reboot the host without launching SoundControl | SoundControl does **not** start automatically (no autostart by policy; any legacy Windows registration is removed at launch) |
-
----
-
-### Recording results
-
-For each section note: device model + SKU, host platform/build, SoundControl version,
-`main.log` excerpt, and pass/fail per row. A row that shows a value the device
-did not report is a defect — file it via Settings → **Report a problem** (the
-generated report redacts token-shaped strings and never claims an upload).
+**Exit criterion:** Nothing is physically verified by this document alone.
+Only dated per-device rows with evidence and reviewed PASS/FAIL/BLOCKED outcomes
+can support a *specific model + firmware + feature* claim. Do not extrapolate
+to other SKUs or silently update code/release status. See
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md),
+[market compatibility](docs/MARKET-COMPATIBILITY.md), and the
+[R50i-specific unexecuted procedure](docs/R50I-R50I-NC-HARDWARE-TEST.md).
