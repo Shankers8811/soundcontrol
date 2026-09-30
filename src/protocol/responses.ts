@@ -22,6 +22,8 @@ export interface DeviceSessionGuard {
   end(): void;
   /** True only when `id` is the currently active session. */
   isActive(id: number): boolean;
+  /** Snapshot for identity-checked asynchronous observers. */
+  current(): number | null;
 }
 
 export function createSessionGuard(): DeviceSessionGuard {
@@ -36,6 +38,7 @@ export function createSessionGuard(): DeviceSessionGuard {
       active = null;
     },
     isActive: (id: number) => active !== null && active === id,
+    current: () => active,
   };
 }
 

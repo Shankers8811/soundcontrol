@@ -267,7 +267,7 @@ export function DevicesPage() {
                         </span>
                         <span className="mt-0.5 flex items-center gap-2 text-[11px] text-faint">
                           {knownProfile && (
-                            <span>{deviceKindLabel(knownProfile.kind)} · {knownProfile.sku}</span>
+                            <span>{deviceKindLabel(knownProfile.kind)} · name matches a protocol profile (unconfirmed)</span>
                           )}
                           {device.mac && <span className="font-mono">{device.mac}</span>}
                           {typeof device.battery === 'number' && (
@@ -351,15 +351,38 @@ export function DevicesPage() {
             </Card>
           )}
 
+          <Card title="Device Connectivity" subtitle="Identification and control-link status for this device">
+            <div className="space-y-1 text-xs text-mute">
+              <p>Device name: <span className="text-ink">{app.connected ? app.deviceName : 'No device'}</span></p>
+              <p>Model code: <span className="font-mono text-ink">{app.identification === 'verified' ? app.profile.sku : 'Not verified'}</span></p>
+              <p>Connection: <span className="text-ink">{app.connected ? 'Connected' : 'Not connected'}</span></p>
+              <p>Identification: <span className="text-ink">{{
+                verified: 'Verified model (protocol profile and state layout)',
+                uncertain: 'Connected but identification uncertain',
+                mismatch: 'Connected with identification mismatch',
+                'not-connected': 'Not connected',
+              }[app.identification]}</span></p>
+              {app.manualCandidate && (
+                <p>Manual candidate: {app.manualCandidate.name} ({app.manualCandidate.sku}) — does not authorize commands</p>
+              )}
+            </div>
+            {app.connected && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => setProfileOpen(true)}>Select verified model</Button>
+                <Button size="sm" disabled={!app.manualCandidate} onClick={app.resetAutomaticDetection}>Reset to automatic detection</Button>
+                <Button size="sm" variant="danger" onClick={() => void app.disconnect()}>Disconnect</Button>
+              </div>
+            )}
+            <p className="mt-2 text-[11px] text-faint">Manual selection is limited to this connection and this Bluetooth address; it cannot enable model-specific commands. An unconfirmed name or state layout is not a device-reported model code.</p>
+          </Card>
+
           {/* Capabilities of the connected/selected model — PART L honesty. */}
           <Card
             title="Model capabilities"
-            subtitle={`${app.profile.name} (${app.profile.sku}) — derived from the documented protocol, per model`}
-            actions={!app.connected && (
-              <Button size="sm" onClick={() => setProfileOpen(true)}>
-                Preview profiles
-              </Button>
-            )}
+            subtitle={app.connected && app.identification !== 'verified'
+              ? 'Model-specific controls unavailable until identification is verified'
+              : `${app.profile.name} (${app.profile.sku}) — derived from documented protocol evidence`}
+
           >
             <CapabilityList />
             {app.profileNote && (
@@ -379,22 +402,20 @@ export function DevicesPage() {
         </div>
       </div>
 
-      {/* Profile picker — disconnected previews/simulator runs only. A live
-          session always stays bound to the identity-derived profile. */}
-      <Modal open={profileOpen} title="Soundcore model profiles" onClose={() => setProfileOpen(false)} width="max-w-2xl">
+      {/* A candidate is scoped to the active MAC; it cannot alter the wire profile. */}
+      <Modal open={profileOpen && app.connected} title="Select a verified model candidate" onClose={() => setProfileOpen(false)} width="max-w-2xl">
         <p className="mb-3 text-xs leading-relaxed text-mute">
-          SoundControl matches the Bluetooth name automatically. These profiles are for a
-          disconnected preview or simulator run; a live device cannot be overridden because a
-          wrong model would send the wrong physical protocol frames.
+          Only evidence-backed registry profiles are listed. Selection does not change the protocol
+          command boundary or verify the device's model; a mismatch stays visible until reset.
         </p>
         <ul className="space-y-1.5">
-          {DEVICES.map((d) => {
-            const current = app.profile.id === d.id;
+          {DEVICES.filter((d) => d.verified).map((d) => {
+            const current = app.manualCandidate?.id === d.id;
             return (
               <li key={d.id}>
                 <button
                   onClick={() => {
-                    app.setProfileId(d.id);
+                    app.selectManualModel(d.id);
                     setProfileOpen(false);
                   }}
                   className={`flex w-full items-center gap-3 rounded-xl border px-4 py-2.5 text-left transition-colors duration-150 ${
@@ -404,11 +425,7 @@ export function DevicesPage() {
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2 text-sm font-semibold text-ink">
                       {d.name} <span className="font-mono text-[11px] text-faint">{d.sku}</span>
-                      {!d.verified && (
-                        <span className="rounded bg-warn/15 px-1.5 py-0.5 text-[9px] font-bold text-warn">
-                          UNVERIFIED
-                        </span>
-                      )}
+
                     </span>
                     <span className="mt-0.5 block text-[11px] text-mute">
                       {deviceKindLabel(d.kind)} ·{' '}
