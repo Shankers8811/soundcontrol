@@ -114,8 +114,8 @@ export async function scanBridgeDevices(fresh = false): Promise<NearbyDevice[]> 
       id: d.mac,
       name: d.name || d.mac,
       mac: d.mac,
-      battery: d.battery ?? null,
-      connected: d.connected === true,
+      battery: typeof d.battery === 'number' && Number.isInteger(d.battery) && d.battery >= 0 && d.battery <= 100 ? d.battery : null,
+      connected: typeof d.connected === 'boolean' ? d.connected : undefined,
       source: 'bridge' as const,
     }));
   } catch {
@@ -172,8 +172,8 @@ export async function scanBridgeDevicesDetailed(fresh = false): Promise<ScanResu
         id: d.mac,
         name: d.name || d.mac,
         mac: d.mac,
-        battery: d.battery ?? null,
-        connected: d.connected === true,
+        battery: typeof d.battery === 'number' && Number.isInteger(d.battery) && d.battery >= 0 && d.battery <= 100 ? d.battery : null,
+        connected: typeof d.connected === 'boolean' ? d.connected : undefined,
         source: 'bridge' as const,
       })),
       error: null,

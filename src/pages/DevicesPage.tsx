@@ -233,7 +233,7 @@ export function DevicesPage() {
             {scan.status === 'results' && (
               <ul className="space-y-2">
                 {scan.devices.map((device) => {
-                  const isActive = app.connected && device.mac !== undefined && device.mac === app.connectedMac;
+                  const isActive = app.connected && device.mac !== undefined && device.mac.toUpperCase() === app.connectedMac?.toUpperCase();
                   const isConnecting = connectingMac === device.mac;
                   const matched = matchDevice(device.name);
                   const knownProfile = matched.id !== 'unknown' ? matched : null;
@@ -368,8 +368,10 @@ export function DevicesPage() {
             </div>
             {app.connected && (
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => setProfileOpen(true)}>Select verified model</Button>
-                <Button size="sm" disabled={!app.manualCandidate} onClick={app.resetAutomaticDetection}>Reset to automatic detection</Button>
+                {app.connectedMac && <>
+                  <Button size="sm" onClick={() => setProfileOpen(true)}>Select verified model</Button>
+                  <Button size="sm" disabled={!app.manualCandidate} onClick={app.resetAutomaticDetection}>Reset to automatic detection</Button>
+                </>}
                 <Button size="sm" variant="danger" onClick={() => void app.disconnect()}>Disconnect</Button>
               </div>
             )}
@@ -382,7 +384,6 @@ export function DevicesPage() {
             subtitle={app.connected && app.identification !== 'verified'
               ? 'Model-specific controls unavailable until identification is verified'
               : `${app.profile.name} (${app.profile.sku}) — derived from documented protocol evidence`}
-
           >
             <CapabilityList />
             {app.profileNote && (
@@ -392,8 +393,7 @@ export function DevicesPage() {
             )}
             {!app.profile.verified && (
               <p className="mt-2 text-[11px] text-faint">
-                This profile has no published capture; it is the closest verified relative and the
-                UI flags it.
+                No verified model-specific profile is available. Only universal read commands are enabled.
               </p>
             )}
           </Card>

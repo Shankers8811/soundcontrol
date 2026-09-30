@@ -600,6 +600,38 @@ try {
   eq('malformed release cannot create a fake Windows installer link', D.releaseAssetLinks({assets: []}), {});
 } finally { rmSync(releaseDir, {recursive: true, force: true}); }
 
+const scanDir = mkdtempSync(join(tmpdir(), 'soundcontrol-scan-check-'));
+try {
+  const out = join(scanDir, 'scan.mjs');
+  const { build: buildScan } = await import('esbuild');
+  await buildScan({ entryPoints: [join(ROOT, 'src/transports/bridge.ts')], bundle: true,
+    format: 'esm', platform: 'node', outfile: out, logLevel: 'error' });
+  const realLocation = globalThis.location;
+  const realWindow = globalThis.window;
+  const realFetchForScan = globalThis.fetch;
+  globalThis.location = {hostname: '127.0.0.1', protocol: 'http:'};
+  globalThis.window = {};
+  try {
+    const bridge = await import(pathToFileURL(out).href);
+    globalThis.fetch = async () => ({ok: true, status: 200, json: async () => ({devices: [
+      {mac: 'AA:BB:CC:DD:EE:FF', name: 'device', battery: 999},
+      {mac: '11:22:33:44:55:66', name: 'second', connected: false, battery: 73},
+    ]})});
+    const scan = await bridge.scanBridgeDevicesDetailed();
+    check('missing host connection property is unknown, never explicit false',
+      scan.error === null && scan.devices[0].connected === undefined && scan.devices[0].battery === null);
+    check('explicit false for another address remains scoped, valid host battery retained',
+      scan.devices[1].connected === false && scan.devices[1].battery === 73);
+    globalThis.fetch = async () => ({ok: true, status: 200, json: async () => ({message: 'bad scan'})});
+    check('malformed scan is an error rather than an empty authoritative enumeration',
+      (await bridge.scanBridgeDevicesDetailed()).error !== null);
+  } finally {
+    globalThis.location = realLocation;
+    globalThis.window = realWindow;
+    globalThis.fetch = realFetchForScan;
+  }
+} finally { rmSync(scanDir, {recursive: true, force: true}); }
+
 /* ------------------------------------------- update checker (Settings → Updates) */
 
 // Bundle src/lib/reporting.ts twice — once with the real build-time repo URL,
