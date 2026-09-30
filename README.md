@@ -8,7 +8,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
   <img src="https://img.shields.io/badge/Windows%20%2F%20Linux%20App-Electron%20%7C%20Bluetooth-0084ff" alt="Windows and Linux app">
   <a href="https://github.com/Shankers8811/soundcontrol/releases/latest"><img src="https://img.shields.io/github/v/release/Shankers8811/soundcontrol?label=latest%20release&color=0084ff" alt="Latest release"></a>
-  <a href="https://github.com/Shankers8811/soundcontrol/actions/workflows/test.yml"><img src="https://github.com/Shankers8811/soundcontrol/actions/workflows/test.yml/badge.svg?branch=main" alt="Tests"></a>
+  <a href="https://github.com/Shankers8811/soundcontrol/actions/workflows/tests.yml"><img src="https://github.com/Shankers8811/soundcontrol/actions/workflows/tests.yml/badge.svg?branch=main" alt="Tests"></a>
   <a href="https://github.com/Shankers8811/soundcontrol/actions/workflows/build-windows.yml"><img src="https://github.com/Shankers8811/soundcontrol/actions/workflows/build-windows.yml/badge.svg?branch=main" alt="Windows build"></a>
   <a href="https://github.com/Shankers8811/soundcontrol/actions/workflows/smoke-windows.yml"><img src="https://github.com/Shankers8811/soundcontrol/actions/workflows/smoke-windows.yml/badge.svg?branch=main" alt="Windows Desktop Smoke Test"></a>
 </p>
@@ -19,7 +19,7 @@ SoundControl is a **Windows and Linux desktop companion for Soundcore devices**.
 
 Live status for `main`:
 
-- [Tests](https://github.com/Shankers8811/soundcontrol/actions/workflows/test.yml) — live
+- [Tests](https://github.com/Shankers8811/soundcontrol/actions/workflows/tests.yml) — live
 - [Windows Build](https://github.com/Shankers8811/soundcontrol/actions/workflows/build-windows.yml) — live
 - [Windows Desktop Smoke Test](https://github.com/Shankers8811/soundcontrol/actions/workflows/smoke-windows.yml) — live
 
