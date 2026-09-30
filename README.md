@@ -67,9 +67,13 @@ paired with the host computer** through a small local Bluetooth bridge:
 2. Launch SoundControl → **Devices**. The page automatically polls the host Bluetooth stack and
    lists detected devices without requiring a manual scan. Select a Soundcore device and press
    **Connect** to open its RFCOMM control channel. **Device Connectivity** displays the
-   connection and identification status. Its verified-profile manual candidate picker is limited
-   to the connected Bluetooth address and this session: it cannot override the command gates,
-   and **Reset to automatic detection** removes that candidate. The **Disconnect** button closes
+   connection and identification status. A verified model is shown automatically by default;
+   **Change device model** is a secondary troubleshooting action, not a required setup step.
+   When identification is uncertain or mismatched, **Select model manually** offers only existing
+   verified protocol profiles. A manual candidate is limited to the connected Bluetooth address
+   and this session: it does not verify the physical device or override command gates. A later
+   confirmed automatic identity takes precedence, and **Reset to automatic detection** removes
+   a candidate. The **Disconnect** button closes
    the session; SoundControl also watches that exact host Bluetooth address and clears telemetry
    after a confirmed host-side disconnect. If the list stays empty, use the **Connect by
    address** field (the address appears in the host Bluetooth device details).

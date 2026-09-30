@@ -62,7 +62,7 @@ try {
         export { DEVICES, UNKNOWN_PROFILE } from './src/protocol/devices.ts';
         export { DeviceTypeVisual } from './src/components/DeviceTypeVisual.tsx';
         export { DashboardPage } from './src/pages/DashboardPage.tsx';
-        export { DevicesPage } from './src/pages/DevicesPage.tsx';
+        export { DevicesPage, ManualModelOptions } from './src/pages/DevicesPage.tsx';
         export { EqualizerPage } from './src/pages/EqualizerPage.tsx';
         export { ControlsPage } from './src/pages/ControlsPage.tsx';
         export { SettingsPage } from './src/pages/SettingsPage.tsx';
@@ -160,8 +160,7 @@ check('real scan surface', devices.includes('Paired Bluetooth devices') && devic
 check('helper status starts as checking (no fake "online")', devices.includes('Checking') || devices.includes('checking'));
 check('manual MAC connect form', devices.includes('Connect by address') && devices.includes('AA:BB:CC:DD:EE:FF'));
 check('capability matrix lists the honest volume/gesture facts', devices.includes('no volume command exists in the protocol') && devices.includes('no button-write command is publicly documented'));
-// Disconnected, the override control honestly becomes read-only preview —
-// you cannot override the profile of a device that is not connected.
+// A disconnected device cannot have a manual candidate attached to it.
 check('Device Connectivity distinguishes disconnected state and does not offer manual selection before connection', devices.includes('Device Connectivity') && devices.includes('Identification:') && devices.includes('Not connected') && !devices.includes('Select verified model'));
 
 const connectedView = (Component, changes) => render(React.createElement(AppProvider, null,
@@ -187,14 +186,35 @@ const uncertainDash = connectedView(M.DashboardPage, { identification: 'uncertai
 check('unconfirmed name does not expose model code or invent S/N',
   uncertainDash.includes('Model code') && uncertainDash.includes('Not verified') && !uncertainDash.includes('DEVICE-SERIAL'));
 const connectedDevices = connectedView(M.DevicesPage, {});
-check('connected Device Connectivity has identification, manual selection, automatic reset and Disconnect',
-  connectedDevices.includes('Verified model') && connectedDevices.includes('Select verified model') &&
-  connectedDevices.includes('Reset to automatic detection') && connectedDevices.includes('Disconnect'));
-const mismatchDevices = connectedView(M.DevicesPage, { identification: 'mismatch', manualCandidate: M.DEVICES.find((d) => d.id === 'p20i') });
-check('manual candidate mismatch cannot be presented as verified device code',
-  mismatchDevices.includes('Connected with identification mismatch') && mismatchDevices.includes('does not authorize commands') && mismatchDevices.includes('Not verified'));
+check('verified automatic model is primary and does not require manual selection',
+  connectedDevices.includes('Liberty 4 NC') && connectedDevices.includes('A3947') &&
+  connectedDevices.includes('Automatically verified') && connectedDevices.includes('Change device model') &&
+  !connectedDevices.includes('Select model manually') && connectedDevices.includes('Disconnect'));
+const manuallySuggested = connectedView(M.DevicesPage, {
+  manualCandidate: M.DEVICES.find((d) => d.id === 'p20i'),
+});
+check('explicit manual suggestion cannot replace verified automatic identity',
+  manuallySuggested.includes('Automatically verified') && manuallySuggested.includes('A3947') &&
+  manuallySuggested.includes('Manual suggestion') && manuallySuggested.includes('ignored') &&
+  manuallySuggested.includes('Reset to automatic detection'));
+const mismatchDevices = connectedView(M.DevicesPage, {
+  identification: 'mismatch', manualCandidate: M.DEVICES.find((d) => d.id === 'p20i'),
+});
+check('tentative mismatch presents manual recovery without claiming hardware verification',
+  mismatchDevices.includes('Connected with identification mismatch') && mismatchDevices.includes('Select model manually') &&
+  mismatchDevices.includes('does not verify the physical device') && mismatchDevices.includes('Not verified'));
 const unknownDevices = connectedView(M.DevicesPage, { identification: 'uncertain' });
-check('uncertain identification is explicit', unknownDevices.includes('Connected but identification uncertain'));
+check('uncertain device offers manual recovery, not an invented model code',
+  unknownDevices.includes('Connected but identification uncertain') && unknownDevices.includes('Select model manually') &&
+  unknownDevices.includes('Unknown Soundcore device') && unknownDevices.includes('Not verified'));
+const manualOptions = renderToStaticMarkup(React.createElement(M.ManualModelOptions, { currentId: null, onSelect: () => {} }));
+const unverifiedOption = M.DEVICES.find((d) => !d.verified && M.DEVICES.every((v) => v === d || v.sku !== d.sku));
+check('recovery selector uses verified registry entries with name, code, status and capabilities',
+  manualOptions.includes('Liberty 4 NC') && manualOptions.includes('A3947') &&
+  manualOptions.includes('Verified protocol profile') && manualOptions.includes('ANC / transparency'));
+check('selector excludes unverified profiles and has no arbitrary model-code input',
+  Boolean(unverifiedOption) && !manualOptions.includes(`>${unverifiedOption.sku}<`) && !manualOptions.includes('<input'));
+
 const limitedCaps = M.deriveCapabilities(M.UNKNOWN_PROFILE);
 const uncertainControls = connectedView(M.ControlsPage, { identification: 'uncertain', capabilities: limitedCaps });
 const mismatchControls = connectedView(M.ControlsPage, { identification: 'mismatch', capabilities: limitedCaps });

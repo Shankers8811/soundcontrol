@@ -29,7 +29,7 @@ import {
 import { presetById, type EqPreset } from '../protocol/presets';
 import { requiredStateLength, withDeviceBoundary } from '../protocol/modelRegistry';
 import { createSessionGuard, isCurrentTransportSession, parseDeviceToggles } from '../protocol/responses';
-import { identificationState, verifiedCandidate, type IdentificationState } from './identification';
+import { candidateForAddress, discardCandidateOnAutomaticVerification, identificationState, verifiedCandidate, type IdentificationState } from './identification';
 import { hostDisconnectObservation } from './hostDisconnect';
 import { isTransportBusyError } from '../lib/transportErrors';
 import { connectBridge, scanBridgeDevicesDetailed } from '../transports/bridge';
@@ -203,13 +203,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [transportLabel, setTransportLabel] = useState('Not connected');
   const [deviceName, setDeviceName] = useState('No device');
   const [connectedMac, setConnectedMac] = useState<string | null>(null);
+  const connectedMacRef = useRef<string | null>(null);
   const [profile, setProfile] = useState<DeviceProfile>(matchDevice('R50i'));
   const profileRef = useRef(profile);
   const [confirmedLayout, setConfirmedLayout] = useState(false);
   const confirmedLayoutRef = useRef(false);
   const manualMismatchRef = useRef(false);
   const [manualByAddress, setManualByAddress] = useState<Record<string, string>>({});
-  const manualCandidate = connectedMac ? verifiedCandidate(manualByAddress[connectedMac.toUpperCase()] ?? '') : null;
+  const manualCandidate = candidateForAddress(manualByAddress, connectedMac);
   const identification = identificationState(connected, profile, confirmedLayout, manualCandidate);
   const [battery, setBattery] = useState<BatteryState>({ left: null, right: null });
   // Persisted recent-device list. Sanitized on load: only well-formed
@@ -457,7 +458,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         sawBatteryFrame = true;
         confirmedLayoutRef.current = true;
+        manualMismatchRef.current = false;
         setConfirmedLayout(true);
+        // Automatic evidence wins even if an earlier manual candidate disagreed.
+        // The guarded RX belongs to the current session; drop only its MAC's
+        // candidate, never an unrelated device's identity.
+        const confirmedAddress = connectedMacRef.current;
+        setManualByAddress((prev) => discardCandidateOnAutomaticVerification(prev, confirmedAddress));
         rawLeft = payload[offsets.batteryLeft];
         rawRight = offsets.batteryRight === null ? undefined : payload[offsets.batteryRight];
         // The case byte stays a wire fact (see PROTOCOL.md) but is never
@@ -767,6 +774,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
    */
   const clearDeviceState = useCallback(() => {
     setConnected(false);
+    connectedMacRef.current = null;
     setConnectedMac(null);
     confirmedLayoutRef.current = false;
     manualMismatchRef.current = false;
@@ -901,7 +909,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           clearDeviceState();
           return;
         }
-        setConnectedMac(mac || null);
+        connectedMacRef.current = mac ? mac.toUpperCase() : null;
+        setConnectedMac(connectedMacRef.current);
         // Settings persistence: remember the last few devices for one-tap
         // reconnect on the next launch.
         if (mac) {
@@ -1304,7 +1313,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const selectManualModel = useCallback((id: string) => {
     const candidate = verifiedCandidate(id);
     if (!candidate || !connected || !connectedMac) return;
-    manualMismatchRef.current = profileRef.current.verified && candidate.id !== profileRef.current.id;
+    // A confirmed automatic model cannot be demoted by an explicit suggestion.
+    manualMismatchRef.current = !confirmedLayoutRef.current && profileRef.current.verified && candidate.id !== profileRef.current.id;
     setManualByAddress((prev) => ({ ...prev, [connectedMac.toUpperCase()]: candidate.id }));
     // Deliberately do NOT alter profileRef, capabilities, telemetry offsets,
     // or the command boundary. A human selection cannot verify a wire layout.
