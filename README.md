@@ -8,10 +8,22 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
   <img src="https://img.shields.io/badge/Windows%20%2F%20Linux%20App-Electron%20%7C%20Bluetooth-0084ff" alt="Windows and Linux app">
   <a href="https://github.com/Shankers8811/soundcontrol/releases/latest"><img src="https://img.shields.io/github/v/release/Shankers8811/soundcontrol?label=latest%20release&color=0084ff" alt="Latest release"></a>
+  <a href="https://github.com/Shankers8811/soundcontrol/actions/workflows/test.yml"><img src="https://github.com/Shankers8811/soundcontrol/actions/workflows/test.yml/badge.svg?branch=main" alt="Tests"></a>
   <a href="https://github.com/Shankers8811/soundcontrol/actions/workflows/build-windows.yml"><img src="https://github.com/Shankers8811/soundcontrol/actions/workflows/build-windows.yml/badge.svg?branch=main" alt="Windows build"></a>
+  <a href="https://github.com/Shankers8811/soundcontrol/actions/workflows/smoke-windows.yml"><img src="https://github.com/Shankers8811/soundcontrol/actions/workflows/smoke-windows.yml/badge.svg?branch=main" alt="Windows Desktop Smoke Test"></a>
 </p>
 
 SoundControl is a **Windows and Linux desktop companion for Soundcore devices**. It uses a local Bluetooth bridge and evidence-backed protocol profiles for model-aware controls, battery telemetry and diagnostics. Supported controls depend on the connected model: unsupported commands remain blocked, and manual profile selection cannot bypass the model gate. Devices must already be paired and connected through the host's Bluetooth settings; some profiles are read-only or catalog-only. This is not an Android app.
+
+## Build Status
+
+Live status for `main`:
+
+- [Tests](https://github.com/Shankers8811/soundcontrol/actions/workflows/test.yml) — live
+- [Windows Build](https://github.com/Shankers8811/soundcontrol/actions/workflows/build-windows.yml) — live
+- [Windows Desktop Smoke Test](https://github.com/Shankers8811/soundcontrol/actions/workflows/smoke-windows.yml) — live
+
+The repository currently requires all three checks to pass before a validated `main` change is considered ready. CI is automated validation; it is not physical Soundcore-device or Windows audio-regression validation.
 
 **Install or download:** Linux AppImage and Debian packages are available below. The latest published release has **no signed Windows installer**; the Windows download remains unavailable until an Authenticode-verified release is published. The Windows Build badge above shows live GitHub Actions status for `main`, not a signed-release indicator.
 
@@ -144,28 +156,30 @@ The detailed follow-up per-model query/write/ACK/readback audit is in
 
 This is a Windows/Linux app, not an Android build. A ✅ denotes a documented, implemented model-gated feature; the case readout does not add a write. A ⚠️ means evidence exists but the desktop lifecycle is incomplete; ❌ means not safely implemented. See [PROTOCOL.md](PROTOCOL.md) for confidence and lifecycle details. The [per-model investigation matrix](docs/ANDROID-PARITY-INVESTIGATION.md) distinguishes VERIFIED/IMPLEMENTED readouts from VERIFIED BUT UNSAFE/INCOMPLETE writes, PARTIAL references, UNKNOWN protocols and UNSUPPORTED cross-model guesses.
 
-| Feature | Official mobile app (comparison only) | SoundControl for Windows & Linux |
+| **Feature** | **Official soundcore mobile app (comparison only; model-dependent)** | **SoundControl for Windows & Linux** |
 |---|:---:|:---:|
-| **Ambient Sound (ANC)** | ✅ 5-Level Manual, Adaptive, Multi-Scene | ✅ Real `06:81` frames with per-model layouts: classic four-byte modes, Space/Q45 six-byte modes, and model-specific TWS six-/seven-byte modes; only profiles whose evidence exposes scenes, vocal transparency, adaptive, or wind controls render them |
-| **Transparency Mode** | ✅ Fully Transparent & Talk Mode | ✅ Fully Transparent & Talk Mode (vocal byte where the model documents one) |
-| **Equalizer Presets** | ✅ 22 Soundcore Curated Presets | ✅ All 22 presets on EQ-capable models (`02:81` / `02:83` / D1202 `03:87` disabled-HearID form); other HearID models get a disabled page with the reason — never a guessed frame |
-| **Custom Graphic EQ** | ✅ 8-Band Slider Curve (-6 to +6 dB) | ✅ 8-band −6…+6 dB curve sent as the real `FE FE` custom preset (same model gating) |
-| **Per-earbud connection state** | ✅ Live per-side status | ✅ Compact Dashboard battery summary derived from the device’s own battery bytes (`0xFF` = that side is not connected); unknown side status stays distinct from control-link disconnection |
-| **BassUp™ Technology** | ✅ Dynamic Low-End Boost | ⚠️ No verified generic BassUp toggle/`02:82` capture; Bass Booster/Reducer are EQ presets. Space Q45’s *current* BassUp double-press assignment is displayed read-only; A3945 shows its separate 01:01 BassUp boolean read-only (not an EQ preset), but has no verified setter |
-| **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ⚠️ No desktop audiogram/test workflow; model-specific HearID EQ reference writes are not exposed because they risk overwriting personalized curves. D1202 factory presets use the documented disabled-HearID form |
-| **Superior Sleep** | ✅ Ambient White Noise Mixer | ⚠️ No mixer in this desktop app. Sleep A30 (D1301) now reads its device-reported after-sleep Bluetooth/local-audio choice from captured `01:01` state, read-only. Timers/alarms have separate reference queries and remain unimplemented; this app sends none of their writes |
-| **Touch Remapping** | ✅ 1-Tap, 2-Tap, 3-Tap, Hold per ear | ⚠️ Public model-specific `04:81` writes exist, including a Space Q45 double-press test vector; this app has not implemented their per-SKU read/verify lifecycle, so editing remains disabled and both TX allowlists reject them; Q45’s double-press and A3945’s six model-specific assignments are shown read-only |
-| **Game Mode** | ✅ 80ms Low Latency | ✅ Real `01:87` toggle (`10:85` on Liberty 4 NC / Liberty 5) |
-| **LDAC High-Res** | ✅ Sony 990 kbps Codec Flip | ✅ Real `01:7F` query + `01:FF` enable/disable |
-| **Dual Connection** | ✅ Multipoint PC + Phone | ✅ Real `0B:84` toggle |
-| **3D Surround / spatial modes** | ✅ Spatial audio toggle and additional modes | ✅ `02:86` only on documented models; A3954 music/podcast/movie/gaming + fixed/head-tracking and D1202 music/movie/gaming are **read-only state displays**, not editable modes |
-| **Device Volume** | ✅ In-app slider | ⚠️ No desktop device-volume control: an A3116 Motion+ speaker-specific `01:81` reference write exists, but SoundControl has no validated model-gated readback path and never sends it to earbuds |
-| **Safe Volume** | ✅ Decibel Limiter & Warnings | ⚠️ Public `20:82 [enabled, limit]` (75–100 dB in 5 dB steps) exists for specific SKUs; current settings shown read-only on A3040/A3954/D1202, **no editing** without model-scoped post-write/reconnect verification and independent TX gates; not equivalent to host volume |
-| **Factory reset** | ✅ | ⚠️ `01:85` is documented only for Motion+ (A3116); no A3116 profile here, and the helper blocks reset (the speaker also uses a different checksum policy) |
-| **Capability gating** | — | ✅ Every page adapts per model: unsupported controls show a disabled state with the protocol reason |
-| **Diagnostics / Console**| ❌ Hidden / Unavailable | ✅ Live Hex Frame Inspector & TX/RX Logger |
-| **Battery telemetry** | ✅ Live L/R/Case Levels | ✅ L/R levels + 30 s bud refresh; read-only case charge from the verified `01:01` state on 11 documented SKUs only (last known this session, not refreshed by `01:03`); `0xFF`/invalid clears case. Host % is separate; no over-ear/case guesses |
-| **Capture decoding** | ❌ Hidden / Unavailable | ✅ Base64→Hex + BLE→RFCOMM Map in Diagnostics |
+| **Ambient Sound (ANC)** | Model-dependent ANC, adaptive modes and scene controls | ✅ Real `06:81` frames with per-model layouts: classic 4-byte, Space/Q45 6-byte, and model-specific TWS 6-/7-byte forms. Only fields documented for the exact profile are exposed |
+| **Transparency Mode** | Model-dependent transparency controls; some models expose fully transparent and vocal/talk modes | ✅ Real `06:81` transparency control where the exact profile documents it; vocal/fully-transparent sub-modes are only shown when that model has the corresponding field |
+| **Equalizer Presets** | Up to 22 factory presets on supported devices | ✅ 22 captured factory presets on EQ-capable profiles using the model's real `02:81`, `02:83`, or D1202 `03:87` disabled-HearID form; personalized HearID writes remain disabled |
+| **Custom Graphic EQ** | Custom EQ on supported devices | ✅ 8-band −6…+6 dB curve using the real `FE FE` custom frame on profiles that document custom presets; factory-preset-only profiles such as A3949 keep custom editing disabled |
+| **Per-earbud connection state** | Live left/right status on supported TWS devices | ✅ Device-reported battery/availability state; `0xFF` means that side is not connected. Unknown side state stays distinct from host control-link disconnection |
+| **BassUp™ Technology** | Model-dependent BassUp control | ⚠️ No verified generic BassUp setter/`02:82`. Space Q45 BassUp double-press assignment and A3945's separate `01:01` BassUp boolean are displayed read-only; neither is exposed as a writable BassUp control |
+| **HearID Sound** | HearID hearing test and personalized sound on supported models | ⚠️ No desktop audiogram/test workflow. Model-specific personalized HearID writes are not exposed because they lack a safe read/verify/reconnect lifecycle; D1202 factory presets use its documented disabled-HearID form |
+| **Superior Sleep** | Sleep-specific audio/timer features on supported Sleep models | ⚠️ No sleep mixer. Sleep A30 (D1301) reads the device-reported after-sleep Bluetooth/local-audio choice from `01:01`, read-only. Timer/alarm queries are documented but no timer/alarm writes are sent |
+| **Touch Remapping** | Model-dependent button/touch customization | ⚠️ Public model-specific `04:81`/related writes exist, but SoundControl has no validated per-SKU read/verify/reconnect lifecycle. Editing remains disabled; Q45 double-press and A3945's six assignments are read-only observations |
+| **Game Mode** | Model-dependent low-latency/Game Mode | ✅ Real `01:87` toggle, with the `10:85` Liberty 4 NC/Liberty 5 variant where documented |
+| **LDAC High-Res** | LDAC on supported Android-compatible models | ✅ Real `01:7F` query + `01:FF` enable/disable on profiles that document LDAC |
+| **Dual Connection** | Multipoint on supported models | ✅ Real `0B:84` toggle on profiles that document Dual Connection |
+| **3D Surround / spatial modes** | Spatial Audio on supported models; modes vary by product | ⚠️ `02:86` only on documented models. A3954 music/podcast/movie/gaming plus fixed/head-tracking and D1202 music/movie/gaming are currently **read-only state displays**, not editable modes |
+| **Device Volume** | Model-dependent app/device volume controls | ⚠️ No desktop device-volume control. The A3116 Motion+ `01:81` reference write is speaker-specific, has no supported A3116 profile here, and is blocked; SoundControl never sends it to earbuds |
+| **Safe Volume** | Safe Volume / volume-limit controls on supported models | ⚠️ Public `20:82 [enabled, limit]` (75–100 dB in 5 dB steps) exists for specific SKUs. Current settings are shown read-only on A3040/A3954/D1202; no editing without model-scoped post-write/reconnect verification. This is not host volume |
+| **Factory reset** | Reset controls are available through the mobile app for supported devices | ⚠️ `01:85` is documented only for Motion+ (A3116); no A3116 profile exists here and the helper blocks the destructive frame |
+| **Capability gating** | UI varies by connected model | ✅ Every desktop page adapts to the verified model; unsupported controls show a disabled state with the protocol reason |
+| **Diagnostics / Console** | Not exposed as a raw protocol console | ✅ Live Hex Frame Inspector and TX/RX Logger |
+| **Battery telemetry** | Live L/R/case levels where supported by the device | ✅ L/R levels with 30 s bud refresh; read-only case charge from the verified `01:01` state on 11 documented SKUs only. `0xFF`/invalid clears case; host Bluetooth % is separate and never used to invent case/over-ear telemetry |
+| **Capture decoding** | Not exposed as a raw capture decoder | ✅ Base64→Hex + BLE→RFCOMM map in Diagnostics |
+
+This table describes **protocol-backed desktop capabilities**, not physical-device certification. A `✅` means the feature is implemented behind an exact model/capability gate; it does not mean SoundControl has physically validated that SKU. A `⚠️` means reference/read-only evidence exists but the desktop write lifecycle is incomplete or intentionally withheld.
 
 ---
 
