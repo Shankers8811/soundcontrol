@@ -34,6 +34,8 @@ try {
         export * from './src/protocol/devices.ts';
         export * from './src/protocol/modelRegistry.ts';
         export * from './src/protocol/codec.ts';
+        export { parseCaseBatteryStateFrame } from './src/protocol/responses.ts';
+        export { parseObservedFeatures, EMPTY_OBSERVED } from './src/protocol/observedFeatures.ts';
       `,
       resolveDir: ROOT,
       loader: 'ts',
@@ -53,7 +55,7 @@ try {
   const profiles = M.DEVICES;
   const simulatedProfiles = profiles.filter((profile) => profile.verified);
   const unverifiedProfiles = profiles.filter((profile) => !profile.verified);
-  check('registered profile count is stable', profiles.length === 47, `${profiles.length}`);
+  check('registered profile count is stable', profiles.length === 48, `${profiles.length}`);
   check('documented profiles have simulator fixtures', simulatedProfiles.length > 0);
   check('fixture SKUs are unique', new Set(simulatedProfiles.map((p) => p.sku)).size === simulatedProfiles.length);
   for (const profile of unverifiedProfiles) {
@@ -90,6 +92,22 @@ try {
     if (profile.state.batteryRight !== null) {
       check(`${profile.sku}: right battery fixture is 4`, payload[profile.state.batteryRight] === 4);
     }
+
+    if (profile.state.batteryCase !== null) {
+      const scale = profile.caseBatteryMax;
+      check(`${profile.sku}: case field has a separately documented scale`, Number.isInteger(scale) && scale > 0);
+      check(`${profile.sku}: case fixture decodes only from validated full state`, M.parseCaseBatteryStateFrame(state, profile) === Math.round((3 + (profile.caseBatteryOffset ?? 0)) * 100 / scale));
+    } else {
+      check(`${profile.sku}: model without a case never decodes one`, M.parseCaseBatteryStateFrame(state, profile) === null);
+    }
+
+    const observed = M.parseObservedFeatures(state, profile);
+    if (profile.sku === 'A3040') check('A3040 simulator provides only model-scoped readouts', observed?.q45DoublePress === 'BassUp' && observed?.safeVolume?.limitDb === 90);
+    else if (profile.sku === 'A3954') check('A3954 simulator includes spatial state + limiter', observed?.spatial?.tracking === 'Fixed' && observed?.safeVolume?.limitDb === 95);
+    else if (profile.sku === 'D1202') check('D1202 simulator includes spatial state + limiter', observed?.spatial?.mode === 'Music' && observed?.safeVolume?.limitDb === 90);
+    else if (profile.sku === 'A3945') check('A3945 simulator has labelled synthetic BassUp, EQ, game and six actions', observed?.lifeNoteBassUp === true && observed?.lifeNoteEq === 'Soundcore Signature' && observed?.lifeNoteGaming === true && observed?.lifeNoteButtons?.length === 6);
+    else if (profile.sku === 'D1301') check('D1301 simulator has synthetic post-sleep setting only', observed?.sleepAfter === 'Pause audio' && observed?.lifeNoteBassUp === null);
+    else check(`${profile.sku}: no synthetic observed features on unrelated SKU`, JSON.stringify(observed) === JSON.stringify(M.EMPTY_OBSERVED));
 
     if (profile.ancLayout !== 'none') {
       const sound = frames.find((frame) => frame[5] === 0x06 && frame[6] === 0x01 && frame.length > 10);

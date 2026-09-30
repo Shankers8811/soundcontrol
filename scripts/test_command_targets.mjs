@@ -260,6 +260,26 @@ check(
   `accepted: ${badRejects.join('; ')}`,
 );
 
+// Valid frame structure is essential here: malformed frames would pass this
+// test even if someone accidentally added the researched opcode to the TX set.
+function validCandidate(cat, typ, payload = []) {
+  const total = payload.length + 10;
+  const body = [8, 238, 0, 0, 0, cat, typ, total & 255, total >> 8, ...payload];
+  return Uint8Array.from([...body, body.reduce((sum, byte) => (sum + byte) & 255, 0)]);
+}
+for (const [key, payload] of [
+  ['04:81', [0, 0, 7]], ['04:82', []], ['04:83', [0, 2, 1]],
+  ['04:84', [0, 0, 7]], ['04:87', [1, 0, 7]],
+  ['20:81', [0]], ['20:82', [1, 90]], ['01:81', [7]],
+  ['10:81', [1, 2, 2]], ['12:81', [2]], ['07:87', [0, 0, 1, 0]],
+  ['14:81', [1, 1, 48, 2, 0, 50, 10]], ['14:82', [1]],
+  ['15:85', [255, 255, 255, 1]], ['15:8F', [1]],
+]) {
+  const [cat, typ] = key.split(':').map((part) => Number.parseInt(part, 16));
+  const result = M.validateOutboundFrame(validCandidate(cat, typ, payload));
+  check(`${key} valid researched write still blocked in renderer`, !result.ok && result.reason.includes(key), result.reason);
+}
+
 const unknownRes = M.validateOutboundFrame(frameBytes(0x07, 0x81));
 check(
   'rejection reason names the unrecognized command',

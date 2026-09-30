@@ -124,11 +124,12 @@ export function SettingsPage() {
                     ['Dual connection', caps.supportsDual],
                     ['LDAC', caps.supportsLdac],
                     ['Per-earbud battery', caps.supportsPerEarbudBattery],
+                    ['Charging case (01:01 only)', app.identification === 'verified' && app.profile.caseBatteryMax !== undefined],
                     ['Firmware info', caps.supportsFirmwareInfo],
                     ['Factory reset', caps.supportsFactoryReset],
                     // Protocol-wide constants — honest about what NO model gets:
-                    ['Volume (no protocol command)', false],
-                    ['Gesture writes (undocumented)', false],
+                    ['Volume (no validated readback)', false],
+                    ['Gesture writes (not integrated)', false],
                   ]}
                 />
               </div>

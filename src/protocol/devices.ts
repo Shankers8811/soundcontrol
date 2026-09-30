@@ -302,6 +302,19 @@ const LIFE_Q_STATE: StateOffsets = {
   soundModeLength: 4,
 };
 
+/** A3945 Life Note 3S: Tws(2) + dual_battery(4) + firmware(10) +
+ * serial(16) + EQ<2,10>(22) + six button pairs(12) + touch/wear/game(3)
+ * + case(1) + BassUp(1) + color(1) = 72 bytes. No write capability is
+ * inferred from this parse chain (a3945/packets/state_update_packet.rs). */
+const LIFE_NOTE_3S_STATE = twsState({
+  minimumLength: 72,
+  exactLength: 72,
+  eqPresetId: 32,
+  eqBands: { at: 34, count: 20 },
+  batteryCase: 69,
+  gaming: 68,
+});
+
 const C30I_STATE = twsLevelState({
   // A3330/C30i's level-only head is followed by the case byte at 35. The
   // late fields below are the offsets in the captured 01:01 state payload;
@@ -363,16 +376,11 @@ const P31I_STATE = twsState({
   dualConnections: 131,
 });
 
-// Sleep A30 has the standard two-byte battery head, but unlike the level-only
-// catalog rows its documented identity block begins at firmware 6 / serial 16
-// and exposes no charging bytes or case battery.
-const SLEEP_A30_STATE = twsState({
-  batteryChargingLeft: null,
-  batteryChargingRight: null,
-  batteryCase: null,
-  firmware: { at: 6, length: 10 },
-  serial: { at: 16, length: 16 },
-});
+// D1301/Sleep A30's captured 01:01 bodies have Tws(2), DualBatteryLevel(2),
+// firmware(10) at 4, serial(16) at 14, then 120 further bytes. The upstream
+// three-option post-sleep audio captures are 150 bytes (action 144, enable 148).
+// Do not confirm this layout on the earlier partial 32-byte identity prefix.
+const SLEEP_A30_STATE = twsLevelState({ minimumLength: 150, exactLength: 150 });
 
 /**
  * Current catalog rows whose exact packet family is not public. They still
@@ -414,6 +422,30 @@ function catalogOnly(
 
 export const DEVICES: DeviceProfile[] = [
   {
+    id: 'life-note-3s-readonly',
+    name: 'Life Note 3S (read-only)',
+    sku: 'A3945',
+    kind: 'earbuds',
+    family: 'tws',
+    gaming: false,
+    ancLevels: false,
+    scenes: false,
+    ldac: false,
+    dual: false,
+    surround: false,
+    wind: false,
+    transparency: false,
+    batteryMax: 5,
+    names: ['Life Note 3S', 'A3945', 'soundcore Life Note 3S'],
+    ancLayout: 'none',
+    eqCommand: null,
+    customEq: false,
+    caseBatteryMax: 5,
+    state: LIFE_NOTE_3S_STATE,
+    source: `${OPENSCQ30} (a3945/packets/state_update_packet.rs): complete 72-byte 01:01 parse chain; case(69), gaming(68), BassUp(70), six button pairs(54..65). 04:81/04:84 and EQ writes intentionally blocked`,
+    verified: true,
+  },
+  {
     id: 'c30i',
     name: 'C30i',
     sku: 'A3330',
@@ -432,6 +464,7 @@ export const DEVICES: DeviceProfile[] = [
     ancLayout: 'none',
     eqCommand: '02:83-single',
     customEq: true,
+    caseBatteryMax: 5,
     state: C30I_STATE,
     source: `${OPENSCQ30} (a3330): dual_battery_level(5), case_battery_level(5), equalizer_with_drc (single channel), dual_connections; no sound-mode module`,
     verified: true,
@@ -459,6 +492,8 @@ export const DEVICES: DeviceProfile[] = [
     ancLayout: 'none',
     eqCommand: '02:83-dual',
     customEq: true,
+    caseBatteryMax: 10,
+    caseBatteryOffset: 1,
     state: AEROCLIP_STATE,
     source: `${OPENSCQ30} (a3388): dual_battery_level_custom(max 10, offset 1), case_battery_level_custom(max 10, offset 1), one ten-band state EQ block with two-channel outbound 02:83, dual_connections; surround is parsed read-only and has no documented write module`,
     verified: true,
@@ -506,6 +541,7 @@ export const DEVICES: DeviceProfile[] = [
     ancLayout: 'tws-a3968',
     eqCommand: null,
     customEq: false,
+    caseBatteryMax: 5,
     state: SPORT_X20_STATE,
     source: `${OPENSCQ30} (a3968): six-byte named sound modes, dual_battery(5), case_battery_level(5), dual_connections and surround_sound; custom HearID EQ is not emitted by this app`,
     verified: true,
@@ -557,6 +593,8 @@ export const DEVICES: DeviceProfile[] = [
     // personalised HearID curves remain intentionally unavailable.
     eqCommand: '03:87',
     customEq: false,
+    caseBatteryMax: 10,
+    caseBatteryOffset: 1,
     state: P31I_STATE,
     source: `${OPENSCQ30} (d1202/d1202c): eight-byte named sound modes, dual_battery_custom(max 10, offset 1), case battery, LDAC, dual_connections and 03:87 two-channel EQ with disabled HearID factory-preset writes; personalised HearID remains read-only`,
     verified: true,
@@ -680,6 +718,7 @@ export const DEVICES: DeviceProfile[] = [
     // A3947 writes EQ only via the model-specific 03:87 HearID frame.
     eqCommand: null,
     customEq: false,
+    caseBatteryMax: 5,
     state: LIBERTY4NC_STATE,
     source: `${OPENSCQ30} (a3947): a3947_sound_modes, case_battery_level(5), EQ over 03:87 only`,
     verified: true,
@@ -703,6 +742,7 @@ export const DEVICES: DeviceProfile[] = [
     ancLayout: 'tws-l3pro',
     eqCommand: null,
     customEq: false,
+    caseBatteryMax: 5,
     state: LIBERTY3PRO_STATE,
     source: `${OPENSCQ30} (a3952): a3952_sound_modes, ldac, equalizer_with_custom_hear_id_tws`,
     verified: true,
@@ -726,6 +766,7 @@ export const DEVICES: DeviceProfile[] = [
     ancLayout: 'tws-a3936',
     eqCommand: null,
     customEq: false,
+    caseBatteryMax: 10,
     state: SPACE_A40_STATE,
     source: `${OPENSCQ30} (a3936): six-byte sound modes, dual_battery(5), LDAC, dual_connections, gaming, case battery, custom HearID EQ module (not emitted by this app)`,
     verified: true,
@@ -749,6 +790,8 @@ export const DEVICES: DeviceProfile[] = [
     ancLayout: 'tws-l4pro',
     eqCommand: null,
     customEq: false,
+    caseBatteryMax: 10,
+    caseBatteryOffset: 1,
     state: LIBERTY4PRO_STATE,
     source: `${OPENSCQ30} (a3954): four-byte slider sound modes (ANC 1..5 maps to slider 5..1; transparency 7..11), LDAC, dual connections; model-specific HearID EQ is intentionally read-only`,
     verified: true,
@@ -772,6 +815,7 @@ export const DEVICES: DeviceProfile[] = [
     ancLayout: 'tws-p40i',
     eqCommand: null,
     customEq: false,
+    caseBatteryMax: 5,
     state: P40I_STATE,
     source: `${OPENSCQ30} (a3955): seven-byte sound modes with multi-scene ANC, dual_battery(5), dual connections; specialized EQ/HearID fields are not guessed`,
     verified: true,
@@ -796,6 +840,8 @@ export const DEVICES: DeviceProfile[] = [
     ancLayout: 'tws-l5',
     eqCommand: null,
     customEq: false,
+    caseBatteryMax: 10,
+    caseBatteryOffset: 1,
     state: LIBERTY5_STATE,
     source: `${OPENSCQ30} (a3957): seven-byte sound modes, dual_battery_custom(max 10, offset 1), LDAC, dual connections, gaming over 10:85; EQ/HearID writes intentionally disabled`,
     verified: true,
