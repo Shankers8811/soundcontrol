@@ -534,8 +534,8 @@ function CapabilityList() {
   const app = useApp();
   const c = app.capabilities;
   const rows: Array<[string, boolean, string]> = [
-    ['Noise control', c.supportsNoiseControl, c.supportsNoiseControl ? `06:81 · ${app.profile.ancLayout}` : 'no sound-mode module'],
-    ['Equalizer', c.supportsEqualizer, c.supportsEqualizer ? String(app.profile.eqCommand) : '03:87 HearID — not sent on purpose'],
+    ['Noise control', c.supportsNoiseControl, c.supportsNoiseControl ? `06:81 · ${app.profile.ancLayout}` : app.connected && app.identification !== 'verified' ? 'identification not verified' : 'no sound-mode module'],
+    ['Equalizer', c.supportsEqualizer, c.supportsEqualizer ? String(app.profile.eqCommand) : app.connected && app.identification !== 'verified' ? 'identification not verified' : '03:87 HearID — not sent on purpose'],
     ['Gaming mode', c.supportsGaming, c.supportsGaming ? (app.profile.sku === 'A3947' ? '10:85' : '01:87') : 'no command for this model'],
     ['3D surround', c.supportsSurround, c.supportsSurround ? '02:86' : 'no command for this model'],
     ['Dual connection', c.supportsDual, c.supportsDual ? '0B:84' : 'no command for this model'],

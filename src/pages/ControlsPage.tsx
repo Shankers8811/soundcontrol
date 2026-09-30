@@ -184,9 +184,9 @@ export function ControlsPage() {
               </div>
             ) : (
               <UnavailableNote title="No feature switches for this model">
-                {app.profile.name} ({app.profile.sku}) has no documented gaming, surround, dual
-                or LDAC command in the Soundcore protocol, so there is nothing SoundControl can
-                honestly switch here.
+                {app.connected && app.identification !== 'verified'
+                  ? 'Model identification is uncertain or mismatched; gaming, spatial audio, multipoint and LDAC stay disabled until the state layout is confirmed. Manual selection does not unlock commands.'
+                  : `${app.profile.name} (${app.profile.sku}) has no documented gaming, surround, dual or LDAC command in the Soundcore protocol, so there is nothing SoundControl can honestly switch here.`}
               </UnavailableNote>
             )}
           </Card>
