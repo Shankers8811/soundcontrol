@@ -60,9 +60,10 @@ try {
         export { EarbudStatusCard } from './src/components/EarbudStatusCard.tsx';
         export { deriveCapabilities, deriveEarbudState } from './src/state/derive.ts';
         export { DEVICES, UNKNOWN_PROFILE } from './src/protocol/devices.ts';
+        export { EMPTY_OBSERVED } from './src/protocol/observedFeatures.ts';
         export { DeviceTypeVisual } from './src/components/DeviceTypeVisual.tsx';
         export { DashboardPage } from './src/pages/DashboardPage.tsx';
-        export { DevicesPage } from './src/pages/DevicesPage.tsx';
+        export { DevicesPage, ManualModelOptions } from './src/pages/DevicesPage.tsx';
         export { EqualizerPage } from './src/pages/EqualizerPage.tsx';
         export { ControlsPage } from './src/pages/ControlsPage.tsx';
         export { SettingsPage } from './src/pages/SettingsPage.tsx';
@@ -145,14 +146,9 @@ const dash = render(React.createElement(M.DashboardPage));
 check('header title (Pass 8: Home)', dash.includes('>Home<') && !dash.includes('>Dashboard<'));
 check('disconnected status badge', dash.includes('Disconnected'));
 check('disconnected battery pill says "No device" — never an invented percentage', dash.includes('>No device<') && !/>\s*\d+\s*%/.test(dash));
-check('volume card explains the protocol gap instead of a live slider', dash.includes('Volume') && dash.includes('no volume command in any published capture'));
+check('volume card explains the protocol gap instead of a live slider', dash.includes('Volume') && dash.includes('no verified model-gated'));
 check('volume slider is rendered disabled', /aria-label="Device volume \(not supported by the protocol\)"[^>]*disabled/.test(dash) || dash.includes('disabled'));
-check('earbud card present for TWS profile', dash.includes('Earbud Connection'));
-// Sides render "Unknown" — never the old "Status unavailable" copy and never
-// "Not connected". (The page-level connection-phase badge legitimately reads
-// "Disconnected" for the dead CONTROL LINK; that is a different concept from
-// per-side earbud presence and is asserted in the connected-state section.)
-check('unknown presence renders per-side "Unknown", never "Not connected"', dash.includes('>Unknown<') && !dash.includes('Status unavailable') && !dash.includes('>Not connected<'));
+check('Dashboard never renders the removed L/R connection panel', !dash.includes('Earbud Connection') && !dash.includes('>Unknown<'));
 check('connect CTA points at the real Devices page', dash.includes('Open Devices'));
 check('quick actions render real presets for this EQ-capable profile', dash.includes('Bass Booster') && dash.includes('Spoken Word'));
 
@@ -164,10 +160,83 @@ check('page title', devices.includes('>Devices<'));
 check('real scan surface', devices.includes('Paired Bluetooth devices') && devices.includes('Scan devices'));
 check('helper status starts as checking (no fake "online")', devices.includes('Checking') || devices.includes('checking'));
 check('manual MAC connect form', devices.includes('Connect by address') && devices.includes('AA:BB:CC:DD:EE:FF'));
-check('capability matrix lists the honest volume/gesture facts', devices.includes('no volume command exists in the protocol') && devices.includes('no button-write command is publicly documented'));
-// Disconnected, the override control honestly becomes read-only preview —
-// you cannot override the profile of a device that is not connected.
-check('model profile preview (override only when connected)', devices.includes('Preview profiles') && !devices.includes('>Override profile<'));
+check('capability matrix lists the honest volume/gesture facts', devices.includes('A3116-only reference write') && devices.includes('04:81 is model-specific'));
+// A disconnected device cannot have a manual candidate attached to it.
+check('Device Connectivity distinguishes disconnected state and does not offer manual selection before connection', devices.includes('Device Connectivity') && devices.includes('Identification:') && devices.includes('Not connected') && !devices.includes('Select verified model'));
+
+const connectedView = (Component, changes) => render(React.createElement(AppProvider, null,
+  React.createElement(function Connected() {
+    const app = React.useContext(M.AppContext);
+    return React.createElement(M.AppContext.Provider, { value: {
+      ...app, connected: true, connectedMac: 'AA:BB:CC:DD:EE:FF', deviceName: 'Host alias',
+      profile: M.DEVICES.find((d) => d.id === 'liberty-4-nc'),
+      capabilities: M.deriveCapabilities(M.DEVICES.find((d) => d.id === 'liberty-4-nc')),
+      battery: { left: 4, right: null, batteryScale: 5, presence: 'left', hostPercent: 73 },
+      firmware: '01.59', serial: 'DEVICE-SERIAL', identification: 'verified',
+      ...changes,
+    } }, React.createElement(Component));
+  }),
+));
+const connectedDash = connectedView(M.DashboardPage, {});
+check('connected Dashboard shows registry model and model code, firmware, reported S/N and Disconnect',
+  connectedDash.includes('Liberty 4 NC') && connectedDash.includes('Model code') && connectedDash.includes('A3947') &&
+  connectedDash.includes('DEVICE-SERIAL') && connectedDash.includes('01.59') && connectedDash.includes('Disconnect'));
+check('no L/R panel even with telemetry; per-side and host battery preserved in compact pill',
+  !connectedDash.includes('Earbud Connection') && connectedDash.includes('L 80%') && !connectedDash.includes('R 80%'));
+check('verified case model shows read-only case pending, not host battery as case',
+  connectedDash.includes('Charging case') && connectedDash.includes('Case battery unavailable — awaiting a valid case reading'));
+const caseDash = connectedView(M.DashboardPage, {
+  battery: { left: 2, right: 3, batteryScale: 5, presence: 'both', casePercent: 80 },
+});
+check('verified case telemetry appears as a read-only percentage', caseDash.includes('Charging case') && caseDash.includes('80%'));
+check('disconnected view never renders charging-case status', !dash.includes('Charging case'));
+const uncertainDash = connectedView(M.DashboardPage, { identification: 'uncertain', serial: null });
+check('unconfirmed identification cannot present a case percent', !uncertainDash.includes('Charging case'));
+check('unconfirmed name does not expose model code or invent S/N',
+  uncertainDash.includes('Model code') && uncertainDash.includes('Not verified') && !uncertainDash.includes('DEVICE-SERIAL'));
+const connectedDevices = connectedView(M.DevicesPage, {});
+check('verified automatic model is primary and does not require manual selection',
+  connectedDevices.includes('Liberty 4 NC') && connectedDevices.includes('A3947') &&
+  connectedDevices.includes('Automatically verified') && connectedDevices.includes('Change device model') &&
+  !connectedDevices.includes('Select model manually') && connectedDevices.includes('Disconnect'));
+const manuallySuggested = connectedView(M.DevicesPage, {
+  manualCandidate: M.DEVICES.find((d) => d.id === 'p20i'),
+});
+check('explicit manual suggestion cannot replace verified automatic identity',
+  manuallySuggested.includes('Automatically verified') && manuallySuggested.includes('A3947') &&
+  manuallySuggested.includes('Manual suggestion') && manuallySuggested.includes('ignored') &&
+  manuallySuggested.includes('Reset to automatic detection'));
+const mismatchDevices = connectedView(M.DevicesPage, {
+  identification: 'mismatch', manualCandidate: M.DEVICES.find((d) => d.id === 'p20i'),
+});
+check('tentative mismatch presents manual recovery with model gates intact',
+  mismatchDevices.includes('Connected with identification mismatch') && mismatchDevices.includes('Select model manually') &&
+  mismatchDevices.includes('Automatic identification and command gates still apply') && mismatchDevices.includes('Not verified') &&
+  !mismatchDevices.includes('Physically verified'));
+const unknownDevices = connectedView(M.DevicesPage, { identification: 'uncertain' });
+check('uncertain device offers manual recovery, not an invented model code',
+  unknownDevices.includes('Connected but identification uncertain') && unknownDevices.includes('Select model manually') &&
+  unknownDevices.includes('Unknown Soundcore device') && unknownDevices.includes('Not verified'));
+const manualOptions = renderToStaticMarkup(React.createElement(M.ManualModelOptions, { currentId: null, onSelect: () => {} }));
+const unverifiedOption = M.DEVICES.find((d) => !d.verified && M.DEVICES.every((v) => v === d || v.sku !== d.sku));
+check('recovery selector uses verified registry entries with name, code, status and capabilities',
+  manualOptions.includes('Liberty 4 NC') && manualOptions.includes('A3947') &&
+  manualOptions.includes('Verified protocol profile') && manualOptions.includes('ANC / transparency'));
+check('selector excludes unverified profiles and has no arbitrary model-code input',
+  Boolean(unverifiedOption) && !manualOptions.includes(`>${unverifiedOption.sku}<`) && !manualOptions.includes('<input'));
+
+const limitedCaps = M.deriveCapabilities(M.UNKNOWN_PROFILE);
+const uncertainControls = connectedView(M.ControlsPage, { identification: 'uncertain', capabilities: limitedCaps });
+const mismatchControls = connectedView(M.ControlsPage, { identification: 'mismatch', capabilities: limitedCaps });
+check('unconfirmed model disables ANC and feature switches with a reason',
+  uncertainControls.includes('Noise-control options are shown') && uncertainControls.includes('model identification is uncertain') &&
+  uncertainControls.includes('No feature switches for this model'));
+check('manual mismatch cannot reveal an ANC control',
+  mismatchControls.includes('model identification is uncertain') && mismatchControls.includes('No feature switches for this model'));
+const uncertainEq = connectedView(M.EqualizerPage, { identification: 'uncertain', capabilities: limitedCaps });
+check('unconfirmed model hides EQ write controls',
+  uncertainEq.includes('Equalizer commands and byte layouts') && !uncertainEq.includes('class="eq-fader"'));
+
 
 console.log('\n[device visuals] exact-profile family artwork');
 for (const [profileId, expectedLabel] of [
@@ -248,9 +317,58 @@ check(
 check('page title (Pass 8: Noise Control)', controls.includes('>Noise Control<') && !controls.includes('>Controls<'));
 check('ANC component is embedded in the Noise Control page', controls.includes('Noise control is not available on this model'));
 check('non-ANC profile keeps all three noise-mode icons visible but faded/disabled', controls.includes('Noise control options unavailable') && (controls.match(/data-noise-mode-disabled="true"/g) ?? []).length === 3 && (controls.match(/data-noise-mode-option="true"/g) ?? []).length === 3);
-check('gesture customization is explicitly unsupported — no decorative remap UI', controls.includes('Gesture customization is not supported by this protocol'));
+check('gesture customization is explicitly unsupported — no decorative remap UI', controls.includes('Gesture customization is not yet supported by SoundControl'));
+check('unsupported mobile-only features explain safety boundaries without controls', controls.includes('Safe-volume limiter:') && controls.includes('HearID test') && controls.includes('Sleep audio') && controls.includes('Firmware update'));
 // 01:85 is documented only for the Motion+ (A3116); no profile in the table
 // may fire an undocumented destructive frame — the card must explain instead.
+const q45Model = M.DEVICES.find((d) => d.sku === 'A3040');
+const q45Controls = connectedView(M.ControlsPage, {
+  profile: q45Model, capabilities: M.deriveCapabilities(q45Model),
+  observed: { q45DoublePress: 'BassUp', safeVolume: { enabled: false, limitDb: 90, refresh: 'Real-time' }, spatial: null },
+});
+check('Q45 shows read-only, device-reported gesture and limiter',
+  q45Controls.includes('Device-reported options') && q45Controls.includes('Q45 double press:') &&
+  q45Controls.includes('BassUp') && q45Controls.includes('90 dB') && q45Controls.includes('Read-only'));
+const proModel = M.DEVICES.find((d) => d.sku === 'A3954');
+const proControls = connectedView(M.ControlsPage, {
+  profile: proModel, capabilities: M.deriveCapabilities(proModel),
+  observed: { q45DoublePress: null, safeVolume: { enabled: true, limitDb: 95, refresh: 'Real-time' },
+    spatial: { enabled: true, mode: 'Movie', tracking: 'Head tracking' } },
+});
+check('Liberty 4 Pro read-only spatial mode and limiter are labelled correctly',
+  proControls.includes('95 dB') && proControls.includes('Head tracking') && proControls.includes('Movie') && !proControls.includes('Q45 double press:'));
+const noteModel = M.DEVICES.find((d) => d.sku === 'A3945');
+const noteControls = connectedView(M.ControlsPage, {
+  profile: noteModel, capabilities: M.deriveCapabilities(noteModel),
+  observed: { q45DoublePress: null, safeVolume: null, spatial: null, lifeNoteBassUp: true,
+    lifeNoteButtons: [{ press: 'Left double press', action: 'Play / pause' }],
+    lifeNoteEq: 'Soundcore Signature', lifeNoteGaming: false },
+});
+check('A3945 shows only read-only BassUp, action, EQ and gaming status',
+  noteControls.includes('Life Note 3S device state') && noteControls.includes('BassUp device flag:') &&
+  noteControls.includes('Play / pause') && noteControls.includes('Soundcore Signature') &&
+  noteControls.includes('Gaming mode:') && noteControls.includes('No BassUp toggle'));
+check('A3945 no write UI available for its observed feature bytes',
+  !noteControls.includes('04:84') && !noteControls.includes('02:81') && noteControls.includes('editing unavailable'));
+check('intentionally excluded locator never appears anywhere on Controls',
+  !/find earbuds|find my device|locator|chirp|finddevice/i.test(noteControls));
+check('unverified A3945 cannot display read-only feature state',
+  !connectedView(M.ControlsPage, { profile: noteModel, capabilities: M.deriveCapabilities(noteModel),
+    identification: 'uncertain' }).includes('Life Note 3S device state'));
+const sleepModel = M.DEVICES.find((d) => d.sku === 'D1301');
+const sleepControls = connectedView(M.ControlsPage, { profile: sleepModel,
+  capabilities: M.deriveCapabilities(sleepModel),
+  observed: { ...M.EMPTY_OBSERVED, sleepAfter: 'Pause audio' },
+});
+check('D1301 displays only device-reported read-only post-sleep audio choice',
+  sleepControls.includes('Sleep A30 device state') && sleepControls.includes('After falling asleep:') &&
+  sleepControls.includes('Pause audio') && sleepControls.includes('not a timer, alarm, white-noise mixer'));
+check('unverified D1301 cannot display read-only sleep state',
+  !connectedView(M.ControlsPage, { profile: sleepModel, capabilities: M.deriveCapabilities(sleepModel),
+    identification: 'uncertain' }).includes('Sleep A30 device state'));
+check('uncertain identification never shows read-only model-specific fields',
+  !connectedView(M.ControlsPage, { profile: proModel, capabilities: M.deriveCapabilities(proModel), identification: 'uncertain' }).includes('Device-reported options'));
+check('unsupported model cannot inherit read-only mode card', !controls.includes('Device-reported options'));
 check('factory reset is honestly withheld (01:85 documented for Motion+ only)', controls.includes('Factory reset is not offered for this model') && controls.includes('01:85') && !controls.includes('Send reset command'));
 check('no gaming toggle for this profile (A3949 has gaming — present)', controls.includes('Gaming mode'));
 

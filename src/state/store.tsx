@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { beep } from '../lib/feedback';
 import { toHex, verifyFrame } from '../protocol/codec';
-import { DEVICES, matchDevice, matchNote } from '../protocol/devices';
+import { DEVICES, UNKNOWN_PROFILE, matchDevice, matchNote } from '../protocol/devices';
 import {
   DEVICE_INFO,
   DUAL,
@@ -27,8 +27,11 @@ import {
   type AncIntent,
 } from '../protocol/packets';
 import { presetById, type EqPreset } from '../protocol/presets';
-import { requiredStateLength, withDeviceBoundary } from '../protocol/modelRegistry';
-import { createSessionGuard, isCurrentTransportSession, parseDeviceToggles } from '../protocol/responses';
+import { requiredStateLength, validStatePayloadLength, withDeviceBoundary } from '../protocol/modelRegistry';
+import { EMPTY_OBSERVED, parseObservedFeatures, type ObservedFeatures } from '../protocol/observedFeatures';
+import { createSessionGuard, isCurrentTransportSession, parseCaseBatteryStateFrame, parseDeviceToggles } from '../protocol/responses';
+import { candidateForAddress, discardCandidateOnAutomaticVerification, identificationState, verifiedCandidate, type IdentificationState } from './identification';
+import { hostDisconnectObservation } from './hostDisconnect';
 import { isTransportBusyError } from '../lib/transportErrors';
 import { connectBridge, scanBridgeDevicesDetailed } from '../transports/bridge';
 import {
@@ -125,8 +128,13 @@ interface AppState {
   /** Bluetooth address of the active bridge session (null for simulator/none). */
   connectedMac: string | null;
   profile: DeviceProfile;
-  setProfileId: (id: string) => void;
+  identification: IdentificationState;
+  manualCandidate: DeviceProfile | null;
+  selectManualModel: (id: string) => void;
+  resetAutomaticDetection: () => void;
   battery: BatteryState;
+  /** Device-reported, read-only model-specific features; cleared on each session. */
+  observed: ObservedFeatures;
   ancMode: AncMode;
   ancLevel: number;
   ancScene: AncScene;
@@ -198,9 +206,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [transportLabel, setTransportLabel] = useState('Not connected');
   const [deviceName, setDeviceName] = useState('No device');
   const [connectedMac, setConnectedMac] = useState<string | null>(null);
+  const connectedMacRef = useRef<string | null>(null);
   const [profile, setProfile] = useState<DeviceProfile>(matchDevice('R50i'));
   const profileRef = useRef(profile);
+  const [confirmedLayout, setConfirmedLayout] = useState(false);
+  const confirmedLayoutRef = useRef(false);
+  const manualMismatchRef = useRef(false);
+  const [manualByAddress, setManualByAddress] = useState<Record<string, string>>({});
+  const manualCandidate = candidateForAddress(manualByAddress, connectedMac);
+  const identification = identificationState(connected, profile, confirmedLayout, manualCandidate);
   const [battery, setBattery] = useState<BatteryState>({ left: null, right: null });
+  const [observed, setObserved] = useState<ObservedFeatures>(EMPTY_OBSERVED);
   // Persisted recent-device list. Sanitized on load: only well-formed
   // {mac,name} entries survive, and a non-array value falls back to empty —
   // consumers map/filter this list during connect and render, so a corrupt
@@ -265,7 +281,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const profileNote = useMemo(() => matchNote(deviceName), [deviceName]);
 
   /** Protocol-derived capability matrix for the connected (or previewed) model. */
-  const capabilities = useMemo(() => deriveCapabilities(profile), [profile]);
+  const capabilities = useMemo(
+    () => deriveCapabilities(connected && identification !== 'verified' ? UNKNOWN_PROFILE : profile),
+    [connected, identification, profile],
+  );
 
   /** Per-side earbud state; null for hardware without independent L/R sides. */
   const earbudState = useMemo(() => deriveEarbudState(battery, capabilities), [battery, capabilities]);
@@ -411,6 +430,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let sawBatteryFrame = false;
       let rawLeft: number | undefined;
       let rawRight: number | undefined;
+      let casePercent: number | null | undefined;
       let chargingLeft: boolean | null | undefined;
       let chargingRight: boolean | null | undefined;
 
@@ -433,19 +453,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Phase 18 malformed-response guard: a state payload too short to
         // hold the fields THIS profile documents is not telemetry — it is
         // ignored whole, never partially parsed into a half-updated UI.
-        if (payload.length < requiredStateLength(offsets)) {
+        if (!validStatePayloadLength(offsets, payload.length)) {
           pushLog(
             'sys',
             '',
-            `State frame ignored — payload ${payload.length} bytes is shorter than the ${requiredStateLength(offsets)}-byte layout documented for ${profileRef.current.name} (${profileRef.current.sku})`,
+            `State frame ignored — payload ${payload.length} bytes does not match the ${offsets.exactLength ?? `at least ${requiredStateLength(offsets)}`}-byte layout documented for ${profileRef.current.name} (${profileRef.current.sku})`,
           );
           return;
         }
         sawBatteryFrame = true;
+        confirmedLayoutRef.current = true;
+        manualMismatchRef.current = false;
+        setConfirmedLayout(true);
+        // Automatic evidence wins even if an earlier manual candidate disagreed.
+        // The guarded RX belongs to the current session; drop only its MAC's
+        // candidate, never an unrelated device's identity.
+        const confirmedAddress = connectedMacRef.current;
+        setManualByAddress((prev) => discardCandidateOnAutomaticVerification(prev, confirmedAddress));
+        // Full-state readouts have their own complete model-specific length and
+        // value gates. A short/unknown layout clears old readouts, not a guess.
+        const observedNow = parseObservedFeatures(data, profileRef.current);
+        if (observedNow) setObserved(observedNow);
         rawLeft = payload[offsets.batteryLeft];
         rawRight = offsets.batteryRight === null ? undefined : payload[offsets.batteryRight];
-        // The case byte stays a wire fact (see PROTOCOL.md) but is never
-        // surfaced: many models do not report it and over-ears have no case.
+        // Only a full, validated 01:01 state can refresh case telemetry.
+        // 01:03 is a buds-only query; it must not invent or erase case charge.
+        casePercent = parseCaseBatteryStateFrame(data, profileRef.current);
         // Charging flags follow OpenSCQ30's exact 0/1 parser; other values are
         // not treated as a set bit.
         if (offsets.batteryChargingLeft !== null) {
@@ -494,11 +527,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         mergeBatteryTelemetry(previous, {
           rawLeft,
           rawRight,
+          casePercent,
           chargingLeft,
           chargingRight,
           // An unidentified model has no proven scale: levels stay raw and
           // every percent readout degrades to the honest "unavailable".
-          scale: profileRef.current.batteryMax ?? 'unknown',
+          scale: confirmedLayoutRef.current ? profileRef.current.batteryMax ?? 'unknown' : 'unknown',
           offset: profileRef.current.batteryOffset ?? 0,
         }),
       );
@@ -510,7 +544,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // fabricated percentage.
       const scale = profileRef.current.batteryMax;
       const low =
-        scale === null
+        scale === null || !confirmedLayoutRef.current
           ? []
           : [batteryLevel(rawLeft), batteryLevel(rawRight)]
               .filter((v): v is number => v !== null)
@@ -559,6 +593,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       bat?: Partial<BatteryState> | number | null,
       dspChannel?: number | null,
       hostPercent?: number | null,
+      sessionId?: number,
     ) => {
       // Phase 17+18 transport boundary: EVERY transport (real bridge, demo
       // simulator, anything future) is wrapped before installation, so each
@@ -571,9 +606,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       //      command (Phase 18 registry — src/protocol/modelRegistry.ts),
       //      including the custom-EQ (0xFEFE) distinction. A UI bug that
       //      shows ANC controls for an R50i still cannot put 06:81 on the wire.
-      t = withDeviceBoundary(t, () => profileRef.current, (reason) => {
+      t = withDeviceBoundary(t, () =>
+        t.kind === 'bridge' && (!confirmedLayoutRef.current || manualMismatchRef.current)
+          ? UNKNOWN_PROFILE : profileRef.current, (reason) => {
         pushLog('sys', '', `Earbud-only boundary: frame NOT sent — ${reason}`);
       });
+      const guardedTransport = t;
+      t = {
+        ...guardedTransport,
+        write: async (data) => {
+          if (sessionId !== undefined && (!sessionGuardRef.current.isActive(sessionId) || transportRef.current !== t)) {
+            throw new Error('The device session has ended');
+          }
+          await guardedTransport.write(data);
+        },
+      };
       transportRef.current = t;
       setTransportLabel(t.label);
       setDeviceName(name);
@@ -584,6 +631,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // per device, and showing a stale value is worse than showing none.
       setFirmware('Unknown');
       setSerial(null);
+      confirmedLayoutRef.current = false;
+      setConfirmedLayout(false);
       lowBatteryWarned.current = false;
       setLinkInfo(
         typeof dspChannel === 'number'
@@ -597,13 +646,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // a Bluetooth link is never treated as "both earbuds connected".
       const seed = emptyBattery();
       if (nextProfile.batteryOffset) seed.batteryOffset = nextProfile.batteryOffset;
-      seed.hostPercent = typeof hostPercent === 'number' ? hostPercent : null;
+      seed.hostPercent = typeof hostPercent === 'number' && Number.isInteger(hostPercent) && hostPercent >= 0 && hostPercent <= 100 ? hostPercent : null;
       if (typeof bat === 'number') {
-        // Host Bluetooth aggregate percent (scale null = already a percentage).
-        // It goes to `left` only — copying it to `right` would fabricate a
-        // per-side value the host never reported.
-        seed.left = bat;
-        seed.batteryOffset = 0;
+        // Legacy simulator aggregate, never interpreted as per-side telemetry.
+        seed.hostPercent = bat;
       } else if (bat && typeof bat === 'object') {
         if (bat.left != null) seed.left = bat.left;
         if (bat.right != null) seed.right = bat.right;
@@ -612,6 +658,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         seed.presence = bat.presence ?? 'unknown';
       }
       setBattery(seed);
+      setObserved(EMPTY_OBSERVED);
       // Feature state is per-device as well: back to power-on defaults until
       // the new device confirms its own (06:01 sound-mode / 02:81 EQ mirrors).
       setAncMode('anc');
@@ -739,10 +786,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
    */
   const clearDeviceState = useCallback(() => {
     setConnected(false);
+    connectedMacRef.current = null;
     setConnectedMac(null);
+    confirmedLayoutRef.current = false;
+    manualMismatchRef.current = false;
+    setConfirmedLayout(false);
+    setManualByAddress({});
     setTransportLabel('Not connected');
     setDeviceName('No device');
     setBattery(emptyBattery());
+    setObserved(EMPTY_OBSERVED);
     setLinkInfo(null);
     setFirmware('Unknown');
     setSerial(null);
@@ -773,6 +826,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // from the Settings tab): tear the old session down first so its
         // WebSocket is not left registered in the helper's client list.
         await releaseTransport();
+        if (!sessionGuardRef.current.isActive(mySession)) return;
+        clearDeviceState();
         // Manual-address connects carry no label. Fall back to the name
         // The host reported the last time THIS mac connected (the persisted
         // recent list): the model name selects the device profile — and with
@@ -833,6 +888,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           },
         );
         linked.transport = transport;
+        if (!sessionGuardRef.current.isActive(mySession)) {
+          await transport.close();
+          return;
+        }
         if (linked.downReason) {
           try {
             await transport.close();
@@ -847,7 +906,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           throw new Error(linked.downReason);
         }
-        await attach(transport, name, b, dspChannel, hostBattery ?? null);
+        if (!sessionGuardRef.current.isActive(mySession)) { await transport.close(); return; }
+        await attach(transport, name, b, dspChannel, hostBattery ?? null, mySession);
         // attach() installs the model/earbud boundary wrapper, so compare
         // future link-down callbacks with that installed identity, not the
         // raw transport returned by connectBridge.
@@ -862,7 +922,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           clearDeviceState();
           return;
         }
-        setConnectedMac(mac || null);
+        connectedMacRef.current = mac ? mac.toUpperCase() : null;
+        setConnectedMac(connectedMacRef.current);
         // Settings persistence: remember the last few devices for one-tap
         // reconnect on the next launch.
         if (mac) {
@@ -907,15 +968,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
             `${simProfile.name} (${simProfile.sku}) has no independently documented packet layout, so the simulator is unavailable`,
           );
         }
+        if (!sessionGuardRef.current.isActive(mySession)) return;
+        // Simulator switching must not retain the previous real device MAC
+        // or its manual suggestion, even while the new session is attaching.
+        clearDeviceState();
         const guardedRx = (data: Uint8Array) => {
           if (!sessionGuardRef.current.isActive(mySession)) return;
           onRx(data);
         };
         const { transport, name, battery: b } = connectSimulator(guardedRx, simProfile);
-        await attach(transport, name, b);
-        setConnectedMac(null);
+        if (!sessionGuardRef.current.isActive(mySession)) { await transport.close(); return; }
+        await attach(transport, name, b, null, null, mySession);
+        if (sessionGuardRef.current.isActive(mySession)) {
+          connectedMacRef.current = null;
+          setConnectedMac(null);
+        }
       }),
-    [attach, onRx, releaseTransport, wrapConnect],
+    [attach, clearDeviceState, onRx, releaseTransport, wrapConnect],
   );
 
   const setSurroundSound = useCallback(
@@ -1261,19 +1330,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [write],
   );
 
-  const setProfileId = useCallback((id: string) => {
-    // A real connected session must stay bound to the identity-derived
-    // profile. Allowing a live override would let a user select another
-    // model's offsets/capabilities and send the wrong physical command to the
-    // current device. Profile selection remains available for disconnected
-    // previews and simulator runs.
-    if (connected) return;
-    const hit = DEVICES.find((d) => d.id === id);
-    if (hit) {
-      profileRef.current = hit;
-      setProfile(hit);
-    }
-  }, [connected]);
+  const selectManualModel = useCallback((id: string) => {
+    const candidate = verifiedCandidate(id);
+    if (!candidate || !connected || !connectedMac) return;
+    // A confirmed automatic model cannot be demoted by an explicit suggestion.
+    manualMismatchRef.current = !confirmedLayoutRef.current && profileRef.current.verified && candidate.id !== profileRef.current.id;
+    setManualByAddress((prev) => ({ ...prev, [connectedMac.toUpperCase()]: candidate.id }));
+    // Deliberately do NOT alter profileRef, capabilities, telemetry offsets,
+    // or the command boundary. A human selection cannot verify a wire layout.
+  }, [connected, connectedMac]);
+
+  const resetAutomaticDetection = useCallback(() => {
+    if (!connectedMac) return;
+    manualMismatchRef.current = false;
+    setManualByAddress((prev) => {
+      const next = { ...prev };
+      delete next[connectedMac.toUpperCase()];
+      return next;
+    });
+  }, [connectedMac]);
 
   // Keep the host-side battery box fresh independently of Soundcore's raw
   // battery telemetry. This is the Windows/BlueZ aggregate percentage and is
@@ -1283,41 +1358,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!connected || !connectedMac || transportRef.current?.kind !== 'bridge') return;
     let stopped = false;
     let consecutiveHostDisconnects = 0;
+    let inFlight = false;
+    const session = sessionGuardRef.current.current();
+    const activeTransport = transportRef.current;
 
     const pollHostBluetooth = async () => {
-      if (stopped) return;
-      const result = await scanBridgeDevicesDetailed(false);
-      if (stopped || result.error) return;
-
+      if (stopped || inFlight) return;
+      inFlight = true;
+      let result;
+      try {
+        result = await scanBridgeDevicesDetailed(false);
+      } finally {
+        inFlight = false;
+      }
+      if (stopped || !(session !== null && sessionGuardRef.current.isActive(session)) || transportRef.current !== activeTransport) return;
       const key = connectedMac.toUpperCase();
+      const observation = hostDisconnectObservation(key, result.devices, consecutiveHostDisconnects, Boolean(result.error));
+      consecutiveHostDisconnects = observation.misses;
+      if (result.error) return;
       const hit = result.devices.find((d) => d.mac?.toUpperCase() === key);
-
-      // The host Bluetooth state is authoritative for this lifecycle check.
-      // A device can remain paired while the user disconnects it from the
-      // Windows/Linux Bluetooth settings. Do not wait for the next RFCOMM
-      // write to discover that: clear the active session as soon as the host
-      // reports this exact MAC as disconnected. Two consecutive observations
-      // avoid clearing on one transient enumeration glitch.
-      if (hit && hit.connected === false) {
-        consecutiveHostDisconnects += 1;
-        if (consecutiveHostDisconnects >= 2) {
-          const t = transportRef.current;
-          transportRef.current = null;
-          sessionGuardRef.current.end();
-          clearDeviceState();
-          pushLog('sys', '', 'Bluetooth device disconnected in the computer settings.');
-          try {
-            await t?.close();
-          } catch {
-            /* the RFCOMM link may already be gone */
-          }
-          return;
+      if (observation.disconnect) {
+        if (stopped || !(session !== null && sessionGuardRef.current.isActive(session)) || transportRef.current !== activeTransport) return;
+        const t = transportRef.current;
+        transportRef.current = null;
+        sessionGuardRef.current.end();
+        clearDeviceState();
+        pushLog('sys', '', 'Bluetooth device disconnected in the computer settings.');
+        try {
+          await t?.close();
+        } catch {
+          /* the RFCOMM link may already be gone */
         }
-      } else if (hit?.connected === true) {
-        consecutiveHostDisconnects = 0;
+        return;
       }
 
-      if (hit && typeof hit.battery === 'number') {
+      if (hit && typeof hit.battery === 'number' && Number.isInteger(hit.battery) && hit.battery >= 0 && hit.battery <= 100) {
         setBattery((previous) => ({ ...previous, hostPercent: hit.battery }));
       }
     };
@@ -1368,8 +1443,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deviceName,
       connectedMac,
       profile,
-      setProfileId,
+      identification,
+      manualCandidate,
+      selectManualModel,
+      resetAutomaticDetection,
       battery,
+      observed,
       ancMode,
       ancLevel,
       ancScene,
@@ -1437,8 +1516,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deviceName,
       connectedMac,
       profile,
-      setProfileId,
+      identification,
+      manualCandidate,
+      selectManualModel,
+      resetAutomaticDetection,
       battery,
+      observed,
       ancMode,
       ancLevel,
       ancScene,

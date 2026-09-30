@@ -58,6 +58,70 @@ function Wait-ForExit {
   return $Process.HasExited
 }
 
+function Get-MainLogTail {
+  param([string] $Path)
+  try {
+    if (-not (Test-Path -LiteralPath $Path)) { return '(main.log not present)' }
+    Get-Content -LiteralPath $Path -Tail 60 -ErrorAction Stop
+  } catch {
+    "(main.log unavailable: $($_.Exception.Message))"
+  }
+}
+
+# Failure-only observations. Never terminate a process here or replace the
+# original shutdown assertion: capture the state before the finally cleanup.
+function Write-ShutdownDiagnostics {
+  param([System.Diagnostics.Process] $Process, [string] $BeforeCloseWindow, [string[]] $BeforeCloseLog)
+  $targetId = $Process.Id
+  Write-Host "SHUTDOWN_DIAGNOSTICS_BEGIN launched_pid=$targetId before_close=$BeforeCloseWindow"
+  try {
+    $Process.Refresh()
+    Write-Host "Launched process: Id=$targetId HasExited=$($Process.HasExited) MainWindowHandle=$($Process.MainWindowHandle) MainWindowTitle='$($Process.MainWindowTitle)' Responding=$($Process.Responding)"
+    $current = Get-Process -Id $targetId -ErrorAction Stop
+    Write-Host "Get-Process -Id ${targetId}: Name=$($current.ProcessName) Path=$($current.Path) StartTime=$($current.StartTime) HasExited=$($current.HasExited)"
+    Write-Host "Get-Process window: MainWindowHandle=$($current.MainWindowHandle) MainWindowTitle='$($current.MainWindowTitle)' Responding=$($current.Responding) CPU=$($current.CPU) WorkingSet64=$($current.WorkingSet64)"
+  } catch {
+    Write-Host "Process inspection unavailable for ${targetId}: $($_.Exception.Message)"
+  }
+  $treeIds = @([int] $targetId)
+  try {
+    $all = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+    # Use a single process snapshot to include children and grandchildren,
+    # rather than guessing that every SoundControl.exe belongs to this launch.
+    for ($pass = 0; $pass -lt $all.Count; $pass++) {
+      $added = $false
+      foreach ($node in $all) {
+        if (($treeIds -contains [int] $node.ParentProcessId) -and ($treeIds -notcontains [int] $node.ProcessId)) {
+          $treeIds += [int] $node.ProcessId
+          $added = $true
+        }
+      }
+      if (-not $added) { break }
+    }
+    foreach ($node in $all) {
+      if ($treeIds -contains [int] $node.ProcessId) {
+        Write-Host "Process tree: Id=$($node.ProcessId) ParentId=$($node.ParentProcessId) Name=$($node.Name) ExecutablePath=$($node.ExecutablePath) CommandLine=$($node.CommandLine)"
+      }
+    }
+  } catch {
+    Write-Host "Process tree unavailable: $($_.Exception.Message)"
+  }
+  try {
+    $connections = @(Get-NetTCPConnection -ErrorAction Stop | Where-Object { $_.LocalPort -eq 8765 -or $_.RemotePort -eq 8765 })
+    if ($connections.Count -eq 0) { Write-Host 'Port 8765: no TCP connections' }
+    foreach ($connection in $connections) {
+      Write-Host "Port 8765: $($connection.LocalAddress):$($connection.LocalPort) -> $($connection.RemoteAddress):$($connection.RemotePort) State=$($connection.State) OwningProcess=$($connection.OwningProcess) OwnerIsLaunchedPid=$([int] $connection.OwningProcess -eq $targetId) InLaunchedTree=$($treeIds -contains [int] $connection.OwningProcess)"
+    }
+  } catch {
+    Write-Host "Port 8765 inspection unavailable: $($_.Exception.Message)"
+  }
+  Write-Host 'main.log last 60 lines immediately before close request:'
+  $BeforeCloseLog | ForEach-Object { Write-Host $_ }
+  Write-Host 'main.log last 60 lines after failed close request:'
+  Get-MainLogTail -Path (Join-Path $env:APPDATA 'soundcontrol\main.log') | ForEach-Object { Write-Host $_ }
+  Write-Host 'SHUTDOWN_DIAGNOSTICS_END'
+}
+
 function Start-InstalledAppAndClose {
   param([Parameter(Mandatory = $true)] [string] $Exe, [Parameter(Mandatory = $true)] [string] $Dir, [int] $Label)
 
@@ -104,8 +168,19 @@ function Start-InstalledAppAndClose {
     throw "run ${Label}: helper did not expose port 8765 within 20s; $detail"
   }
 
+  $beforeHandle = $app.MainWindowHandle
+  $beforeTitle = $app.MainWindowTitle
+  $beforeCloseWindow = "Id=$($app.Id) MainWindowHandle=$beforeHandle NonZero=$($beforeHandle -ne [IntPtr]::Zero) MainWindowTitle='$beforeTitle' TitleHasSoundControl=$($beforeTitle -like '*SoundControl*')"
+  $beforeCloseLog = @(Get-MainLogTail -Path (Join-Path $env:APPDATA 'soundcontrol\main.log'))
   if (-not $app.CloseMainWindow()) { throw "run ${Label}: the app had no main window to close" }
-  if (-not (Wait-ForExit -Process $app -Seconds 20)) { throw "run ${Label}: SoundControl did not exit within 20s of the window close" }
+  if (-not (Wait-ForExit -Process $app -Seconds 20)) {
+    try {
+      Write-ShutdownDiagnostics -Process $app -BeforeCloseWindow $beforeCloseWindow -BeforeCloseLog $beforeCloseLog
+    } catch {
+      Write-Host "Shutdown diagnostics failed: $($_.Exception.Message)"
+    }
+    throw "run ${Label}: SoundControl did not exit within 20s of the window close"
+  }
 
   # Nothing may survive a graceful close - not in this run, not from a restart.
   Start-Sleep -Seconds 4

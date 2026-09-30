@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useState } from 'react';
 import { useApp } from '../state/store';
 import {
   INITIAL_SCAN_STATE,
+  deriveCapabilities,
   nextScanState,
   type ScannedDevice,
 } from '../state/derive';
@@ -48,6 +49,53 @@ function normalizeMac(input: string): string {
 const HELPER_OFFLINE_MESSAGE =
   'The Bluetooth helper is not responding. It starts automatically with SoundControl and may still be booting — retry in a moment. If it never starts, check the SoundControl log folder in Settings.';
 
+/** Recovery-only selector. Registry profiles and their documented capabilities,
+ * never free-text model codes, offsets, or commands. */
+export function ManualModelOptions({
+  currentId,
+  onSelect,
+}: {
+  currentId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <ul className="space-y-1.5">
+      {DEVICES.filter((d) => d.verified).map((d) => {
+        const current = currentId === d.id;
+        const caps = deriveCapabilities(d);
+        const features = [
+          caps.supportsNoiseControl && 'ANC / transparency',
+          caps.supportsEqualizer && 'EQ',
+          caps.supportsGaming && 'Game Mode',
+          caps.supportsLdac && 'LDAC',
+          caps.supportsDual && 'Multipoint',
+          caps.supportsSurround && 'Spatial audio',
+        ].filter(Boolean).join(' · ') || 'Universal reads only';
+        return (
+          <li key={d.id}>
+            <button
+              type="button"
+              onClick={() => onSelect(d.id)}
+              className={`flex w-full items-center gap-3 rounded-xl border px-4 py-2.5 text-left transition-colors duration-150 ${
+                current ? 'border-accent/60 bg-accent/10' : 'border-edge bg-sunken hover:border-accent/35'
+              }`}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2 text-sm font-semibold text-ink">
+                  {d.name} <span className="font-mono text-[11px] text-faint">{d.sku}</span>
+                  <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[9px] font-bold text-accent-soft">Verified protocol profile</span>
+                </span>
+                <span className="mt-0.5 block text-[11px] text-mute">{deviceKindLabel(d.kind)} · {features}</span>
+              </span>
+              {current && <IconCheck size={16} className="text-accent" />}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export function DevicesPage() {
   const app = useApp();
   const [scan, dispatch] = useReducer(nextScanState, INITIAL_SCAN_STATE);
@@ -56,6 +104,10 @@ export function DevicesPage() {
   const [connectingMac, setConnectingMac] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
+
+  // Never carry an open recovery picker across disconnect/reconnect or a
+  // switch to another MAC, even when React batches the connection updates.
+  useEffect(() => setProfileOpen(false), [app.connectedMac]);
 
   /* ---------------------------------------------------------- scanning */
 
@@ -233,7 +285,7 @@ export function DevicesPage() {
             {scan.status === 'results' && (
               <ul className="space-y-2">
                 {scan.devices.map((device) => {
-                  const isActive = app.connected && device.mac !== undefined && device.mac === app.connectedMac;
+                  const isActive = app.connected && device.mac !== undefined && device.mac.toUpperCase() === app.connectedMac?.toUpperCase();
                   const isConnecting = connectingMac === device.mac;
                   const matched = matchDevice(device.name);
                   const knownProfile = matched.id !== 'unknown' ? matched : null;
@@ -267,7 +319,7 @@ export function DevicesPage() {
                         </span>
                         <span className="mt-0.5 flex items-center gap-2 text-[11px] text-faint">
                           {knownProfile && (
-                            <span>{deviceKindLabel(knownProfile.kind)} · {knownProfile.sku}</span>
+                            <span>{deviceKindLabel(knownProfile.kind)} · name matches a protocol profile (unconfirmed)</span>
                           )}
                           {device.mac && <span className="font-mono">{device.mac}</span>}
                           {typeof device.battery === 'number' && (
@@ -351,15 +403,59 @@ export function DevicesPage() {
             </Card>
           )}
 
+          <Card title="Device Connectivity" subtitle="Automatic identification is the default; manual choice is a recovery option">
+            <div className="space-y-1 text-xs text-mute">
+              {app.connected && (
+                <p className="text-sm font-semibold text-ink">
+                  {app.identification === 'verified' ? app.profile.name : 'Unknown Soundcore device'}
+                </p>
+              )}
+              <p>Device name: <span className="text-ink">{app.connected ? app.deviceName : 'No device'}</span></p>
+              <p>Model code: <span className="font-mono text-ink">{app.identification === 'verified' ? app.profile.sku : 'Not verified'}</span></p>
+              <p>Connection: <span className="text-ink">{app.connected ? 'Connected' : 'Not connected'}</span></p>
+              <p>Identification: <span className="text-ink">{{
+                verified: '✓ Automatically verified (protocol profile and state layout)',
+                uncertain: '⚠ Connected but identification uncertain',
+                mismatch: '⚠ Connected with identification mismatch',
+                'not-connected': 'Not connected',
+              }[app.identification]}</span></p>
+              {app.manualCandidate && (
+                <p>
+                  {app.identification === 'verified'
+                    ? `Manual suggestion ${app.manualCandidate.name} (${app.manualCandidate.sku}) ignored — automatic identification takes precedence.`
+                    : `Manual protocol-profile candidate: ${app.manualCandidate.name} (${app.manualCandidate.sku}). Automatic identification and command gates still apply.`}
+                </p>
+              )}
+            </div>
+            {app.connected && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {app.connectedMac && <>
+                  <Button
+                    size="sm"
+                    variant={app.identification === 'verified' ? 'secondary' : 'primary'}
+                    onClick={() => setProfileOpen(true)}
+                  >
+                    {app.identification === 'verified' ? 'Change device model' : 'Select model manually'}
+                  </Button>
+                  {app.manualCandidate && (
+                    <Button size="sm" onClick={app.resetAutomaticDetection}>Reset to automatic detection</Button>
+                  )}
+                </>}
+                <Button size="sm" variant="danger" onClick={() => void app.disconnect()}>Disconnect</Button>
+              </div>
+            )}
+            <p className="mt-2 text-[11px] text-faint">
+              Automatic detection remains primary. A manual suggestion applies only to this device/session,
+              never replaces a confirmed automatic profile, and cannot unlock protocol commands.
+            </p>
+          </Card>
+
           {/* Capabilities of the connected/selected model — PART L honesty. */}
           <Card
             title="Model capabilities"
-            subtitle={`${app.profile.name} (${app.profile.sku}) — derived from the documented protocol, per model`}
-            actions={!app.connected && (
-              <Button size="sm" onClick={() => setProfileOpen(true)}>
-                Preview profiles
-              </Button>
-            )}
+            subtitle={app.connected && app.identification !== 'verified'
+              ? 'Model-specific controls unavailable until identification is verified'
+              : `${app.profile.name} (${app.profile.sku}) — derived from documented protocol evidence`}
           >
             <CapabilityList />
             {app.profileNote && (
@@ -369,8 +465,7 @@ export function DevicesPage() {
             )}
             {!app.profile.verified && (
               <p className="mt-2 text-[11px] text-faint">
-                This profile has no published capture; it is the closest verified relative and the
-                UI flags it.
+                No verified model-specific profile is available. Only universal read commands are enabled.
               </p>
             )}
           </Card>
@@ -379,56 +474,27 @@ export function DevicesPage() {
         </div>
       </div>
 
-      {/* Profile picker — disconnected previews/simulator runs only. A live
-          session always stays bound to the identity-derived profile. */}
-      <Modal open={profileOpen} title="Soundcore model profiles" onClose={() => setProfileOpen(false)} width="max-w-2xl">
+      {/* A candidate is scoped to the active MAC; it cannot alter the wire profile. */}
+      <Modal open={profileOpen && app.connected && Boolean(app.connectedMac)} title="Manual model selection (recovery)" onClose={() => setProfileOpen(false)} width="max-w-2xl">
         <p className="mb-3 text-xs leading-relaxed text-mute">
-          SoundControl matches the Bluetooth name automatically. These profiles are for a
-          disconnected preview or simulator run; a live device cannot be overridden because a
-          wrong model would send the wrong physical protocol frames.
+          Automatic identification remains primary. Only verified protocol profiles are listed;
+          a manual choice is only a session-scoped suggestion and cannot bypass the command gate.
+          A confirmed automatic identity takes precedence.
         </p>
-        <ul className="space-y-1.5">
-          {DEVICES.map((d) => {
-            const current = app.profile.id === d.id;
-            return (
-              <li key={d.id}>
-                <button
-                  onClick={() => {
-                    app.setProfileId(d.id);
-                    setProfileOpen(false);
-                  }}
-                  className={`flex w-full items-center gap-3 rounded-xl border px-4 py-2.5 text-left transition-colors duration-150 ${
-                    current ? 'border-accent/60 bg-accent/10' : 'border-edge bg-sunken hover:border-accent/35'
-                  }`}
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2 text-sm font-semibold text-ink">
-                      {d.name} <span className="font-mono text-[11px] text-faint">{d.sku}</span>
-                      {!d.verified && (
-                        <span className="rounded bg-warn/15 px-1.5 py-0.5 text-[9px] font-bold text-warn">
-                          UNVERIFIED
-                        </span>
-                      )}
-                    </span>
-                    <span className="mt-0.5 block text-[11px] text-mute">
-                      {deviceKindLabel(d.kind)} ·{' '}
-                      {d.ancLayout !== 'none' ? 'noise control' : 'no noise control'} ·{' '}
-                      {d.eqCommand ? `EQ ${d.eqCommand}` : 'EQ via 03:87 (unsupported)'}
-                    </span>
-                  </span>
-                  {current && <IconCheck size={16} className="text-accent" />}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <ManualModelOptions
+          currentId={app.manualCandidate?.id ?? null}
+          onSelect={(id) => {
+            app.selectManualModel(id);
+            setProfileOpen(false);
+          }}
+        />
       </Modal>
 
       <Modal open={catalogOpen} title="US/EU market snapshot" onClose={() => setCatalogOpen(false)} width="max-w-4xl">
         <p className="mb-4 text-xs leading-relaxed text-mute">
-          Catalog identity, protocol evidence, simulator/tests, and physical hardware
-          validation are separate statuses. A catalog row with unknown protocol evidence is
-          intentionally read-only: SoundControl will not guess ANC, EQ, codec, or state offsets.
+          Catalog identity, implemented protocol support and automated test coverage are
+          separate. Catalog-only devices retain safe read paths; SoundControl does not
+          guess model-specific ANC, EQ, codec, or state offsets.
         </p>
         <div className="space-y-4">
           {(['tws', 'sleep', 'open-ear', 'neckband', 'headphones'] as const).map((category) => {
@@ -469,7 +535,6 @@ function MarketCoverageCard({ onOpen }: { onOpen: () => void }) {
         <MarketMetric value={tested} label="unit-tested" tone="good" />
       </div>
       <p className="mt-3 text-[11px] leading-relaxed text-faint">
-        Physical validation: <span className="font-semibold text-warn">pending for every model</span>.
         Regional names and model-number aliases are grouped into one canonical SKU row.
       </p>
     </Card>
@@ -504,7 +569,6 @@ function CatalogStatusRow({ entry }: { entry: MarketCatalogEntry }) {
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-faint">
         <span>Simulator: <b className={entry.simulatorCoverage === 'covered' ? 'text-accent-soft' : 'text-faint'}>{entry.simulatorCoverage}</b></span>
         <span>Unit tests: <b className={entry.unitTestCoverage === 'covered' ? 'text-accent-soft' : 'text-faint'}>{entry.unitTestCoverage}</b></span>
-        <span>Physical validation: <b className="text-warn">{entry.physicalValidation}</b></span>
       </div>
       <p className="mt-1 text-[10px] leading-relaxed text-faint">Aliases: {entry.aliases.join(' · ')}</p>
       <p className="mt-1 text-[10px] leading-relaxed text-mute">{entry.protocolEvidence}</p>
@@ -517,16 +581,16 @@ function CapabilityList() {
   const app = useApp();
   const c = app.capabilities;
   const rows: Array<[string, boolean, string]> = [
-    ['Noise control', c.supportsNoiseControl, c.supportsNoiseControl ? `06:81 · ${app.profile.ancLayout}` : 'no sound-mode module'],
-    ['Equalizer', c.supportsEqualizer, c.supportsEqualizer ? String(app.profile.eqCommand) : '03:87 HearID — not sent on purpose'],
+    ['Noise control', c.supportsNoiseControl, c.supportsNoiseControl ? `06:81 · ${app.profile.ancLayout}` : app.connected && app.identification !== 'verified' ? 'identification not verified' : 'no sound-mode module'],
+    ['Equalizer', c.supportsEqualizer, c.supportsEqualizer ? String(app.profile.eqCommand) : app.connected && app.identification !== 'verified' ? 'identification not verified' : '03:87 HearID — not sent on purpose'],
     ['Gaming mode', c.supportsGaming, c.supportsGaming ? (app.profile.sku === 'A3947' ? '10:85' : '01:87') : 'no command for this model'],
     ['3D surround', c.supportsSurround, c.supportsSurround ? '02:86' : 'no command for this model'],
     ['Dual connection', c.supportsDual, c.supportsDual ? '0B:84' : 'no command for this model'],
     ['LDAC codec', c.supportsLdac, c.supportsLdac ? '01:7F / 01:FF' : 'no command for this model'],
     ['Firmware & serial', c.supportsFirmwareInfo, '01:05 — every supported model'],
     ['Per-earbud status & battery', c.supportsEarbudState, c.supportsEarbudState ? '01:03 side bytes (0xFF = absent)' : 'single-body / over-ear hardware'],
-    ['Device volume', c.supportsVolume, 'no volume command exists in the protocol'],
-    ['Gesture remapping', c.supportsGestures, 'no button-write command is publicly documented'],
+    ['Device volume', c.supportsVolume, 'A3116-only reference write; no validated volume readback in this app'],
+    ['Gesture remapping', c.supportsGestures, '04:81 is model-specific; read/verify and safety gates not implemented'],
   ];
   return (
     <ul className="space-y-1">

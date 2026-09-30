@@ -617,8 +617,10 @@ def _parse_windows_scan_output(text: str) -> list[dict[str, object]]:
                 battery = value
         except (TypeError, ValueError):
             pass
-        connected = raw_connected in {"1", "true", "yes"}
-        item: dict[str, object] = {"mac": mac, "name": name, "connected": connected}
+        item: dict[str, object] = {"mac": mac, "name": name}
+        # Missing/unsupported PnP property is UNKNOWN, not proof of link-down.
+        if raw_connected in {"1", "true", "yes", "0", "false", "no"}:
+            item["connected"] = raw_connected in {"1", "true", "yes"}
         if battery is not None:
             item["battery"] = battery
         devices.append(item)
@@ -665,7 +667,9 @@ def _parse_bluetoothctl_info_output(text: str) -> dict[str, object]:
         elif stripped.startswith("Alias:"):
             alias = stripped.split(":", 1)[1].strip()
         elif stripped.startswith("Connected:"):
-            result["connected"] = stripped.split(":", 1)[1].strip().lower() == "yes"
+            state = stripped.split(":", 1)[1].strip().lower()
+            if state in ("yes", "no"):
+                result["connected"] = state == "yes"
         elif stripped.startswith("Battery Percentage:"):
             # BlueZ normally prints `0x5a (90)`, but older versions expose
             # only the hexadecimal value. Accept both without treating an
@@ -758,7 +762,7 @@ $present = @{}
 # is the authoritative host-side signal (DEVPROPKEY_Bluetooth_IsConnected,
 # property 15); use it below while keeping paired addresses from the registry.
 # Some adapters do not expose the property, so those devices remain paired with
-# connected=false rather than being promoted by a weaker PresentOnly heuristic.
+# connected=unknown rather than being promoted by a weaker PresentOnly heuristic.
 $connectedKey = '{83DA6326-97A6-4088-9453-A1923F573B29} 15'
 Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | ForEach-Object {
     $id = [string]$_.InstanceId
@@ -769,8 +773,9 @@ Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | ForEach-Object {
     $state = Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName $connectedKey -ErrorAction SilentlyContinue |
         Where-Object { $_.Type -ne 'Empty' -and $null -ne $_.Data } |
         Select-Object -First 1
-    if ($null -ne $state -and ([string]$state.Data) -match '(?i)^(true|1|yes)$') {
-        $present[$mac] = $true
+    if ($null -ne $state -and ([string]$state.Data) -match '(?i)^(true|false|1|0|yes|no)$') {
+        if ([string]$state.Data -match '(?i)^(true|1|yes)$') { $present[$mac] = 'true' }
+        elseif (-not $present.ContainsKey($mac)) { $present[$mac] = 'false' }
     }
 }
 Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | ForEach-Object {
@@ -808,7 +813,7 @@ Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Device
         if ($names.ContainsKey($key) -and $names[$key]) { $n = [string]$names[$key] }
         if (-not $n -or -not $n.Trim("?")) { $n = $key }
         $b = if ($levels.ContainsKey($key)) { $levels[$key] } else { "" }
-        $connected = if ($present.ContainsKey($key)) { "true" } else { "false" }
+        $connected = if ($present.ContainsKey($key)) { $present[$key] } else { "" }
         "{0}|{1}|{2}|{3}" -f $key, $n, $b, $connected
     }
 """

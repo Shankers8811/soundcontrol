@@ -63,6 +63,10 @@ function BatteryPill() {
     );
   }
 
+  if (typeof app.battery.hostPercent === 'number') {
+    return <span className="rounded-full border border-edge bg-sunken px-3 py-1 text-xs font-medium text-ink">Host battery {app.battery.hostPercent}%</span>;
+  }
+
   return (
     <span className="rounded-full border border-edge bg-sunken px-3 py-1 text-xs font-medium text-faint">
       Battery unavailable
@@ -111,7 +115,7 @@ function ConnectionHero() {
 
 function DeviceSummaryCard() {
   const app = useApp();
-  const verifiedModel = app.connected && app.profile.verified && app.profile.id !== 'unknown';
+  const verifiedModel = app.identification === 'verified';
   const displayName = verifiedModel ? app.profile.name : app.deviceName;
 
   return (
@@ -129,9 +133,7 @@ function DeviceSummaryCard() {
               </span>
             </span>
           </div>
-          {verifiedModel && (
-            <InfoRow label="Model code" value={app.profile.sku} mono />
-          )}
+          <InfoRow label="Model code" value={verifiedModel ? app.profile.sku : 'Not verified'} mono />
           <InfoRow label="Firmware" value={app.firmware} mono />
           {app.serial && <InfoRow label="S/N" value={app.serial} mono />}
           <InfoRow label="Connection" value="Connected" />
@@ -158,8 +160,8 @@ function DeviceSummaryCard() {
         </>
       ) : (
         <p className="text-xs leading-relaxed text-mute">
-          Device identity, model code, firmware, and serial number are read from the
-          connected device/profile where supported. SoundControl never fabricates them.
+          Model codes come from verified registry profiles only after identification; firmware
+          and S/N appear only when reported by the device. A Bluetooth name is not a serial number.
         </p>
       )}
     </Card>
@@ -194,8 +196,8 @@ function HeadsetBatteryCard() {
                 {level}% {app.battery.leftCharging && <span className="text-warn">(charging)</span>}
               </p>
               <p className="mt-1">
-                {app.profile.kind === 'neckband' ? 'Neckband models' : 'Over-ear models'} report a single 0–5 level; SoundControl converts it and re-polls
-                every 30 s while connected.
+                The device reports a single battery level. SoundControl uses this profile’s
+                documented scale and re-polls every 30 s while connected.
               </p>
             </>
           ) : (
@@ -223,7 +225,7 @@ export function DashboardPage() {
           <>
             <StatusBadge phase={app.connectionPhase} />
             {app.connected && (
-              <span className="truncate font-medium text-ink/90">{app.deviceName}</span>
+              <span className="truncate font-medium text-ink/90">{app.identification === 'verified' ? app.profile.name : app.deviceName}</span>
             )}
           </>
         }
@@ -240,6 +242,16 @@ export function DashboardPage() {
 
           <div className="space-y-4 xl:col-span-5">
             {app.connected && !caps.supportsEarbudState && <HeadsetBatteryCard />}
+            {app.connected && app.identification === 'verified' && app.profile.caseBatteryMax !== undefined && (
+              <Card title="Charging case" subtitle="Read-only · from this model’s validated 01:01 state update">
+                <p className="text-sm font-semibold text-ink" aria-label="Charging case battery">
+                  {app.battery.casePercent === null || app.battery.casePercent === undefined
+                    ? 'Case battery unavailable — awaiting a valid case reading'
+                    : `${app.battery.casePercent}%`}
+                </p>
+                <p className="mt-2 text-xs text-mute">Not included in the 30-second earbud battery query. No case reading is inferred from host Bluetooth charge.</p>
+              </Card>
+            )}
             <VolumeControl />
             <DeviceSummaryCard />
           </div>

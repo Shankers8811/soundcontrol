@@ -114,8 +114,8 @@ export async function scanBridgeDevices(fresh = false): Promise<NearbyDevice[]> 
       id: d.mac,
       name: d.name || d.mac,
       mac: d.mac,
-      battery: d.battery ?? null,
-      connected: d.connected === true,
+      battery: typeof d.battery === 'number' && Number.isInteger(d.battery) && d.battery >= 0 && d.battery <= 100 ? d.battery : null,
+      connected: typeof d.connected === 'boolean' ? d.connected : undefined,
       source: 'bridge' as const,
     }));
   } catch {
@@ -164,13 +164,16 @@ export async function scanBridgeDevicesDetailed(fresh = false): Promise<ScanResu
     const json = (await res.json()) as {
       devices?: Array<{ mac: string; name: string; battery?: number | null; connected?: boolean }>;
     };
+    if (!Array.isArray(json.devices)) {
+      return { devices: [], error: 'The Bluetooth helper returned an invalid scan result — retry.' };
+    }
     return {
-      devices: (json.devices ?? []).map((d) => ({
+      devices: json.devices.map((d) => ({
         id: d.mac,
         name: d.name || d.mac,
         mac: d.mac,
-        battery: d.battery ?? null,
-        connected: d.connected === true,
+        battery: typeof d.battery === 'number' && Number.isInteger(d.battery) && d.battery >= 0 && d.battery <= 100 ? d.battery : null,
+        connected: typeof d.connected === 'boolean' ? d.connected : undefined,
         source: 'bridge' as const,
       })),
       error: null,
@@ -196,7 +199,7 @@ export async function connectBridge(
   mac: string,
   onRx: (data: Uint8Array) => void,
   name = '',
-  hostBattery: number | null = null,
+  _hostBattery: number | null = null,
   /** Bridge diagnostics ("DSP answered on channel 4", silent-link watchdog…). */
   onSys: (message: string, isError: boolean) => void = () => {},
   /**
@@ -370,10 +373,9 @@ export async function connectBridge(
   return {
     transport,
     name: name || mac || 'soundcore',
-    battery:
-      hostBattery !== null
-        ? { left: hostBattery, right: hostBattery, batteryScale: null }
-        : null,
+    // Host aggregate charge is passed separately to the store as hostPercent;
+    // it cannot stand in for either device-reported earbud side.
+    battery: null,
     dspChannel,
   };
 }

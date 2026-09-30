@@ -99,7 +99,7 @@ export function SettingsPage() {
           title="Device"
           subtitle={
             app.connected
-              ? 'Read from the device over the real protocol — never guessed'
+              ? 'Firmware and S/N come from device telemetry; model codes require verified identification'
               : 'Connect a device to see its real information here'
           }
         >
@@ -107,9 +107,9 @@ export function SettingsPage() {
             <div className="space-y-3">
               <div>
                 <InfoRow label="Device" value={app.deviceName} />
-                <InfoRow label="Model" value={`${app.profile.name} (${app.profile.sku})`} />
+                <InfoRow label="Model" value={app.identification === 'verified' ? `${app.profile.name} (${app.profile.sku})` : 'Not verified'} />
                 <InfoRow label="Firmware" value={app.firmware} mono />
-                <InfoRow label="Serial" value={app.serial ?? '(not read yet)'} mono />
+                <InfoRow label="S/N" value={app.serial ?? '(not read yet)'} mono />
               </div>
               <div>
                 <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-faint">
@@ -124,11 +124,12 @@ export function SettingsPage() {
                     ['Dual connection', caps.supportsDual],
                     ['LDAC', caps.supportsLdac],
                     ['Per-earbud battery', caps.supportsPerEarbudBattery],
+                    ['Charging case (01:01 only)', app.identification === 'verified' && app.profile.caseBatteryMax !== undefined],
                     ['Firmware info', caps.supportsFirmwareInfo],
                     ['Factory reset', caps.supportsFactoryReset],
                     // Protocol-wide constants — honest about what NO model gets:
-                    ['Volume (no protocol command)', false],
-                    ['Gesture writes (undocumented)', false],
+                    ['Volume (no validated readback)', false],
+                    ['Gesture writes (not integrated)', false],
                   ]}
                 />
               </div>

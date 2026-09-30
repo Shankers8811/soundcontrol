@@ -3,7 +3,9 @@ name: Windows Desktop Smoke Test
 on:
   workflow_dispatch:
   push:
-    branches: ['arena/**']
+    # Also smoke the actual public main commit after review/merge; a successful
+    # arena-branch run is not a substitute for final main-branch validation.
+    branches: [main, 'arena/**']
 
 permissions:
   contents: read
@@ -13,8 +15,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm

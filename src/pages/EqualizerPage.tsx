@@ -43,13 +43,13 @@ export function EqualizerPage() {
         supported={caps.supportsEqualizer}
         noteTitle="The equalizer is not available on this model"
         note={
-          app.profile.id === 'unknown' ? (
+          app.profile.id === 'unknown' || (app.connected && app.identification !== 'verified') ? (
             <>
-              This device’s model could not be identified. Equalizer commands and byte layouts
+              This device’s model identification is uncertain or mismatched. Equalizer commands and byte layouts
               differ per model, and SoundControl never guesses a payload for unknown firmware — a
               wrong frame could overwrite a personalised hearing profile. EQ stays disabled until
-              the model is known (a host-readable device name, a previous connection, or a
-              manual profile override on the Devices page).
+              the model-specific state layout is confirmed. A manual model candidate cannot
+              override the command boundary.
             </>
           ) : (
             <>
@@ -233,8 +233,9 @@ function CustomFaders() {
       <p className="mt-2 text-[10px] leading-relaxed text-faint">
         Dragging commits the custom curve (preset id FE FE) to the device after a short debounce;
         the device's own EQ reports keep this view in sync when anything changes from the phone
-        app. HearID personalisation is deliberately absent: the RFCOMM protocol exposes no command
-        to create or switch a hearing profile, so SoundControl does not offer one.
+        app. HearID personalisation is deliberately absent: per-model reference writes exist,
+        but this app has no measured-profile read/verify workflow and will not overwrite a
+        hearing profile or invent a hearing test.
       </p>
     </div>
   );

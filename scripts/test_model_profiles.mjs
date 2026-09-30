@@ -86,6 +86,7 @@ const A3959 = M.DEVICES.find((d) => d.sku === 'A3959');
 const UNKNOWN = M.UNKNOWN_PROFILE;
 const A3947 = M.DEVICES.find((d) => d.sku === 'A3947');
 const A3952 = M.DEVICES.find((d) => d.sku === 'A3952');
+const A3035 = M.DEVICES.find((d) => d.sku === 'A3035');
 const A3936 = M.DEVICES.find((d) => d.sku === 'A3936');
 const A3954 = M.DEVICES.find((d) => d.sku === 'A3954');
 const A3955 = M.DEVICES.find((d) => d.sku === 'A3955');
@@ -284,6 +285,9 @@ const ID_CASES = [
   ['soundcore P40i', 'A3955'],
   ['soundcore Liberty 5', 'A3957'],
   ['soundcore Space One Pro', 'A3062'],
+  ['soundcore Space One', 'A3035'],
+  ['Space One', 'A3035'],
+  ['A3035', 'A3035'],
   ['soundcore Q20i', 'A3004'],
   ['soundcore Q11i', 'A3005'],
   ['soundcore Space 2', 'D1402'],
@@ -343,6 +347,32 @@ function frameOf(cat, typ, payload = []) {
 }
 const FE = (id) => [id & 0xff, (id >> 8) & 0xff];
 
+// A3035's documented six-byte shape is distinct from the common classic layout.
+const a3035Manual = M.buildAnc(A3035.ancLayout, { mode: 'anc', level: 3, scene: 'outdoor', transVocal: false, wind: true });
+const a3035Adaptive = M.buildAnc(A3035.ancLayout, { mode: 'adaptive', level: 4, scene: 'outdoor', transVocal: false, wind: false });
+check('A3035 manual 06:81: level 3, repeated ambient, manual mode, wind on',
+  a3035Manual.length === 16 && M.validateOutboundFrame(a3035Manual).ok &&
+  JSON.stringify([...a3035Manual.slice(9, -1)]) === JSON.stringify([0, 0x30, 0, 0, 1, 1]));
+check('A3035 adaptive 06:81: direct level 4, adaptive mode, wind off',
+  a3035Adaptive.length === 16 && M.validateOutboundFrame(a3035Adaptive).ok &&
+  JSON.stringify([...a3035Adaptive.slice(9, -1)]) === JSON.stringify([0, 0x54, 0, 1, 0, 1]));
+const a3035Caps = M.deriveCapabilities(A3035);
+check('A3035 gates manual/adaptive/wind and LDAC/Dual by its exact profile',
+  A3035.id === 'space-one' && a3035Caps.supportsNoiseControl &&
+  a3035Caps.ancSub.level && a3035Caps.ancSub.adaptive && a3035Caps.ancSub.wind &&
+  !a3035Caps.ancSub.scenes && !a3035Caps.ancSub.transVocal &&
+  a3035Caps.supportsLdac && a3035Caps.supportsDual && !a3035Caps.supportsEqualizer);
+check('A3035 factory EQ and custom EQ builders both withhold 03:87 writes',
+  M.buildEqPreset(A3035, M.EQ_PRESETS[0]) === null &&
+  M.buildCustomEq(A3035, Array(10).fill(0)) === null);
+check('A3035 single battery uses offset 0 and scale 5; empty state is rejected',
+  A3035.state.batteryLeft === 0 && A3035.state.batteryRight === null &&
+  A3035.batteryMax === 5 && M.requiredStateLength(A3035.state) === 1 &&
+  !M.validStatePayloadLength(A3035.state, 0));
+check('A3035 short and invalid 06:01 mirrors cannot confirm a mode',
+  M.parseSoundModes([0, 0x50, 0, 1, 1], A3035.ancLayout) === null &&
+  M.parseSoundModes([0xff, 0x50, 0, 1, 1, 5], A3035.ancLayout) === null);
+
 const GATE_CASES = [
   // [label, frame, profile, expectedOk]
   ['A3949 + ANC frame 06:81 → DENIED (no ANC on R50i)', frameOf(0x06, 0x81, [0x00, 0x51, 0x00, 0x00, 0x00, 0x00, 0x01]), A3949, false],
@@ -366,6 +396,18 @@ const GATE_CASES = [
   ['A3959 + factory reset 01:85 → DENIED', M.buildResetDevice(), A3959, false],
   ['A3952 + factory reset 01:85 → DENIED', M.buildResetDevice(), A3952, false],
   ['unknown model + factory reset 01:85 → DENIED', M.buildResetDevice(), UNKNOWN, false],
+  // Exact A3945 read profile must not accidentally inherit its reference writers.
+  ['A3945 + documented EQ 02:81 → DENIED (read-only)', M.buildEq('02:81', 0x0001, Array(8).fill(0)), M.matchDevice('Life Note 3S'), false],
+  ['A3945 + reference game 01:87 → DENIED (read-only)', M.buildGameMode(A3949, true), M.matchDevice('A3945'), false],
+  ['A3945 + documented state request → allowed', M.INIT, M.matchDevice('A3945'), true],
+  ['A3035 + manual 06:81 → allowed', a3035Manual, A3035, true],
+  ['A3035 + adaptive/wind 06:81 → allowed', a3035Adaptive, A3035, true],
+  ['A3035 + LDAC query → allowed', M.LDAC.query, A3035, true],
+  ['A3035 + LDAC set → allowed by profile (hardware pending)', M.LDAC.enable, A3035, true],
+  ['A3035 + Dual set → allowed by profile (hardware pending)', M.DUAL.enable, A3035, true],
+  ['A3035 + 03:87 EQ/HearID → DENIED (no enabled A3035 writer)', M.buildEq87D1202(0x0002, Array(10).fill(0)), A3035, false],
+  ['A3035 + gaming → DENIED', M.buildGameMode(A3035, true), A3035, false],
+  ['A3035 + factory reset → DENIED', M.buildResetDevice(), A3035, false],
   ['A3949 + state request 01:01 → allowed (universal)', M.INIT, A3949, true],
   ['A3959 + battery query → allowed (universal)', M.BATTERY_QUERY, A3959, true],
   ['unknown model + state request → allowed (universal read)', M.INIT, UNKNOWN, true],

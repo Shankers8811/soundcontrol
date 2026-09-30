@@ -13,14 +13,13 @@ messages, offsets). If a message you see is not covered here, export the log
 2. **Close the Soundcore phone app.** The headset serves exactly one control
    client; while the phone holds the slot, new clients are accepted but stay
    silent.
-3. Use the Windows/Linux desktop app (or the web app **plus** a manually
-   running helper). Web Bluetooth alone cannot drive ANC reliably — that is a
-   browser API limitation, not a bug.
+3. Use the Windows/Linux desktop app; a browser tab alone is not the packaged
+   Bluetooth application and is not a physical-hardware validation run.
 
 ## "The helper is not responding"
 
-The desktop app starts its Python helper automatically; the web app expects it
-on the loopback port. If ConnectSheet shows *Bluetooth helper: not responding*:
+The desktop app starts its Python helper automatically. If Devices shows
+*Helper not responding* (or Connect reports a helper error):
 
 - restart SoundControl;
 - check the platform log folder (`%AppData%\soundcontrol\main.log` on Windows,
@@ -81,9 +80,10 @@ after closing the phone app.
   presence information; per-ear *wear* sensors are not exposed by this
   protocol on most models.
 - Over-ears (Q30/Q35/Space One/Q45…) report **one** level; there is no L/R pair.
-- There is deliberately **no case battery** anywhere in the UI: several models
-  never report one (the official app hides it too) and over-ears have no case.
-  The wire offsets remain documented in PROTOCOL.md for capture decoding.
+- The charging-case percentage appears only for a verified model with a documented
+  `01:01` case field and scale; it is the last full-state reading this session.
+  `01:03` battery polls refresh the buds, not the case. Other models and
+  over-ears do not acquire a guessed case percentage.
 
 ## ANC / sound modes missing or reverting
 
