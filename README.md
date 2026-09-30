@@ -11,6 +11,10 @@
   <a href="https://github.com/Shankers8811/soundcontrol/actions/workflows/build-windows.yml"><img src="https://github.com/Shankers8811/soundcontrol/actions/workflows/build-windows.yml/badge.svg?branch=main" alt="Windows build"></a>
 </p>
 
+SoundControl is a **Windows and Linux desktop companion for Soundcore devices**. It uses a local Bluetooth bridge and evidence-backed protocol profiles for model-aware controls, battery telemetry and diagnostics. Supported controls depend on the connected model: unsupported commands remain blocked, and selecting a protocol profile manually does not independently verify the physical device. Devices must already be paired and connected through the host's Bluetooth settings; some profiles are read-only or catalog-only. This is not an Android app. CI does not establish physical-device validation; the previous Windows smoke runner had no audio endpoints, so its audio-regression comparison was not performed.
+
+**Install or download:** Linux AppImage and Debian packages are available below. The latest published release has **no signed Windows installer**; the Windows download remains unavailable until an Authenticode-verified release is published. The Windows Build badge above is live GitHub Actions status for `main`, not a claim of a signed release or of final validation of the proposed changes.
+
 ---
 
 ## Windows & Linux Desktop App
@@ -19,9 +23,9 @@
 
 ### 🪟 Windows
 
-**Windows installer (`SoundControl-Setup.exe`): not attached to the latest release.** [Check the release assets](https://github.com/Shankers8811/soundcontrol/releases/latest) for a signed Windows installer when available.
+**Windows installer (`SoundControl-Setup.exe`): not available on the latest published release.** [Check the actual release assets](https://github.com/Shankers8811/soundcontrol/releases/latest) before downloading. No installer link is offered until a signed Windows release contains that file.
 
-When available, the Windows download is an NSIS installer with Start-menu and desktop shortcuts. Release builds are gated on Authenticode signing; the current latest release has no Windows installer. It ships its own Bluetooth runtime; users do not need Python or Node.js.
+A future official Windows download would be an NSIS installer with Start-menu and desktop shortcuts and a bundled Bluetooth runtime; users would not need Python or Node.js. Publication requires a valid Authenticode certificate and the `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` credentials (or their documented aliases). The last Windows release attempt stopped at its signing-credentials gate; an unsigned CI build is **not** a downloadable official installer.
 
 ### 🐧 Linux AppImage
 
