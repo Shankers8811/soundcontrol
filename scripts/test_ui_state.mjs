@@ -560,7 +560,10 @@ try {
     contents: "export * from './src/state/hostDisconnect.ts'; export * from './src/state/identification.ts';",
     sourcefile: 'host-barrel.ts', resolveDir: ROOT, loader: 'ts',
   }, bundle: true, format: 'esm', platform: 'node', outfile: out, logLevel: 'error' });
-  const { hostDisconnectObservation: observe, verifiedCandidate, identificationState: identify } = await import(pathToFileURL(out).href);
+  const {
+    hostDisconnectObservation: observe, verifiedCandidate,
+    candidateForAddress, discardCandidateOnAutomaticVerification, identificationState: identify,
+  } = await import(pathToFileURL(out).href);
   const addr = 'AA:BB:CC:DD:EE:FF';
   let step = observe(addr, [{mac: '11:22:33:44:55:66', connected: false}], 0);
   eq('other device disappearing never disconnects active MAC', step, {misses: 0, disconnect: false});
@@ -574,11 +577,32 @@ try {
   eq('unknown connection property cannot confirm disconnect', observe(addr, [{mac: addr}], 1), {misses: 0, disconnect: false});
   const known = verifiedCandidate('liberty-4-nc');
   const other = verifiedCandidate('p20i');
-  check('manual selector rejects unknown/unverified IDs', verifiedCandidate('unknown') === null && verifiedCandidate('does-not-exist') === null);
-  eq('four identification states', [identify(false, known, true, null), identify(true, known, false, null),
-    identify(true, known, true, other), identify(true, known, true, known)],
-  ['not-connected', 'uncertain', 'mismatch', 'verified']);
-  check('manual selection cannot change capability matrix', deriveCapabilities(known).supportsNoiseControl && !deriveCapabilities(other).supportsNoiseControl);
+  const unverified = DEVICES.find((d) => !d.verified);
+  check('manual selector refuses arbitrary IDs, model codes and unverified profiles',
+    verifiedCandidate('unknown') === null && verifiedCandidate('A1234') === null &&
+    verifiedCandidate('does-not-exist') === null && Boolean(unverified) && verifiedCandidate(unverified.id) === null);
+  eq('automatic verified identity needs no manual choice', identify(true, known, true, null), 'verified');
+  eq('manual selection never verifies an unidentified physical device', identify(true, UNKNOWN_PROFILE, false, known), 'uncertain');
+  eq('tentative automatic identification and incompatible manual candidate produce mismatch',
+    identify(true, known, false, other), 'mismatch');
+  eq('later verified automatic identification wins over incompatible manual candidate',
+    identify(true, known, true, other), 'verified');
+  eq('disconnected stays disconnected regardless of candidate', identify(false, known, true, other), 'not-connected');
+  const manualForTwo = { [addr]: other.id, '11:22:33:44:55:66': known.id };
+  eq('manual choices are scoped by MAC (including case-normalization)',
+    [candidateForAddress(manualForTwo, addr.toLowerCase())?.id,
+      candidateForAddress(manualForTwo, '11:22:33:44:55:66')?.id,
+      candidateForAddress(manualForTwo, '22:33:44:55:66:77')],
+    [other.id, known.id, null]);
+  const afterAutomatic = discardCandidateOnAutomaticVerification(manualForTwo, addr.toLowerCase());
+  eq('automatic confirmation drops only its own stale manual candidate',
+    [candidateForAddress(afterAutomatic, addr)?.id, candidateForAddress(afterAutomatic, '11:22:33:44:55:66')?.id],
+    [null, known.id]);
+  eq('automatic verification recalculates from the automatic profile, not the conflicting candidate',
+    [deriveCapabilities(known).supportsNoiseControl, deriveCapabilities(other).supportsNoiseControl],
+    [true, false]);
+  eq('unknown identity cannot gain ANC by manual selection',
+    deriveCapabilities(UNKNOWN_PROFILE).supportsNoiseControl, false);
 } finally { rmSync(hostDir, {recursive: true, force: true}); }
 
 const releaseDir = mkdtempSync(join(tmpdir(), 'soundcontrol-release-check-'));

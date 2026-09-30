@@ -80,7 +80,8 @@ export function AboutSection() {
                 Bluetooth connectivity and verified profiles provide model-specific ANC and transparency,
                 EQ, Game Mode, LDAC, multipoint, and spatial audio where supported.
                 Battery telemetry, diagnostics, device identification, and manual verified model
-                selection are available; manual selection cannot authorize unverified commands.
+                selection are available as a fallback. Automatic identification is the default;
+                manual selection cannot authorize unverified commands or replace a confirmed identity.
               </p>
               <p className="mt-2 text-sm leading-relaxed text-mute">
                 Every command SoundControl sends is a byte-verified frame from public captures of
