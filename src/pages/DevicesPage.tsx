@@ -423,7 +423,7 @@ export function DevicesPage() {
                 <p>
                   {app.identification === 'verified'
                     ? `Manual suggestion ${app.manualCandidate.name} (${app.manualCandidate.sku}) ignored — automatic identification takes precedence.`
-                    : `Manual verified protocol-profile candidate: ${app.manualCandidate.name} (${app.manualCandidate.sku}). This does not verify the physical device or authorize commands.`}
+                    : `Manual protocol-profile candidate: ${app.manualCandidate.name} (${app.manualCandidate.sku}). Automatic identification and command gates still apply.`}
                 </p>
               )}
             </div>
@@ -478,8 +478,8 @@ export function DevicesPage() {
       <Modal open={profileOpen && app.connected && Boolean(app.connectedMac)} title="Manual model selection (recovery)" onClose={() => setProfileOpen(false)} width="max-w-2xl">
         <p className="mb-3 text-xs leading-relaxed text-mute">
           Automatic identification remains primary. Only verified protocol profiles are listed;
-          selecting one does not independently verify this physical device or bypass the command gate.
-          A later confirmed automatic identity takes precedence.
+          a manual choice is only a session-scoped suggestion and cannot bypass the command gate.
+          A confirmed automatic identity takes precedence.
         </p>
         <ManualModelOptions
           currentId={app.manualCandidate?.id ?? null}
@@ -492,9 +492,9 @@ export function DevicesPage() {
 
       <Modal open={catalogOpen} title="US/EU market snapshot" onClose={() => setCatalogOpen(false)} width="max-w-4xl">
         <p className="mb-4 text-xs leading-relaxed text-mute">
-          Catalog identity, protocol evidence, simulator/tests, and physical hardware
-          validation are separate statuses. A catalog row with unknown protocol evidence is
-          intentionally read-only: SoundControl will not guess ANC, EQ, codec, or state offsets.
+          Catalog identity, implemented protocol support and automated test coverage are
+          separate. Catalog-only devices retain safe read paths; SoundControl does not
+          guess model-specific ANC, EQ, codec, or state offsets.
         </p>
         <div className="space-y-4">
           {(['tws', 'sleep', 'open-ear', 'neckband', 'headphones'] as const).map((category) => {
@@ -535,7 +535,6 @@ function MarketCoverageCard({ onOpen }: { onOpen: () => void }) {
         <MarketMetric value={tested} label="unit-tested" tone="good" />
       </div>
       <p className="mt-3 text-[11px] leading-relaxed text-faint">
-        Physical validation: <span className="font-semibold text-warn">pending for every model</span>.
         Regional names and model-number aliases are grouped into one canonical SKU row.
       </p>
     </Card>
@@ -570,7 +569,6 @@ function CatalogStatusRow({ entry }: { entry: MarketCatalogEntry }) {
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-faint">
         <span>Simulator: <b className={entry.simulatorCoverage === 'covered' ? 'text-accent-soft' : 'text-faint'}>{entry.simulatorCoverage}</b></span>
         <span>Unit tests: <b className={entry.unitTestCoverage === 'covered' ? 'text-accent-soft' : 'text-faint'}>{entry.unitTestCoverage}</b></span>
-        <span>Physical validation: <b className="text-warn">{entry.physicalValidation}</b></span>
       </div>
       <p className="mt-1 text-[10px] leading-relaxed text-faint">Aliases: {entry.aliases.join(' · ')}</p>
       <p className="mt-1 text-[10px] leading-relaxed text-mute">{entry.protocolEvidence}</p>
@@ -591,8 +589,8 @@ function CapabilityList() {
     ['LDAC codec', c.supportsLdac, c.supportsLdac ? '01:7F / 01:FF' : 'no command for this model'],
     ['Firmware & serial', c.supportsFirmwareInfo, '01:05 — every supported model'],
     ['Per-earbud status & battery', c.supportsEarbudState, c.supportsEarbudState ? '01:03 side bytes (0xFF = absent)' : 'single-body / over-ear hardware'],
-    ['Device volume', c.supportsVolume, 'no volume command exists in the protocol'],
-    ['Gesture remapping', c.supportsGestures, 'no button-write command is publicly documented'],
+    ['Device volume', c.supportsVolume, 'A3116-only reference write; no validated volume readback in this app'],
+    ['Gesture remapping', c.supportsGestures, '04:81 is model-specific; read/verify and safety gates not implemented'],
   ];
   return (
     <ul className="space-y-1">

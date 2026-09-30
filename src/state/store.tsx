@@ -27,8 +27,9 @@ import {
   type AncIntent,
 } from '../protocol/packets';
 import { presetById, type EqPreset } from '../protocol/presets';
-import { requiredStateLength, withDeviceBoundary } from '../protocol/modelRegistry';
-import { createSessionGuard, isCurrentTransportSession, parseDeviceToggles } from '../protocol/responses';
+import { requiredStateLength, validStatePayloadLength, withDeviceBoundary } from '../protocol/modelRegistry';
+import { EMPTY_OBSERVED, parseObservedFeatures, type ObservedFeatures } from '../protocol/observedFeatures';
+import { createSessionGuard, isCurrentTransportSession, parseCaseBatteryStateFrame, parseDeviceToggles } from '../protocol/responses';
 import { candidateForAddress, discardCandidateOnAutomaticVerification, identificationState, verifiedCandidate, type IdentificationState } from './identification';
 import { hostDisconnectObservation } from './hostDisconnect';
 import { isTransportBusyError } from '../lib/transportErrors';
@@ -132,6 +133,8 @@ interface AppState {
   selectManualModel: (id: string) => void;
   resetAutomaticDetection: () => void;
   battery: BatteryState;
+  /** Device-reported, read-only model-specific features; cleared on each session. */
+  observed: ObservedFeatures;
   ancMode: AncMode;
   ancLevel: number;
   ancScene: AncScene;
@@ -213,6 +216,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const manualCandidate = candidateForAddress(manualByAddress, connectedMac);
   const identification = identificationState(connected, profile, confirmedLayout, manualCandidate);
   const [battery, setBattery] = useState<BatteryState>({ left: null, right: null });
+  const [observed, setObserved] = useState<ObservedFeatures>(EMPTY_OBSERVED);
   // Persisted recent-device list. Sanitized on load: only well-formed
   // {mac,name} entries survive, and a non-array value falls back to empty —
   // consumers map/filter this list during connect and render, so a corrupt
@@ -426,6 +430,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let sawBatteryFrame = false;
       let rawLeft: number | undefined;
       let rawRight: number | undefined;
+      let casePercent: number | null | undefined;
       let chargingLeft: boolean | null | undefined;
       let chargingRight: boolean | null | undefined;
 
@@ -448,11 +453,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Phase 18 malformed-response guard: a state payload too short to
         // hold the fields THIS profile documents is not telemetry — it is
         // ignored whole, never partially parsed into a half-updated UI.
-        if (payload.length < requiredStateLength(offsets)) {
+        if (!validStatePayloadLength(offsets, payload.length)) {
           pushLog(
             'sys',
             '',
-            `State frame ignored — payload ${payload.length} bytes is shorter than the ${requiredStateLength(offsets)}-byte layout documented for ${profileRef.current.name} (${profileRef.current.sku})`,
+            `State frame ignored — payload ${payload.length} bytes does not match the ${offsets.exactLength ?? `at least ${requiredStateLength(offsets)}`}-byte layout documented for ${profileRef.current.name} (${profileRef.current.sku})`,
           );
           return;
         }
@@ -465,10 +470,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // candidate, never an unrelated device's identity.
         const confirmedAddress = connectedMacRef.current;
         setManualByAddress((prev) => discardCandidateOnAutomaticVerification(prev, confirmedAddress));
+        // Full-state readouts have their own complete model-specific length and
+        // value gates. A short/unknown layout clears old readouts, not a guess.
+        const observedNow = parseObservedFeatures(data, profileRef.current);
+        if (observedNow) setObserved(observedNow);
         rawLeft = payload[offsets.batteryLeft];
         rawRight = offsets.batteryRight === null ? undefined : payload[offsets.batteryRight];
-        // The case byte stays a wire fact (see PROTOCOL.md) but is never
-        // surfaced: many models do not report it and over-ears have no case.
+        // Only a full, validated 01:01 state can refresh case telemetry.
+        // 01:03 is a buds-only query; it must not invent or erase case charge.
+        casePercent = parseCaseBatteryStateFrame(data, profileRef.current);
         // Charging flags follow OpenSCQ30's exact 0/1 parser; other values are
         // not treated as a set bit.
         if (offsets.batteryChargingLeft !== null) {
@@ -517,6 +527,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         mergeBatteryTelemetry(previous, {
           rawLeft,
           rawRight,
+          casePercent,
           chargingLeft,
           chargingRight,
           // An unidentified model has no proven scale: levels stay raw and
@@ -647,6 +658,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         seed.presence = bat.presence ?? 'unknown';
       }
       setBattery(seed);
+      setObserved(EMPTY_OBSERVED);
       // Feature state is per-device as well: back to power-on defaults until
       // the new device confirms its own (06:01 sound-mode / 02:81 EQ mirrors).
       setAncMode('anc');
@@ -783,6 +795,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTransportLabel('Not connected');
     setDeviceName('No device');
     setBattery(emptyBattery());
+    setObserved(EMPTY_OBSERVED);
     setLinkInfo(null);
     setFirmware('Unknown');
     setSerial(null);
@@ -1435,6 +1448,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       selectManualModel,
       resetAutomaticDetection,
       battery,
+      observed,
       ancMode,
       ancLevel,
       ancScene,
@@ -1507,6 +1521,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       selectManualModel,
       resetAutomaticDetection,
       battery,
+      observed,
       ancMode,
       ancLevel,
       ancScene,

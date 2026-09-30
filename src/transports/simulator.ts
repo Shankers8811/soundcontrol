@@ -47,8 +47,29 @@ function stateFrame(profile: DeviceProfile): Uint8Array {
   const highest = Math.max(
     requiredStateLength(o),
     o.soundModes !== null ? o.soundModes + (o.soundModeLength ?? 7) : 0,
+    profile.sku === 'A3040' ? 142 : profile.sku === 'A3954' ? 165 : profile.sku === 'D1202' ? 152 : profile.sku === 'A3945' ? 72 : profile.sku === 'D1301' ? 150 : 0,
   );
-  const payload = new Uint8Array(Math.max(48, highest + 2));
+  const payload = new Uint8Array(profile.sku === 'A3945' || profile.sku === 'D1301' ? highest : Math.max(48, highest + 2));
+  // Synthetic, explicitly simulated read-only fields. These are NOT captures
+  // or proof that the device accepted a matching write command.
+  if (profile.sku === 'A3040') {
+    payload[47] = 7; // Q45 BassUp double-press assignment
+    payload.set([0, 90, 0], 67); // limiter off, 90 dB, real-time
+  } else if (profile.sku === 'A3954') {
+    payload.set([1, 95, 0], 145); // limiter on, 95 dB
+    payload.set([0, 1, 0], 148); // spatial off, fixed, music
+  } else if (profile.sku === 'D1202') {
+    payload.set([0, 90, 0], 134);
+    payload.set([0, 0], 137); // spatial off, music
+  } else if (profile.sku === 'A3945') {
+    // Synthetic Life Note 3S only; NOT a device capture or proven write ACK.
+    payload[1] = 1; // TWS connected (chooses low action nibble)
+    payload.set([1, 0x66, 1, 0x55, 1, 0x33, 1, 0x22, 1, 0, 1, 1], 54);
+    payload[68] = 1; // gaming status (no write capability)
+    payload[70] = 1; // BassUp state byte (not a global setter)
+  } else if (profile.sku === 'D1301') {
+    payload[144] = 0; payload[148] = 1; // synthetic post-sleep Pause audio
+  }
   payload[o.batteryLeft] = 4;
   if (o.batteryRight !== null) payload[o.batteryRight] = 4;
   if (o.batteryCase !== null) payload[o.batteryCase] = 3;

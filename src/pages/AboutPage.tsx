@@ -84,9 +84,9 @@ export function AboutSection() {
                 manual selection cannot authorize unverified commands or replace a confirmed identity.
               </p>
               <p className="mt-2 text-sm leading-relaxed text-mute">
-                Every command SoundControl sends is a byte-verified frame from public captures of
-                the official apps; features the protocol does not document are shown as
-                unavailable rather than faked.
+                Supported commands follow model-specific public captures or reference implementations,
+                with frame checks and model gates at the renderer and Bluetooth helper. Controls
+                without a safe protocol lifecycle stay unavailable rather than being faked.
               </p>
             </div>
           </div>

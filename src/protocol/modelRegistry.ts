@@ -151,7 +151,7 @@ export const TARGET_MODELS: readonly ModelRegistryEntry[] = [
     notes: [
       'Custom EQ curves (preset 0xFEFE) are NOT supported: OpenSCQ30 a3949.rs sets custom_preset_id: None ("device doesn\'t support custom presets") and none of the 22 live P20i captures uses FEFE. The custom-curve UI stays hidden and the model gate rejects the frame; factory presets work.',
       'Touch/button configuration is documented for this model (OpenSCQ30 button_configuration, 6 buttons × 3 press kinds) but NOT implemented by SoundControl — no write command is exposed.',
-      'Volume: no device-side volume command exists in any published capture — the Volume card stays honestly disabled (Phase 17 rule).',
+      'Volume: this app does not implement a read/verify path; the A3116-only speaker reference write must not be sent to this earbud (Phase 17 rule).',
     ],
   },
   {
@@ -240,7 +240,7 @@ export const TARGET_MODELS: readonly ModelRegistryEntry[] = [
       'Transparency SUB-MODES (fully transparent vs vocal) are NOT supported — the a3959 SoundModes struct has no TransparencyMode field; the vocal toggle stays hidden.',
       'Custom EQ curves (0xFEFE) ARE supported at protocol level (custom_preset_id Some(0xFEFE)) — physically unverified.',
       'Touch/button configuration is documented for this model (OpenSCQ30 button_configuration, 8 buttons × 4 press kinds) but NOT implemented by SoundControl.',
-      'Volume: no device-side volume command exists in any published capture — the Volume card stays honestly disabled (Phase 17 rule).',
+      'Volume: this app does not implement a read/verify path; the A3116-only speaker reference write must not be sent to this earbud (Phase 17 rule).',
     ],
   },
 ];
@@ -426,8 +426,13 @@ export function withDeviceBoundary(
  * update shorter than this cannot contain the fields this model reports and
  * is treated as malformed (ignored, never partially parsed).
  */
+export function validStatePayloadLength(state: StateOffsets, length: number): boolean {
+  return length >= requiredStateLength(state) &&
+    (state.exactLength === undefined || length === state.exactLength);
+}
+
 export function requiredStateLength(state: StateOffsets): number {
-  let end = 0;
+  let end = state.minimumLength ?? 0;
   const take = (at: number | null | undefined) => {
     if (typeof at === 'number') end = Math.max(end, at + 1);
   };

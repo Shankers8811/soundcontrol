@@ -25,9 +25,9 @@ import type { ReactNode } from 'react';
  * the model's real feature switches. Every toggle here sends a documented,
  * captured frame (01:87/10:85 gaming, 02:86 surround, 0B:84 dual,
  * 01:7F/01:FF LDAC) and rolls back if the write fails. Gesture remapping is
- * NOT offered: no public capture or OpenSCQ30 command documents a
- * button-mapping write, so the page says exactly that instead of rendering
- * decorative controls. The earbud illustration is purely visual (aria-hidden,
+ * NOT offered: OpenSCQ30 documents model-specific 04:81 button writes,
+ * but this app has not implemented the complete read/verify and model-gated
+ * transaction, so the page cannot expose a working remap yet. The earbud illustration is purely visual (aria-hidden,
  * no handlers).
  */
 
@@ -191,16 +191,70 @@ export function ControlsPage() {
             )}
           </Card>
 
+          {/* Three model-specific 01:01 readouts. No setter is registered: a
+              reference write and a same-command ACK alone cannot prove device
+              persistence or safe handling of the other button/profile bytes. */}
+          {app.connected && app.identification === 'verified' &&
+            ['A3040', 'A3954', 'D1202'].includes(app.profile.sku) && (
+            <Card title="Device-reported options" subtitle="Read-only · last full state report this connection">
+              <div className="space-y-2 text-xs text-mute">
+                {app.profile.sku === 'A3040' && (
+                  <p>Q45 double press: <strong className="text-ink">{app.observed.q45DoublePress ?? 'Unavailable'}</strong></p>
+                )}
+                <p>Safe-volume limit: <strong className="text-ink">
+                  {app.observed.safeVolume
+                    ? `${app.observed.safeVolume.enabled ? 'On' : 'Off'} · ${app.observed.safeVolume.limitDb} dB · ${app.observed.safeVolume.refresh}`
+                    : 'Unavailable'}
+                </strong></p>
+                {app.profile.sku !== 'A3040' && (
+                  <p>Spatial audio: <strong className="text-ink">
+                    {app.observed.spatial
+                      ? `${app.observed.spatial.enabled ? 'On' : 'Off'} · ${app.observed.spatial.mode}${app.observed.spatial.tracking ? ` · ${app.observed.spatial.tracking}` : ''}`
+                      : 'Unavailable'}
+                  </strong></p>
+                )}
+                <p>These values are not refreshed by the 30-second battery poll. Editing is unavailable until a write, response and post-write requery are proven for this exact model.</p>
+              </div>
+            </Card>
+          )}
+
+          {app.connected && app.identification === 'verified' && app.profile.sku === 'A3945' && (
+            <Card title="Life Note 3S device state" subtitle="Read-only · last full 01:01 report this connection">
+              <div className="space-y-2 text-xs text-mute">
+                <p>BassUp device flag: <strong className="text-ink">{app.observed.lifeNoteBassUp === null ? 'Unavailable' : app.observed.lifeNoteBassUp ? 'On' : 'Off'}</strong></p>
+                <p>EQ preset: <strong className="text-ink">{app.observed.lifeNoteEq ?? 'Unavailable'}</strong></p>
+                <p>Gaming mode: <strong className="text-ink">{app.observed.lifeNoteGaming === null ? 'Unavailable' : app.observed.lifeNoteGaming ? 'On' : 'Off'}</strong></p>
+                <p>Button assignments (current TWS connection state):</p>
+                {app.observed.lifeNoteButtons ? (
+                  <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                    {app.observed.lifeNoteButtons.map(({ press, action }) => (
+                      <li key={press}>{press}: <strong className="text-ink">{action}</strong></li>
+                    ))}
+                  </ul>
+                ) : <p>Assignments unavailable.</p>}
+                <p>These bytes are not refreshed by battery polling. No BassUp toggle, EQ write, gaming write or button editor is enabled for this model.</p>
+              </div>
+            </Card>
+          )}
+
+          {app.connected && app.identification === 'verified' && app.profile.sku === 'D1301' && (
+            <Card title="Sleep A30 device state" subtitle="Read-only · last full 01:01 report this connection">
+              <div className="space-y-2 text-xs text-mute">
+                <p>After falling asleep: <strong className="text-ink">{app.observed.sleepAfter ?? 'Unavailable'}</strong></p>
+                <p>This is the post-sleep Bluetooth/local-audio setting, not a timer, alarm, white-noise mixer or playback control. No sleep write is sent.</p>
+              </div>
+            </Card>
+          )}
+
           {/* ---------------------------------------------------- gestures */}
-          <Card title="Touch & button gestures" subtitle="Single / double / triple tap and hold, per side">
-            <UnavailableNote title="Gesture customization is not supported by this protocol">
+          <Card title="Touch & button gestures" subtitle="Model-specific actions · editing unavailable">
+            <UnavailableNote title="Gesture customization is not yet supported by SoundControl">
               <p>
-                Soundcore devices report their button mappings inside some models' state blobs, but
-                no public capture or reference implementation documents a command that{' '}
-                <span className="font-semibold text-ink/85">writes</span> a new mapping — and
-                SoundControl never invents Bluetooth commands. Your earbuds keep the mappings they
-                already have; the Soundcore mobile app configures gestures for the models that
-                support it.
+                A public protocol reference documents model-specific button mapping writes
+                (04:81), including a Space Q45 double-press vector. The Q45’s current double-press action is now read from its 01:01 state, but
+                SoundControl has not proven the per-model write ACK, post-write readback and
+                reconnect transaction; 04:81 is blocked by both transport allowlists. Your existing mapping is unchanged. Use the
+                Soundcore mobile app for supported models.
               </p>
               <p className="mt-2 text-faint">
                 A local-only remap table would change nothing on the device, so this page shows
@@ -248,6 +302,16 @@ export function ControlsPage() {
                 'Illustration only — connect a device on the Devices page'
               )}
             </p>
+          </Card>
+
+          {/* Research-backed limitations: no actions here can transmit a frame. */}
+          <Card title="Other mobile-app features" subtitle="Unavailable on this desktop connection — no speculative device writes">
+            <ul className="space-y-2 text-xs leading-relaxed text-mute">
+              <li><strong className="text-ink">Safe-volume limiter:</strong> 20:82 is documented for specific models; A3040/A3954/D1202 show the current device-reported limit above, but this app cannot yet verify a write and reread. No switch is sent.</li>
+              <li><strong className="text-ink">HearID test &amp; personalised sound:</strong> require an app-guided hearing measurement and model-specific profile writes; no audiogram is fabricated.</li>
+              <li><strong className="text-ink">Sleep audio:</strong> Sleep A30 shows the device-reported post-sleep audio choice above; model-specific timer/alarm reference commands lack an integrated read lifecycle, and no white-noise playback/mixer is verified. No playback control is exposed.</li>
+              <li><strong className="text-ink">Firmware update &amp; head tracking:</strong> firmware/version reading is supported; installing firmware and measuring or changing live head motion are not. The mode above, if reported, is read-only. Use the mobile app.</li>
+            </ul>
           </Card>
 
           {/* --------------------------------------------- factory reset */}
