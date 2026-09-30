@@ -11,9 +11,9 @@
   <a href="https://github.com/Shankers8811/soundcontrol/actions/workflows/build-windows.yml"><img src="https://github.com/Shankers8811/soundcontrol/actions/workflows/build-windows.yml/badge.svg?branch=main" alt="Windows build"></a>
 </p>
 
-SoundControl is a **Windows and Linux desktop companion for Soundcore devices**. It uses a local Bluetooth bridge and evidence-backed protocol profiles for model-aware controls, battery telemetry and diagnostics. Supported controls depend on the connected model: unsupported commands remain blocked, and selecting a protocol profile manually does not independently verify the physical device. Devices must already be paired and connected through the host's Bluetooth settings; some profiles are read-only or catalog-only. This is not an Android app. CI does not establish physical-device validation; the previous Windows smoke runner had no audio endpoints, so its audio-regression comparison was not performed.
+SoundControl is a **Windows and Linux desktop companion for Soundcore devices**. It uses a local Bluetooth bridge and evidence-backed protocol profiles for model-aware controls, battery telemetry and diagnostics. Supported controls depend on the connected model: unsupported commands remain blocked, and manual profile selection cannot bypass the model gate. Devices must already be paired and connected through the host's Bluetooth settings; some profiles are read-only or catalog-only. This is not an Android app.
 
-**Install or download:** Linux AppImage and Debian packages are available below. The latest published release has **no signed Windows installer**; the Windows download remains unavailable until an Authenticode-verified release is published. The Windows Build badge above is live GitHub Actions status for `main`, not a claim of a signed release or of final validation of the proposed changes.
+**Install or download:** Linux AppImage and Debian packages are available below. The latest published release has **no signed Windows installer**; the Windows download remains unavailable until an Authenticode-verified release is published. The Windows Build badge above shows live GitHub Actions status for `main`, not a signed-release indicator.
 
 ---
 
@@ -75,7 +75,7 @@ paired with the host computer** through a small local Bluetooth bridge:
    **Change device model** is a secondary troubleshooting action, not a required setup step.
    When identification is uncertain or mismatched, **Select model manually** offers only existing
    verified protocol profiles. A manual candidate is limited to the connected Bluetooth address
-   and this session: it does not verify the physical device or override command gates. A later
+   and this session: it cannot override automatic identification or command gates. A later
    confirmed automatic identity takes precedence, and **Reset to automatic detection** removes
    a candidate. The **Disconnect** button closes
    the session; SoundControl also watches that exact host Bluetooth address and clears telemetry
@@ -116,7 +116,7 @@ initializes — it is not hung. Windows installers must be Authenticode-signed b
 SoundControl keeps a separate profile for each verified SKU instead of
 assuming that a shared marketing name implies a shared packet layout. The
 current table includes R50i/P20i/A20i, C30i, AeroClip, V20i, Sport X20,
-C50i, P31i/R60i NC, Sleep A30, Liberty 4 NC, Liberty 3 Pro, Space A40,
+C50i, Life Note 3S (A3945, read-only), P31i/R60i NC, Sleep A30, Liberty 4 NC, Liberty 3 Pro, Space A40,
 Liberty 4 Pro, P40i, Liberty 5, Q20i, Space One, Space Q45, Life Q35, Life
 Q30, Life Tune, Space One Pro and Q11i, plus the read-only Space 2 profile and catalog-only Life U2, Life U2i/R500 and Life NC neckband identities. Profiles carry their aliases, battery scale/offset, state offsets,
 `06:81` layout, EQ command and toggle capabilities together; the transport
@@ -137,10 +137,12 @@ rows, simulator/unit-test status, and physical-validation status are tracked
 in [`docs/MARKET-COMPATIBILITY.md`](docs/MARKET-COMPATIBILITY.md). Catalog-only
 models are identified exactly but do not get guessed device controls.
 
+The detailed follow-up per-model query/write/ACK/readback audit is in
+[docs/ANDROID-PARITY-INVESTIGATION.md](docs/ANDROID-PARITY-INVESTIGATION.md).
+
 ## 🎧 Windows & Linux desktop feature coverage
 
-This is a Windows/Linux app, not an Android build. Every ✅ below is a command verified in [PROTOCOL.md](PROTOCOL.md); every ⚠️/❌ is a control the
-UI shows **disabled with the protocol reason** — SoundControl never renders a fake switch.
+This is a Windows/Linux app, not an Android build. A ✅ denotes a documented, implemented model-gated feature; the case readout does not add a write. A ⚠️ means evidence exists but the desktop lifecycle is incomplete; ❌ means not safely implemented. See [PROTOCOL.md](PROTOCOL.md) for confidence and lifecycle details. The [per-model investigation matrix](docs/ANDROID-PARITY-INVESTIGATION.md) distinguishes VERIFIED/IMPLEMENTED readouts from VERIFIED BUT UNSAFE/INCOMPLETE writes, PARTIAL references, UNKNOWN protocols and UNSUPPORTED cross-model guesses.
 
 | Feature | Official mobile app (comparison only) | SoundControl for Windows & Linux |
 |---|:---:|:---:|
@@ -149,21 +151,20 @@ UI shows **disabled with the protocol reason** — SoundControl never renders a 
 | **Equalizer Presets** | ✅ 22 Soundcore Curated Presets | ✅ All 22 presets on EQ-capable models (`02:81` / `02:83` / D1202 `03:87` disabled-HearID form); other HearID models get a disabled page with the reason — never a guessed frame |
 | **Custom Graphic EQ** | ✅ 8-Band Slider Curve (-6 to +6 dB) | ✅ 8-band −6…+6 dB curve sent as the real `FE FE` custom preset (same model gating) |
 | **Per-earbud connection state** | ✅ Live per-side status | ✅ Compact Dashboard battery summary derived from the device’s own battery bytes (`0xFF` = that side is not connected); unknown side status stays distinct from control-link disconnection |
-| **BassUp™ Technology** | ✅ Dynamic Low-End Boost | ⚠️ No `02:82` command exists in any public capture — bass curves live in the preset table (Bass Booster / Reducer) |
-| **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ⚠️ No HearID test/custom-curve command in any public capture — no fake audiogram UI; personalised `03:87` profiles remain untouched (D1202 factory presets use the disabled-HearID form) |
-| **Superior Sleep** | ✅ Ambient White Noise Mixer | ❌ Not implemented — the earlier claim was UI-only and was removed; the protocol has no sleep command |
-| **Touch Remapping** | ✅ 1-Tap, 2-Tap, 3-Tap, Hold per ear | ⚠️ No gesture-write command is publicly documented — the Noise Control page says so explicitly instead of offering remaps that cannot reach the device |
+| **BassUp™ Technology** | ✅ Dynamic Low-End Boost | ⚠️ No verified generic BassUp toggle/`02:82` capture; Bass Booster/Reducer are EQ presets. Space Q45’s *current* BassUp double-press assignment is displayed read-only; A3945 shows its separate 01:01 BassUp boolean read-only (not an EQ preset), but has no verified setter |
+| **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ⚠️ No desktop audiogram/test workflow; model-specific HearID EQ reference writes are not exposed because they risk overwriting personalized curves. D1202 factory presets use the documented disabled-HearID form |
+| **Superior Sleep** | ✅ Ambient White Noise Mixer | ⚠️ No mixer in this desktop app. Sleep A30 (D1301) now reads its device-reported after-sleep Bluetooth/local-audio choice from captured `01:01` state, read-only. Timers/alarms have separate reference queries and remain unimplemented; this app sends none of their writes |
+| **Touch Remapping** | ✅ 1-Tap, 2-Tap, 3-Tap, Hold per ear | ⚠️ Public model-specific `04:81` writes exist, including a Space Q45 double-press test vector; this app has not implemented their per-SKU read/verify lifecycle, so editing remains disabled and both TX allowlists reject them; Q45’s double-press and A3945’s six model-specific assignments are shown read-only |
 | **Game Mode** | ✅ 80ms Low Latency | ✅ Real `01:87` toggle (`10:85` on Liberty 4 NC / Liberty 5) |
 | **LDAC High-Res** | ✅ Sony 990 kbps Codec Flip | ✅ Real `01:7F` query + `01:FF` enable/disable |
 | **Dual Connection** | ✅ Multipoint PC + Phone | ✅ Real `0B:84` toggle |
-| **3D Surround** | ✅ Spatial audio toggle | ✅ Real `02:86` toggle on models that document it |
-| **Device Volume** | ✅ In-app slider | ⚠️ No volume command exists in any published capture — the volume card renders disabled with that explanation instead of faking a headset change |
-| **Safe Volume** | ✅ Decibel Limiter & Warnings | ❌ Not implemented — would require the volume command that does not exist |
-| **Factory reset** | ✅ | ⚠️ `01:85` is documented only for the Motion+ (A3116) speaker; capability-gated per model, never sent speculatively |
-| **Find My Device** | ✅ Acoustic Locator Chirps | ⚠️ No RFCOMM command in any public capture — never faked; see PROTOCOL.md |
+| **3D Surround / spatial modes** | ✅ Spatial audio toggle and additional modes | ✅ `02:86` only on documented models; A3954 music/podcast/movie/gaming + fixed/head-tracking and D1202 music/movie/gaming are **read-only state displays**, not editable modes |
+| **Device Volume** | ✅ In-app slider | ⚠️ No desktop device-volume control: an A3116 Motion+ speaker-specific `01:81` reference write exists, but SoundControl has no validated model-gated readback path and never sends it to earbuds |
+| **Safe Volume** | ✅ Decibel Limiter & Warnings | ⚠️ Public `20:82 [enabled, limit]` (75–100 dB in 5 dB steps) exists for specific SKUs; current settings shown read-only on A3040/A3954/D1202, **no editing** without model-scoped post-write/reconnect verification and independent TX gates; not equivalent to host volume |
+| **Factory reset** | ✅ | ⚠️ `01:85` is documented only for Motion+ (A3116); no A3116 profile here, and the helper blocks reset (the speaker also uses a different checksum policy) |
 | **Capability gating** | — | ✅ Every page adapts per model: unsupported controls show a disabled state with the protocol reason |
 | **Diagnostics / Console**| ❌ Hidden / Unavailable | ✅ Live Hex Frame Inspector & TX/RX Logger |
-| **Battery telemetry** | ✅ Live L/R/Case Levels | ✅ Live L/R Levels (case never shown — many models don't report it; over-ears have none) + 30 s refresh + host-reported % fallback; a side reported absent (`0xFF`) loses its level immediately — a stale % can never survive new telemetry |
+| **Battery telemetry** | ✅ Live L/R/Case Levels | ✅ L/R levels + 30 s bud refresh; read-only case charge from the verified `01:01` state on 11 documented SKUs only (last known this session, not refreshed by `01:03`); `0xFF`/invalid clears case. Host % is separate; no over-ear/case guesses |
 | **Capture decoding** | ❌ Hidden / Unavailable | ✅ Base64→Hex + BLE→RFCOMM Map in Diagnostics |
 
 ---
@@ -196,20 +197,17 @@ Every packet transmitted between the host application and the hardware device fo
   - `0x05`: serial + firmware (ASCII).
   - `0x7F` / `0xFF`: LDAC High-Resolution audio query and enable/disable.
   - `0x87`: Low-latency Game Mode toggle (`10:85` on Liberty 4 NC / Liberty 5).
-  - `0x85`: Factory reset — documented only for the Motion+ A3116 speaker, so the UI capability-gates it per model and never sends it speculatively.
+  - `0x85`: Factory reset — documented only for the Motion+ A3116 speaker. No A3116 profile is available here; the helper blocks this destructive frame.
 - **Category `0x02` (Audio DSP & Equalizer)**:
   - `0x81`: 8-Band Graphic EQ (classic over-ears). Target bands: 100 Hz, 200 Hz, 400 Hz, 800 Hz, 1.6 kHz, 3.2 kHz, 6.4 kHz, 12.8 kHz.
   - `0x83`: 10-band EQ + DRC compensation channel (P20i/P30i family) — byte-identical to 22 live captures.
   - `0x86`: 3D Surround Sound toggle.
-  - ~~`0x82` BassUp~~ and any "find my device" opcode: **no public capture in any surveyed project contains them; SoundControl does not invent frames.**
+  - No verified generic `02:82` BassUp toggle. A3945 reports a strict read-only BassUp byte at state offset 70; Space Q45 has a `BassUp=7` *button mapping* in the public `04:81` reference. Neither is a SoundControl BassUp setter.
 - **Category `0x03`**: `0x87` is the model-specific HearID EQ used by Liberty 4 NC, Space One, Space Q45, Space A40, Liberty 4 Pro, P40i, Liberty 5, Space One Pro and Space 2. Layout differs per model and risks overwriting measured hearing profiles, so SoundControl disables those writes instead of guessing.
 - **Category `0x06` (Ambient Sound & ANC)**:
   - `0x81`: sound-mode selector with per-model layouts. Classic Q20i/Q30/Q35/Life Tune models use the four-byte body; Space One/Space Q45, Space One Pro, Space A40, Liberty 4 Pro, P40i and Liberty 5 use their documented six- or seven-byte bodies (manual level, adaptive, wind and model-specific scene fields). Inbound mirror is `06:01`.
 - **Category `0x08` (Touch & Button Controls)**:
-  - **No write command is publicly documented.** Button mappings appear in some *inbound* state
-    parses only; no capture shows how to send new mappings. SoundControl therefore displays
-    "Gesture customization is not supported by this protocol" instead of remap UI that could
-    never reach the device.
+  - Model-specific `04:81` action writes exist (`04:83` enabled and A3945 `04:84` bulk variants); no validated ACK→fresh read→reconnect write lifecycle exists in SoundControl. Q45 double-press and A3945 left/right single, double and long-press assignments are safely displayed from exact `01:01` layouts; the mapping editor stays disabled.
 - **Category `0x0B` (Connectivity)**:
   - `0x84`: Dual Connection (Multipoint pairing) toggle.
 
@@ -263,11 +261,18 @@ None of these need Windows, Bluetooth hardware, or an Electron binary; the
 emulated helper (`scripts/emulated_bridge.py`) is test data only and is never
 packaged into the installer.
 
-Physical Soundcore hardware has **not** been validated in the development
-sandbox — [`HARDWARE-VALIDATION.md`](HARDWARE-VALIDATION.md) is the step-by-step
-checklist (pairing → discovery → connection → battery → ANC → EQ → disconnect →
-reconnect → multi-device → shutdown) for verifying the app against real devices
-on a Windows or Linux machine, with the evidence to record at each step.
+### Validation and evidence
+
+Model profiles and wire formats are grounded in documented per-model reference
+implementations and published captures; see [PROTOCOL.md](PROTOCOL.md).
+SoundControl's automated parser, simulator, transport, UI and packaged-desktop
+CI checks validate the implementation without asserting a Bluetooth session
+with a physical Soundcore device. Physical-device validation has not been
+performed in this workspace; the separate
+[hardware checklist](HARDWARE-VALIDATION.md) explains how to record it.
+The prior Windows smoke runner had no audio endpoints, so it did not perform
+an audio-regression comparison. Neither a simulator pass nor an upstream
+hardware observation substitutes for SoundControl hardware testing.
 
 ### App icon (SC monogram)
 Every shipped icon raster — window, taskbar, desktop shortcut, installer and

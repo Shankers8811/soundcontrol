@@ -81,9 +81,10 @@ after closing the phone app.
   presence information; per-ear *wear* sensors are not exposed by this
   protocol on most models.
 - Over-ears (Q30/Q35/Space One/Q45…) report **one** level; there is no L/R pair.
-- There is deliberately **no case battery** anywhere in the UI: several models
-  never report one (the official app hides it too) and over-ears have no case.
-  The wire offsets remain documented in PROTOCOL.md for capture decoding.
+- The charging-case percentage appears only for a verified model with a documented
+  `01:01` case field and scale; it is the last full-state reading this session.
+  `01:03` battery polls refresh the buds, not the case. Other models and
+  over-ears do not acquire a guessed case percentage.
 
 ## ANC / sound modes missing or reverting
 
