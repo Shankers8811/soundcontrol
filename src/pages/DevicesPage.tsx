@@ -105,6 +105,10 @@ export function DevicesPage() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
 
+  // Never carry an open recovery picker across disconnect/reconnect or a
+  // switch to another MAC, even when React batches the connection updates.
+  useEffect(() => setProfileOpen(false), [app.connectedMac]);
+
   /* ---------------------------------------------------------- scanning */
 
   const refresh = useCallback(async (fresh: boolean, manual: boolean) => {
