@@ -451,6 +451,7 @@ const EXPECTED = {
   A3959: { name: 'P30i / R50i NC', eq: '02:83', anc: 'tws-p30i', batteryMax: 10, gaming: true, ldac: false, dual: true, surround: true, customEq: true },
   A3949: { name: 'P20i / P25i / R50i', eq: '02:83', anc: 'none', batteryMax: 5, gaming: true, ldac: false, dual: false, surround: false, customEq: false },
   A3948: { name: 'A20i', eq: '02:83', anc: 'none', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false, customEq: true },
+  A3945: { name: 'Life Note 3S (read-only)', eq: null, anc: 'none', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false, customEq: false },
   A3947: { name: 'Liberty 4 NC', eq: null, anc: 'tws-l4nc', batteryMax: 5, gaming: true, ldac: false, dual: false, surround: true, customEq: false },
   A3952: { name: 'Liberty 3 Pro', eq: null, anc: 'tws-l3pro', batteryMax: 5, gaming: false, ldac: true, dual: false, surround: false, customEq: false },
   A3035: { name: 'Space One', eq: null, anc: 'classic-a3035', batteryMax: 5, gaming: false, ldac: true, dual: true, surround: false, customEq: false },
@@ -499,6 +500,7 @@ const STATE_PINS = {
   A3959: { soundModes: 64, batteryCase: null, eqPresetId: 32, eqBandsAt: 34, eqBandsN: 10 },
   A3949: { soundModes: null, batteryCase: null, eqPresetId: 32, eqBandsAt: 34, eqBandsN: 10 },
   A3948: { soundModes: null, batteryCase: null, eqPresetId: 32, eqBandsAt: 34, eqBandsN: 10 },
+  A3945: { soundModes: null, batteryCase: 69, eqPresetId: 32, eqBandsAt: 34, eqBandsN: 20 },
   A3947: { soundModes: 126, batteryCase: 139, eqPresetId: 37, eqBandsAt: 39, eqBandsN: 10 },
   A3952: { soundModes: 120, batteryCase: 129, eqPresetId: 32, eqBandsAt: 34, eqBandsN: 10 },
   A3936: { soundModes: 111, batteryCase: 118, eqPresetId: 32, eqBandsAt: 34, eqBandsN: 20 },
@@ -529,7 +531,7 @@ const EXPANDED_STATE_PINS = {
   A3968: { battery: '2,3,4,5', firmware: { at: 6, length: 10 }, serial: { at: 16, length: 16 }, eq: '38,40,20', sound: '117', length: 6, dual: 128, surround: 126, gaming: null },
   D1101: { battery: '2,3,null,null', firmware: { at: 4, length: 10 }, serial: { at: 14, length: 16 }, eq: '30,32,10', sound: 'null', length: 7, dual: 53, surround: null, gaming: null },
   D1202: { battery: '2,3,4,5', firmware: { at: 6, length: 10 }, serial: { at: 16, length: 16 }, eq: '38,40,20', sound: '119', length: 8, dual: 131, surround: null, gaming: null },
-  D1301: { battery: '2,3,null,null', firmware: { at: 6, length: 10 }, serial: { at: 16, length: 16 }, eq: 'null,null,null', sound: 'null', length: 7, dual: null, surround: null, gaming: null },
+  D1301: { battery: '2,3,null,null', firmware: { at: 4, length: 10 }, serial: { at: 14, length: 16 }, eq: 'null,null,null', sound: 'null', length: 7, dual: null, surround: null, gaming: null },
 };
 for (const [sku, want] of Object.entries(EXPANDED_STATE_PINS)) {
   const d = DEVICES.find((x) => x.sku === sku);

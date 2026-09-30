@@ -366,6 +366,10 @@ const GATE_CASES = [
   ['A3959 + factory reset 01:85 → DENIED', M.buildResetDevice(), A3959, false],
   ['A3952 + factory reset 01:85 → DENIED', M.buildResetDevice(), A3952, false],
   ['unknown model + factory reset 01:85 → DENIED', M.buildResetDevice(), UNKNOWN, false],
+  // Exact A3945 read profile must not accidentally inherit its reference writers.
+  ['A3945 + documented EQ 02:81 → DENIED (read-only)', M.buildEq('02:81', 0x0001, Array(8).fill(0)), M.matchDevice('Life Note 3S'), false],
+  ['A3945 + reference game 01:87 → DENIED (read-only)', M.buildGameMode(A3949, true), M.matchDevice('A3945'), false],
+  ['A3945 + documented state request → allowed', M.INIT, M.matchDevice('A3945'), true],
   ['A3949 + state request 01:01 → allowed (universal)', M.INIT, A3949, true],
   ['A3959 + battery query → allowed (universal)', M.BATTERY_QUERY, A3959, true],
   ['unknown model + state request → allowed (universal read)', M.INIT, UNKNOWN, true],

@@ -242,6 +242,16 @@ export function DashboardPage() {
 
           <div className="space-y-4 xl:col-span-5">
             {app.connected && !caps.supportsEarbudState && <HeadsetBatteryCard />}
+            {app.connected && app.identification === 'verified' && app.profile.caseBatteryMax !== undefined && (
+              <Card title="Charging case" subtitle="Read-only · from this model’s validated 01:01 state update">
+                <p className="text-sm font-semibold text-ink" aria-label="Charging case battery">
+                  {app.battery.casePercent === null || app.battery.casePercent === undefined
+                    ? 'Case battery unavailable — awaiting a valid case reading'
+                    : `${app.battery.casePercent}%`}
+                </p>
+                <p className="mt-2 text-xs text-mute">Not included in the 30-second earbud battery query. No case reading is inferred from host Bluetooth charge.</p>
+              </Card>
+            )}
             <VolumeControl />
             <DeviceSummaryCard />
           </div>
