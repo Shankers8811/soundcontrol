@@ -3,7 +3,9 @@ name: Windows Desktop Smoke Test
 on:
   workflow_dispatch:
   push:
-    branches: ['arena/**']
+    # Also smoke the actual public main commit after review/merge; a successful
+    # arena-branch run is not a substitute for final main-branch validation.
+    branches: [main, 'arena/**']
 
 permissions:
   contents: read
