@@ -34,9 +34,8 @@ export interface BatteryState {
   /** `null` means a documented charging field was present but malformed. */
   leftCharging?: boolean | null;
   rightCharging?: boolean | null;
-  // No case level on purpose: many Soundcore models never report one (the
-  // official app hides it too) and over-ears have no case, so displaying a
-  // number here would mostly show guesses.
+  /** Percent only from a validated, model-specific full state update; never host/01:03 telemetry. */
+  casePercent?: number | null;
   /**
    * Null means the values are already percentages (for example host Bluetooth telemetry).
    * 'unknown' means the device model — and with it the raw-level scale — is
@@ -126,6 +125,12 @@ export type EqCommand =
 
 /** Offsets of the fields inside a `01:01` state-update *payload*. */
 export interface StateOffsets {
+  /** When the full source parse chain is known, do not confirm identity on a
+   * partial state that merely reaches the last displayed field. */
+  minimumLength?: number;
+  /** Exact full-state body length when the source parser rejects trailing
+   * bytes (A3945/D1301). Prevent accepting another firmware/layout as this SKU. */
+  exactLength?: number;
   /** Left/right battery steps, or the single over-ear level at `left`. */
   batteryLeft: number;
   batteryRight: number | null;
@@ -196,6 +201,9 @@ export interface DeviceProfile {
   batteryMax: number | null;
   /** Add to a raw level before scaling (A3005/A3062/A3957 use an offset of 1). */
   batteryOffset?: number;
+  /** Independent case scale: not always the same as the buds (A3936 is 10 vs 5). */
+  caseBatteryMax?: number;
+  caseBatteryOffset?: number;
   names: string[];
   ancLayout: AncLayout;
   eqCommand: EqCommand | null;
