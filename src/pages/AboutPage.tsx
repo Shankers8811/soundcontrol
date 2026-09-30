@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getAppVersion, isDesktop } from '../lib/appSettings';
-import { LATEST_RELEASE_URL, REPO_URL } from '../lib/downloads';
+import { LATEST_RELEASE_URL, REPO_URL, RELEASE_ASSET_NAMES, latestReleaseAssets } from '../lib/downloads';
 import { IconExternal, IconLogo } from '../components/Icons';
 import { Card } from '../components/ui';
 
@@ -20,6 +20,31 @@ import { Card } from '../components/ui';
 // Vite injects the real version at build time; fall back to the Electron
 // main process (same value in a packaged app), then to an honest "dev".
 const BUILD_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
+
+function Downloads() {
+  const [links, setLinks] = useState<Awaited<ReturnType<typeof latestReleaseAssets>> | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let stopped = false;
+    void latestReleaseAssets().then((assets) => { if (!stopped) setLinks(assets); })
+      .catch(() => { if (!stopped) setFailed(true); });
+    return () => { stopped = true; };
+  }, []);
+  const options = [
+    ['windows', 'Windows installer'], ['appimage', 'Linux AppImage'], ['deb', 'Debian / Ubuntu .deb'],
+  ] as const;
+  return <Card title="App Downloader" subtitle="Assets on the latest published release — only available files have download links">
+    <ul className="space-y-2 text-xs">
+      {options.map(([key, title]) => <li key={key} className="flex items-center justify-between gap-3">
+        <span className="text-ink">{title} · {RELEASE_ASSET_NAMES[key]}</span>
+        {links?.[key] ? <a href={links[key]} target="_blank" rel="noopener noreferrer" className="text-accent-soft underline">Download</a> :
+          <span className="text-mute">{failed ? 'Availability could not be checked' : links ? 'Not on latest release' : 'Checking…'}</span>}
+      </li>)}
+    </ul>
+    {links && !links.windows && <p className="mt-2 text-xs text-warn">The latest release has no Windows installer. Windows release publication requires Authenticode signing; check Releases for availability. No unsigned installer is offered here.</p>}
+    <p className="mt-2 text-xs text-mute"><a href={LATEST_RELEASE_URL} target="_blank" rel="noopener noreferrer" className="underline">View release details</a> for older versions and release notes.</p>
+  </Card>;
+}
 
 export function AboutSection() {
   const [version, setVersion] = useState<string>(BUILD_VERSION);
@@ -51,9 +76,11 @@ export function AboutSection() {
               <h2 className="text-2xl font-bold tracking-tight text-ink">SoundControl</h2>
               <p className="mt-0.5 font-mono text-xs text-accent-soft">version {version} · {platform}</p>
               <p className="mt-3 text-sm leading-relaxed text-mute">
-                Desktop controls for Anker Soundcore earbuds and headphones over Bluetooth RFCOMM —
-                noise control, equalizer presets and custom curves, gaming mode, LDAC, dual
-                connection, live per-earbud battery, and a full protocol diagnostics console.
+                SoundControl: Windows + Linux desktop companion for Soundcore devices.
+                Bluetooth connectivity and verified profiles provide model-specific ANC and transparency,
+                EQ, Game Mode, LDAC, multipoint, and spatial audio where supported.
+                Battery telemetry, diagnostics, device identification, and manual verified model
+                selection are available; manual selection cannot authorize unverified commands.
               </p>
               <p className="mt-2 text-sm leading-relaxed text-mute">
                 Every command SoundControl sends is a byte-verified frame from public captures of
@@ -63,6 +90,8 @@ export function AboutSection() {
             </div>
           </div>
         </Card>
+
+        <Downloads />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Card title="Project">
@@ -102,7 +131,7 @@ export function AboutSection() {
               </li>
             </ul>
             <p className="mt-3 text-[11px] leading-relaxed text-faint">
-              Updating is manual by design: download the newest Windows installer or Linux package
+              Updating is manual by design: choose an available Windows installer or Linux package
               from Releases and install it yourself. There is no background updater, so no update button.
             </p>
           </Card>

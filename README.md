@@ -19,9 +19,9 @@
 
 ### 🪟 Windows
 
-[**Download `SoundControl-Setup.exe`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup.exe)
+**Windows installer (`SoundControl-Setup.exe`): not attached to the latest release.** [Check the release assets](https://github.com/Shankers8811/soundcontrol/releases/latest) for a signed Windows installer when available.
 
-The Windows download is the NSIS installer with Start-menu and desktop shortcuts. Release builds are gated on Authenticode signing; the stable download link is populated only when a signed Windows release asset exists. It ships its own Bluetooth runtime; users do not need Python or Node.js.
+When available, the Windows download is an NSIS installer with Start-menu and desktop shortcuts. Release builds are gated on Authenticode signing; the current latest release has no Windows installer. It ships its own Bluetooth runtime; users do not need Python or Node.js.
 
 ### 🐧 Linux AppImage
 
@@ -59,7 +59,12 @@ paired with the host computer** through a small local Bluetooth bridge:
    paired-device/PnP view; Linux uses the BlueZ `bluetoothctl` view.
 2. Launch SoundControl → **Devices**. The page automatically polls the host Bluetooth stack and
    lists detected devices without requiring a manual scan. Select a Soundcore device and press
-   **Connect** to open its RFCOMM control channel. If the list stays empty, use the **Connect by
+   **Connect** to open its RFCOMM control channel. **Device Connectivity** displays the
+   connection and identification status. Its verified-profile manual candidate picker is limited
+   to the connected Bluetooth address and this session: it cannot override the command gates,
+   and **Reset to automatic detection** removes that candidate. The **Disconnect** button closes
+   the session; SoundControl also watches that exact host Bluetooth address and clears telemetry
+   after a confirmed host-side disconnect. If the list stays empty, use the **Connect by
    address** field (the address appears in the host Bluetooth device details).
    The helper's start-up is logged to the app's platform-specific log folder (Windows: `%AppData%\soundcontrol\main.log`; Linux: `~/.config/soundcontrol/main.log`).
    The helper only listens on `127.0.0.1`, answers the app's own origins (never
@@ -68,8 +73,7 @@ paired with the host computer** through a small local Bluetooth bridge:
    paired devices nor write to them — see [SECURITY.md](.github/SECURITY.md).
 
 The very first launch after installing can take a few extra seconds while the desktop runtime
-initializes — it is not hung. Windows users may see SmartScreen; choose **More info → Run anyway**
-(see [Code signing & SmartScreen](#-code-signing--smartscreen)).
+initializes — it is not hung. Windows installers must be Authenticode-signed before distribution (see [Code signing & SmartScreen](#-code-signing--smartscreen)).
 
 **Or build/run it yourself from source.** Run directly on Windows or Linux with hardware Bluetooth support:
   ```bash
@@ -120,16 +124,16 @@ models are identified exactly but do not get guessed device controls.
 
 ## 🎧 Windows & Linux desktop feature coverage
 
-Every ✅ below is a command verified in [PROTOCOL.md](PROTOCOL.md); every ⚠️/❌ is a control the
+This is a Windows/Linux app, not an Android build. Every ✅ below is a command verified in [PROTOCOL.md](PROTOCOL.md); every ⚠️/❌ is a control the
 UI shows **disabled with the protocol reason** — SoundControl never renders a fake switch.
 
-| Feature | Official Android App | SoundControl for Windows & Linux |
+| Feature | Official mobile app (comparison only) | SoundControl for Windows & Linux |
 |---|:---:|:---:|
 | **Ambient Sound (ANC)** | ✅ 5-Level Manual, Adaptive, Multi-Scene | ✅ Real `06:81` frames with per-model layouts: classic four-byte modes, Space/Q45 six-byte modes, and model-specific TWS six-/seven-byte modes; only profiles whose evidence exposes scenes, vocal transparency, adaptive, or wind controls render them |
 | **Transparency Mode** | ✅ Fully Transparent & Talk Mode | ✅ Fully Transparent & Talk Mode (vocal byte where the model documents one) |
 | **Equalizer Presets** | ✅ 22 Soundcore Curated Presets | ✅ All 22 presets on EQ-capable models (`02:81` / `02:83` / D1202 `03:87` disabled-HearID form); other HearID models get a disabled page with the reason — never a guessed frame |
 | **Custom Graphic EQ** | ✅ 8-Band Slider Curve (-6 to +6 dB) | ✅ 8-band −6…+6 dB curve sent as the real `FE FE` custom preset (same model gating) |
-| **Per-earbud connection state** | ✅ Live per-side status | ✅ Derived from the device's own battery bytes (`0xFF` = that side is not connected); "Status unavailable" stays distinct from "Not connected" |
+| **Per-earbud connection state** | ✅ Live per-side status | ✅ Compact Dashboard battery summary derived from the device’s own battery bytes (`0xFF` = that side is not connected); unknown side status stays distinct from control-link disconnection |
 | **BassUp™ Technology** | ✅ Dynamic Low-End Boost | ⚠️ No `02:82` command exists in any public capture — bass curves live in the preset table (Bass Booster / Reducer) |
 | **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ⚠️ No HearID test/custom-curve command in any public capture — no fake audiogram UI; personalised `03:87` profiles remain untouched (D1202 factory presets use the disabled-HearID form) |
 | **Superior Sleep** | ✅ Ambient White Noise Mixer | ❌ Not implemented — the earlier claim was UI-only and was removed; the protocol has no sleep command |
@@ -303,8 +307,7 @@ override to verify the in-place upgrade path.
 Tagged commits are built and published automatically by the **Release Windows**
 workflow (`.github/workflows/release-windows.yml`). It builds the NSIS installer
 on `windows-latest`, creates a GitHub Release with one stable installer asset:
-`SoundControl-Setup.exe`. The in-app download button always links to the
-latest release through that stable filename:
+`SoundControl-Setup.exe`. The in-app downloader checks the latest release assets and only offers a link when that installer is actually attached:
 
 ```bash
 # Bump "version" in package.json first so the release metadata stays accurate.
@@ -312,15 +315,12 @@ git tag vX.Y.Z main
 git push origin vX.Y.Z
 ```
 
-The in-app download button and the links above resolve through
-`releases/latest/download/...`, so they always point at the newest Release.
+The in-app downloader queries the latest release and shows only assets that exist. Linux stable aliases are attached by the Linux release workflow.
 
 ### 🔏 Code signing & SmartScreen
 The Windows signing pipeline is fully implemented and enforced: **release builds are gated on signing** — the release workflow refuses to build without credentials, electron-builder runs with `forceCodeSigning`, and the generated EXE is verified (`Get-AuthenticodeSignature` + `signtool verify /pa`, publisher identity, SHA-256 recorded, every shipped executable signed) before the GitHub Release is published. All details: **[docs/WINDOWS-CODE-SIGNING.md](docs/WINDOWS-CODE-SIGNING.md)**.
 
-What is still missing is the **certificate**: no signing credential is
-configured in this repository yet, so releases cannot be signed until one is
-added. To enable signing, set two repository secrets (Settings → Secrets and
+The latest published release has no Windows installer. A signed Windows release requires a valid code-signing certificate and the repository secrets below; the CI certificate-validation step is skipped when they are not configured. To enable signing, set two repository secrets (Settings → Secrets and
 variables → Actions):
 
 | Secret | Value |

@@ -147,12 +147,7 @@ check('disconnected status badge', dash.includes('Disconnected'));
 check('disconnected battery pill says "No device" — never an invented percentage', dash.includes('>No device<') && !/>\s*\d+\s*%/.test(dash));
 check('volume card explains the protocol gap instead of a live slider', dash.includes('Volume') && dash.includes('no volume command in any published capture'));
 check('volume slider is rendered disabled', /aria-label="Device volume \(not supported by the protocol\)"[^>]*disabled/.test(dash) || dash.includes('disabled'));
-check('earbud card present for TWS profile', dash.includes('Earbud Connection'));
-// Sides render "Unknown" — never the old "Status unavailable" copy and never
-// "Not connected". (The page-level connection-phase badge legitimately reads
-// "Disconnected" for the dead CONTROL LINK; that is a different concept from
-// per-side earbud presence and is asserted in the connected-state section.)
-check('unknown presence renders per-side "Unknown", never "Not connected"', dash.includes('>Unknown<') && !dash.includes('Status unavailable') && !dash.includes('>Not connected<'));
+check('Dashboard never renders the removed L/R connection panel', !dash.includes('Earbud Connection') && !dash.includes('>Unknown<'));
 check('connect CTA points at the real Devices page', dash.includes('Open Devices'));
 check('quick actions render real presets for this EQ-capable profile', dash.includes('Bass Booster') && dash.includes('Spoken Word'));
 
@@ -167,7 +162,39 @@ check('manual MAC connect form', devices.includes('Connect by address') && devic
 check('capability matrix lists the honest volume/gesture facts', devices.includes('no volume command exists in the protocol') && devices.includes('no button-write command is publicly documented'));
 // Disconnected, the override control honestly becomes read-only preview —
 // you cannot override the profile of a device that is not connected.
-check('model profile preview (override only when connected)', devices.includes('Preview profiles') && !devices.includes('>Override profile<'));
+check('Device Connectivity distinguishes disconnected state and does not offer manual selection before connection', devices.includes('Device Connectivity') && devices.includes('Identification:') && devices.includes('Not connected') && !devices.includes('Select verified model'));
+
+const connectedView = (Component, changes) => render(React.createElement(AppProvider, null,
+  React.createElement(function Connected() {
+    const app = React.useContext(M.AppContext);
+    return React.createElement(M.AppContext.Provider, { value: {
+      ...app, connected: true, connectedMac: 'AA:BB:CC:DD:EE:FF', deviceName: 'Host alias',
+      profile: M.DEVICES.find((d) => d.id === 'liberty-4-nc'),
+      capabilities: M.deriveCapabilities(M.DEVICES.find((d) => d.id === 'liberty-4-nc')),
+      battery: { left: 4, right: null, batteryScale: 5, presence: 'left', hostPercent: 73 },
+      firmware: '01.59', serial: 'DEVICE-SERIAL', identification: 'verified',
+      ...changes,
+    } }, React.createElement(Component));
+  }),
+));
+const connectedDash = connectedView(M.DashboardPage, {});
+check('connected Dashboard shows registry model and model code, firmware, reported S/N and Disconnect',
+  connectedDash.includes('Liberty 4 NC') && connectedDash.includes('Model code') && connectedDash.includes('A3947') &&
+  connectedDash.includes('DEVICE-SERIAL') && connectedDash.includes('01.59') && connectedDash.includes('Disconnect'));
+check('no L/R panel even with telemetry; per-side and host battery preserved in compact pill',
+  !connectedDash.includes('Earbud Connection') && connectedDash.includes('L 80%') && !connectedDash.includes('R 80%'));
+const uncertainDash = connectedView(M.DashboardPage, { identification: 'uncertain', serial: null });
+check('unconfirmed name does not expose model code or invent S/N',
+  uncertainDash.includes('Model code') && uncertainDash.includes('Not verified') && !uncertainDash.includes('DEVICE-SERIAL'));
+const connectedDevices = connectedView(M.DevicesPage, {});
+check('connected Device Connectivity has identification, manual selection, automatic reset and Disconnect',
+  connectedDevices.includes('Verified model') && connectedDevices.includes('Select verified model') &&
+  connectedDevices.includes('Reset to automatic detection') && connectedDevices.includes('Disconnect'));
+const mismatchDevices = connectedView(M.DevicesPage, { identification: 'mismatch', manualCandidate: M.DEVICES.find((d) => d.id === 'p20i') });
+check('manual candidate mismatch cannot be presented as verified device code',
+  mismatchDevices.includes('Connected with identification mismatch') && mismatchDevices.includes('does not authorize commands') && mismatchDevices.includes('Not verified'));
+const unknownDevices = connectedView(M.DevicesPage, { identification: 'uncertain' });
+check('uncertain identification is explicit', unknownDevices.includes('Connected but identification uncertain'));
 
 console.log('\n[device visuals] exact-profile family artwork');
 for (const [profileId, expectedLabel] of [
