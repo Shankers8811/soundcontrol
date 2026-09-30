@@ -675,7 +675,7 @@ check(
 )
 check(
     "Windows parser does not invent connected state when the field is absent",
-    bridge._parse_windows_scan_output("AA:BB:CC:DD:EE:FF|R50i NC|90")[0]["connected"] is False,
+    "connected" not in bridge._parse_windows_scan_output("AA:BB:CC:DD:EE:FF|R50i NC|90")[0],
 )
 real_check_output = bridge.subprocess.check_output
 windows_calls = []

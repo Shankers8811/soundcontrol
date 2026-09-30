@@ -186,8 +186,8 @@ export function NoiseControl() {
               This device’s model could not be identified, and every supported model uses a
               different <span className="font-mono">06:81</span> sound-mode byte layout — sending a
               guessed frame could silently set the wrong ANC state. Noise control stays disabled
-              until the model is known (a host-readable device name, a previous connection, or a
-              manual profile override on the Devices page).
+              until the connected model’s documented state layout is confirmed. A manual candidate
+              on the Devices page cannot unlock commands.
             </>
           ) : (
             <>

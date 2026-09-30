@@ -550,6 +550,56 @@ eq('identity resolution promotes to the real model', [promoted.id, promoted.batt
 const afterKnown = mergeBatteryTelemetry(afterUnknown, { rawLeft: 4, rawRight: 4, scale: promoted.batteryMax });
 eq('fresh telemetry under the known scale reads 80/80 again', [batteryPercent(afterKnown.left, afterKnown.batteryScale), batteryPercent(afterKnown.right, afterKnown.batteryScale)], [80, 80]);
 
+/* Host disconnect and manual identification: neither an unrelated device nor
+   an enumeration failure can terminate the active session. */
+const hostDir = mkdtempSync(join(tmpdir(), 'soundcontrol-host-check-'));
+try {
+  const out = join(hostDir, 'host.mjs');
+  const { build: buildHost } = await import('esbuild');
+  await buildHost({ stdin: {
+    contents: "export * from './src/state/hostDisconnect.ts'; export * from './src/state/identification.ts';",
+    sourcefile: 'host-barrel.ts', resolveDir: ROOT, loader: 'ts',
+  }, bundle: true, format: 'esm', platform: 'node', outfile: out, logLevel: 'error' });
+  const { hostDisconnectObservation: observe, verifiedCandidate, identificationState: identify } = await import(pathToFileURL(out).href);
+  const addr = 'AA:BB:CC:DD:EE:FF';
+  let step = observe(addr, [{mac: '11:22:33:44:55:66', connected: false}], 0);
+  eq('other device disappearing never disconnects active MAC', step, {misses: 0, disconnect: false});
+  step = observe(addr, [{mac: addr.toLowerCase(), connected: false}], step.misses);
+  eq('first explicit disconnect is not sufficient', step, {misses: 1, disconnect: false});
+  step = observe(addr, [], step.misses, true);
+  eq('scan failure resets confirmation (not proof of disconnect)', step, {misses: 0, disconnect: false});
+  step = observe(addr, [{mac: addr, connected: false}], step.misses);
+  step = observe(addr, [{mac: addr, connected: false}], step.misses);
+  eq('two consecutive reports about same address confirm disconnect', step, {misses: 2, disconnect: true});
+  eq('unknown connection property cannot confirm disconnect', observe(addr, [{mac: addr}], 1), {misses: 0, disconnect: false});
+  const known = verifiedCandidate('liberty-4-nc');
+  const other = verifiedCandidate('p20i');
+  check('manual selector rejects unknown/unverified IDs', verifiedCandidate('unknown') === null && verifiedCandidate('does-not-exist') === null);
+  eq('four identification states', [identify(false, known, true, null), identify(true, known, false, null),
+    identify(true, known, true, other), identify(true, known, true, known)],
+  ['not-connected', 'uncertain', 'mismatch', 'verified']);
+  check('manual selection cannot change capability matrix', deriveCapabilities(known).supportsNoiseControl && !deriveCapabilities(other).supportsNoiseControl);
+} finally { rmSync(hostDir, {recursive: true, force: true}); }
+
+const releaseDir = mkdtempSync(join(tmpdir(), 'soundcontrol-release-check-'));
+try {
+  const out = join(releaseDir, 'download.mjs');
+  const { build: buildDownloads } = await import('esbuild');
+  await buildDownloads({ entryPoints: [join(ROOT, 'src/lib/downloads.ts')], bundle: true,
+    format: 'esm', platform: 'node', outfile: out, logLevel: 'error',
+    define: { __REPO_URL__: JSON.stringify('https://github.com/Shankers8811/soundcontrol') } });
+  const D = await import(pathToFileURL(out).href);
+  const url = (file) => `https://github.com/Shankers8811/soundcontrol/releases/download/v1.0.7/${file}`;
+  const assets = D.releaseAssetLinks({assets: [
+    {name: 'SoundControl.AppImage', browser_download_url: url('SoundControl.AppImage')},
+    {name: 'SoundControl.deb', browser_download_url: url('SoundControl.deb')},
+    {name: 'SoundControl-Setup.exe', browser_download_url: 'https://evil.example/Setup.exe'},
+  ]});
+  eq('downloader offers only actual official release assets', assets,
+    {appimage: url('SoundControl.AppImage'), deb: url('SoundControl.deb')});
+  eq('malformed release cannot create a fake Windows installer link', D.releaseAssetLinks({assets: []}), {});
+} finally { rmSync(releaseDir, {recursive: true, force: true}); }
+
 /* ------------------------------------------- update checker (Settings → Updates) */
 
 // Bundle src/lib/reporting.ts twice — once with the real build-time repo URL,
