@@ -12,8 +12,8 @@ jobs:
   build-win:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -31,14 +31,14 @@ jobs:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD || secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           set -euo pipefail
-          echo "CI build: signing is optional (artifacts are not distributed)."
+          echo "CI build: unsigned test artifacts are downloadable for local testing, not published as official releases."
           if [ -n "$WIN_CSC_LINK" ] && [ -n "$WIN_CSC_KEY_PASSWORD" ]; then
             echo "::notice::SIGNING_CREDENTIALS=configured — production releases can be Authenticode-signed (release workflow will validate the certificate before use)."
           else
-            if [ -z "$WIN_CSC_LINK" ]; then
-              echo "::warning::SIGNING_CREDENTIALS not configured — WIN_CSC_LINK secret is not set. Release builds remain blocked at the credentials gate."
+            if [ -z "$WIN_CSC_LINK" ] && [ -z "$WIN_CSC_KEY_PASSWORD" ]; then
+              echo "::notice::Authenticode signing credentials are not configured for this CI test build; unsigned artifacts are expected. Official Windows releases remain blocked until the release signing certificate/secrets are configured."
             else
-              echo "::warning::SIGNING_CREDENTIALS incomplete — WIN_CSC_LINK is set but WIN_CSC_KEY_PASSWORD is not. Release builds remain blocked at the credentials gate."
+              echo "::notice::Authenticode signing credentials are incomplete for this CI test build; unsigned artifacts are expected. Official Windows releases remain blocked until the release signing certificate/secrets are configured."
             fi
             echo "See docs/WINDOWS-CODE-SIGNING.md for the required certificate and secret setup."
           fi
@@ -160,7 +160,7 @@ jobs:
           $sha256 = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash
           Write-Host "NSIS_TEST_INSTALLER source=$($installers[0].Name) file=$($installer.Name) bytes=$($installer.Length) sha256=$sha256 signature=$($signature.Status)"
           Write-Host "::notice title=Unsigned Windows test installer::SoundControl-Setup.exe bytes=$($installer.Length) sha256=$sha256 (local testing only)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: SoundControl-Windows-Test-Unsigned
           path: test-installer/SoundControl-Setup.exe
