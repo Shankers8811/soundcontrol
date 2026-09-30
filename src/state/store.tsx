@@ -1282,23 +1282,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!connected || !connectedMac || transportRef.current?.kind !== 'bridge') return;
     let stopped = false;
-    const pollHostBattery = async () => {
+    let consecutiveHostDisconnects = 0;
+
+    const pollHostBluetooth = async () => {
       if (stopped) return;
       const result = await scanBridgeDevicesDetailed(false);
       if (stopped || result.error) return;
+
       const key = connectedMac.toUpperCase();
       const hit = result.devices.find((d) => d.mac?.toUpperCase() === key);
+
+      // The host Bluetooth state is authoritative for this lifecycle check.
+      // A device can remain paired while the user disconnects it from the
+      // Windows/Linux Bluetooth settings. Do not wait for the next RFCOMM
+      // write to discover that: clear the active session as soon as the host
+      // reports this exact MAC as disconnected. Two consecutive observations
+      // avoid clearing on one transient enumeration glitch.
+      if (hit && hit.connected === false) {
+        consecutiveHostDisconnects += 1;
+        if (consecutiveHostDisconnects >= 2) {
+          const t = transportRef.current;
+          transportRef.current = null;
+          sessionGuardRef.current.end();
+          clearDeviceState();
+          pushLog('sys', '', 'Bluetooth device disconnected in the computer settings.');
+          try {
+            await t?.close();
+          } catch {
+            /* the RFCOMM link may already be gone */
+          }
+          return;
+        }
+      } else if (hit?.connected === true) {
+        consecutiveHostDisconnects = 0;
+      }
+
       if (hit && typeof hit.battery === 'number') {
         setBattery((previous) => ({ ...previous, hostPercent: hit.battery }));
       }
     };
-    void pollHostBattery();
-    const timer = window.setInterval(() => void pollHostBattery(), 5000);
+
+    void pollHostBluetooth();
+    const timer = window.setInterval(() => void pollHostBluetooth(), 5000);
     return () => {
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [connected, connectedMac]);
+  }, [connected, connectedMac, clearDeviceState, pushLog]);
 
   // Keep TWS battery levels fresh while connected to real hardware: the
   // device-info frame arrives once after the handshake, but the explicit
