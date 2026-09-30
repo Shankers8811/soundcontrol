@@ -628,7 +628,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // a Bluetooth link is never treated as "both earbuds connected".
       const seed = emptyBattery();
       if (nextProfile.batteryOffset) seed.batteryOffset = nextProfile.batteryOffset;
-      seed.hostPercent = typeof hostPercent === 'number' ? hostPercent : null;
+      seed.hostPercent = typeof hostPercent === 'number' && Number.isInteger(hostPercent) && hostPercent >= 0 && hostPercent <= 100 ? hostPercent : null;
       if (typeof bat === 'number') {
         // Legacy simulator aggregate, never interpreted as per-side telemetry.
         seed.hostPercent = bat;
@@ -1362,7 +1362,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (hit && typeof hit.battery === 'number') {
+      if (hit && typeof hit.battery === 'number' && Number.isInteger(hit.battery) && hit.battery >= 0 && hit.battery <= 100) {
         setBattery((previous) => ({ ...previous, hostPercent: hit.battery }));
       }
     };

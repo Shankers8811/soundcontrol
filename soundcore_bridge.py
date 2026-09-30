@@ -667,7 +667,9 @@ def _parse_bluetoothctl_info_output(text: str) -> dict[str, object]:
         elif stripped.startswith("Alias:"):
             alias = stripped.split(":", 1)[1].strip()
         elif stripped.startswith("Connected:"):
-            result["connected"] = stripped.split(":", 1)[1].strip().lower() == "yes"
+            state = stripped.split(":", 1)[1].strip().lower()
+            if state in ("yes", "no"):
+                result["connected"] = state == "yes"
         elif stripped.startswith("Battery Percentage:"):
             # BlueZ normally prints `0x5a (90)`, but older versions expose
             # only the hexadecimal value. Accept both without treating an
