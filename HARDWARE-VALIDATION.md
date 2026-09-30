@@ -84,6 +84,7 @@ substitute for reading the unit's model code.
 | A3959 | P30i / R50i NC | ANC, transparency, EQ and firmware-dependent Game Mode; same targeted procedure. |
 | A3947 | Liberty 4 NC | Case telemetry plus ANC/other model-specific controls. |
 | A3040 | Space Q45 | Over-ear battery, noise modes, LDAC/dual connection; double-press BassUp assignment is **read-only**. |
+| A3035 | Space One | **Physical validation: PENDING.** Existing OpenSCQ30 A3035 protocol evidence; simulator and automated model/protocol test coverage (not hardware confirmation). Single over-ear battery is read-only/testable. ANC manual/adaptive, wind, LDAC and Dual Connection are hardware-pending. EQ/HearID `03:87` writes: **NOT SUPPORTED / withheld**; firmware flashing: **NOT SUPPORTED**; factory reset: **NOT TESTED / withheld**. Find My Device/acoustic locator is outside desktop scope. Do not claim a write PASS without a validated response, fresh state readback and reconnect confirmation. |
 | A3954 | Liberty 4 Pro | Case telemetry and read-only safe-volume/spatial observations; test supported controls separately. |
 | A3945 | Life Note 3S | Case telemetry; BassUp and button assignments are **read-only**, not EQ Bass Booster or gesture editing. |
 | D1301 | Sleep A30 | Sleep/after-sleep observation is **read-only**; do not send timer/alarm/mixer commands. |
