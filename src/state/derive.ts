@@ -80,12 +80,12 @@ export const NO_ANC_SUB: AncSubFeatures = {
  * What the connected device can actually be told to do. Two entries are
  * protocol facts, not per-model checks:
  *
- * - `supportsVolume` is always false: no Soundcore RFCOMM capture or
- *   OpenSCQ30 command table contains a volume read/set frame, so the UI
- *   must never render an interactive device-volume slider.
- * - `supportsGestures` is always false: button mappings appear in some
- *   models' *state* blobs, but no public source documents a command that
- *   writes them. SoundControl does not invent one.
+ * - `supportsVolume` is always false here: OpenSCQ30 has an A3116 speaker
+ *   `01:81` volume command, but this app has not integrated its readback/
+ *   per-model validation and does not expose a speaker volume slider.
+ * - `supportsGestures` is always false here: OpenSCQ30 documents model-
+ *   specific `04:81` button writes, but SoundControl has not added the
+ *   guarded read/verify transaction or model-specific button parser.
  */
 export interface Capabilities {
   supportsNoiseControl: boolean;
@@ -266,6 +266,7 @@ export function emptyBattery(): BatteryState {
   return {
     left: null,
     right: null,
+    casePercent: null,
     leftCharging: undefined,
     rightCharging: undefined,
     batteryScale: null,
@@ -277,6 +278,8 @@ export function emptyBattery(): BatteryState {
 export interface BatteryFrame {
   rawLeft: number | undefined;
   rawRight: number | undefined;
+  /** Undefined for 01:03: keep the last full-state case reading. Null clears it. */
+  casePercent?: number | null;
   /** Only `01:01`/`01:04` carry charging bits; `01:03` leaves them unset. */
   /** `null` means the field was present but not a strict 0/1 boolean. */
   chargingLeft?: boolean | null;
@@ -315,6 +318,7 @@ export function mergeBatteryTelemetry(previous: BatteryState, frame: BatteryFram
   return {
     left: l.level,
     right: r.level,
+    casePercent: frame.casePercent === undefined ? previous.casePercent ?? null : frame.casePercent,
     // `undefined` means this frame legitimately carried no charging field, so
     // keep the last confirmed value. `null` means a charging field was present
     // but malformed, so clear it rather than retaining a misleading `true`.

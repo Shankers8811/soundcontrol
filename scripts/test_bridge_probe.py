@@ -523,6 +523,21 @@ for key in sorted(EXPECTED_TX_ALLOWED):
     reason = bridge.validate_tx_frame(_frame(cat, typ, VALID_TX_PAYLOADS[key]))
     check(f"validate_tx_frame accepts registered command {key}", reason is None, str(reason))
 
+# Correctly framed/checksummed candidate writes must remain blocked by the
+# independent helper. Unknown-command tests using malformed frames would not
+# prove the allowlist is still protecting these device-specific settings.
+for key, payload in {
+    "04:81": b"\x00\x00\x07", "04:82": b"", "04:83": b"\x00\x02\x01",
+    "04:84": b"\x00\x00\x07", "04:87": b"\x01\x00\x07",
+    "20:81": b"\x00", "20:82": b"\x01\x5a", "01:81": b"\x07",
+    "10:81": b"\x01\x02\x02", "12:81": b"\x02", "07:87": b"\x00\x00\x01\x00",
+    "14:81": b"\x01\x01\x30\x02\x00\x32\x0a", "14:82": b"\x01",
+    "15:85": b"\xff\xff\xff\x01", "15:8F": b"\x01",
+}.items():
+    cat, typ = (int(part, 16) for part in key.split(":"))
+    reason = bridge.validate_tx_frame(_frame(cat, typ, payload))
+    check(f"researched {key} remains blocked by helper", isinstance(reason, str) and "not a recognized" in reason, str(reason))
+
 reset_reason = bridge.validate_tx_frame(_frame(0x01, 0x85))
 check(
     "validate_tx_frame rejects destructive factory reset at the helper boundary",
