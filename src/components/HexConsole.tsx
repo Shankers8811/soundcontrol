@@ -14,6 +14,7 @@ import { redactSecrets } from '../lib/reporting';
 import { gateCommandForProfile } from '../protocol/modelRegistry';
 import { validateOutboundFrame } from '../protocol/targets';
 import { useApp } from '../state/store';
+import { UNKNOWN_PROFILE } from '../protocol/devices';
 import type { LogEntry } from '../types';
 
 /**
@@ -77,9 +78,12 @@ export function HexConsole() {
       let modelOk = true;
       let modelNote = '';
       if (check.ok) {
-        const gate = gateCommandForProfile(check.command.id, framed, app.profile);
+        const profile = app.connected && app.identification !== 'verified' ? UNKNOWN_PROFILE : app.profile;
+        const gate = gateCommandForProfile(check.command.id, framed, profile);
         modelOk = gate.ok;
-        modelNote = gate.ok ? '' : ` · NOT supported by ${app.profile.name} (${app.profile.sku})`;
+        modelNote = gate.ok ? '' : app.connected && app.identification !== 'verified'
+          ? ' · model identification not verified'
+          : ` · NOT supported by ${profile.name} (${profile.sku})`;
       }
       return {
         ok: true,
@@ -101,7 +105,7 @@ export function HexConsole() {
         framed: new Uint8Array(),
       };
     }
-  }, [app.profile, draft, autoCs]);
+  }, [app.connected, app.identification, app.profile, draft, autoCs]);
 
   const decodedB64 = useMemo(() => {
     if (!b64.trim()) return { ok: true as const, hex: '', msg: 'Paste a Base64 capture to decode it to hex.' };
