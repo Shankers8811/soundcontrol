@@ -6,7 +6,7 @@ declare const __REPO_URL__: string;
 declare const __APP_VERSION__: string;
 
 interface Window {
-  // Exposed by preload.cjs inside the packaged Windows desktop app.
+  // Exposed by preload.cjs inside the packaged Windows/Linux desktop app.
   electronAPI?: {
     isElectron: boolean;
     platform: string;

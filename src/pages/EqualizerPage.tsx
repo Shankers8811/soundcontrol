@@ -3,6 +3,7 @@ import { useApp } from '../state/store';
 import { EQ_PRESETS } from '../protocol/presets';
 import { EQ_HZ } from '../types';
 import { EqCurve } from '../components/EqCurve';
+import { DeviceSettingsHeader } from '../components/DeviceSettingsHeader';
 import { IconCheck, IconEqualizer } from '../components/Icons';
 import { Button, CapabilityGate, Card, PageHeader, StatusBadge } from '../components/ui';
 
@@ -33,35 +34,22 @@ export function EqualizerPage() {
     <div>
       <PageHeader
         title="Equalizer"
-        sub={
-          <>
-            <StatusBadge phase={app.connectionPhase} />
-            {app.connected && (
-              <span className="font-medium text-ink/90">
-                {app.eqId === 'custom' ? 'Custom curve active' : `Preset: ${activePreset?.name ?? app.eqId}`}
-              </span>
-            )}
-            {caps.supportsEqualizer && (
-              <span className="font-mono text-[10px] text-faint">
-                wire {app.profile.eqCommand}
-                {caps.supportsCustomEq ? ' · custom FE FE' : ' · factory presets only'}
-              </span>
-            )}
-          </>
-        }
+        sub={<StatusBadge phase={app.connectionPhase} />}
       />
+
+      <DeviceSettingsHeader />
 
       <CapabilityGate
         supported={caps.supportsEqualizer}
         noteTitle="The equalizer is not available on this model"
         note={
-          app.profile.id === 'unknown' ? (
+          app.profile.id === 'unknown' || (app.connected && app.identification !== 'verified') ? (
             <>
-              This device’s model could not be identified. Equalizer commands and byte layouts
+              This device’s model identification is uncertain or mismatched. Equalizer commands and byte layouts
               differ per model, and SoundControl never guesses a payload for unknown firmware — a
               wrong frame could overwrite a personalised hearing profile. EQ stays disabled until
-              the model is known (a Windows-readable device name, a previous connection, or a
-              manual profile override on the Devices page).
+              the model-specific state layout is confirmed. A manual model candidate cannot
+              override the command boundary.
             </>
           ) : (
             <>
@@ -99,8 +87,8 @@ export function EqualizerPage() {
                 <p className="mt-3 rounded-xl border border-edge bg-sunken px-4 py-3 text-xs leading-relaxed text-mute">
                   Custom curves are not supported by{' '}
                   <span className="font-semibold text-ink">{app.profile.name}</span> (
-                  {app.profile.sku}) — the factory presets on the right are everything this model
-                  accepts. SoundControl does not send the{' '}
+                  {app.profile.sku}) — this model supports factory presets only; the factory
+                  presets on the right are everything it accepts. SoundControl does not send the{' '}
                   <span className="font-mono text-[11px]">FE FE</span> custom frame to hardware
                   that has no documented support for it.
                 </p>

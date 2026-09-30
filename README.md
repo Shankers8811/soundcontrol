@@ -1,4 +1,4 @@
-# SoundControl — Windows Desktop Companion
+# SoundControl — Windows & Linux Desktop Companion
 
 <p align="center">
   <img src="public/icon-512.png" width="128" height="128" alt="SoundControl">
@@ -6,24 +6,54 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
-  <img src="https://img.shields.io/badge/Windows%20App-Electron%20%7C%20EXE-0084ff" alt="Windows app">
+  <img src="https://img.shields.io/badge/Windows%20%2F%20Linux%20App-Electron%20%7C%20Bluetooth-0084ff" alt="Windows and Linux app">
   <a href="https://github.com/Shankers8811/soundcontrol/releases/latest"><img src="https://img.shields.io/github/v/release/Shankers8811/soundcontrol?label=latest%20release&color=0084ff" alt="Latest release"></a>
   <a href="https://github.com/Shankers8811/soundcontrol/actions/workflows/build-windows.yml"><img src="https://github.com/Shankers8811/soundcontrol/actions/workflows/build-windows.yml/badge.svg?branch=main" alt="Windows build"></a>
 </p>
 
+SoundControl is a **Windows and Linux desktop companion for Soundcore devices**. It uses a local Bluetooth bridge and evidence-backed protocol profiles for model-aware controls, battery telemetry and diagnostics. Supported controls depend on the connected model: unsupported commands remain blocked, and selecting a protocol profile manually does not independently verify the physical device. Devices must already be paired and connected through the host's Bluetooth settings; some profiles are read-only or catalog-only. This is not an Android app. CI does not establish physical-device validation; the previous Windows smoke runner had no audio endpoints, so its audio-regression comparison was not performed.
+
+**Install or download:** Linux AppImage and Debian packages are available below. The latest published release has **no signed Windows installer**; the Windows download remains unavailable until an Authenticode-verified release is published. The Windows Build badge above is live GitHub Actions status for `main`, not a claim of a signed release or of final validation of the proposed changes.
+
 ---
 
-## Windows Desktop App
+## Windows & Linux Desktop App
 
-**⬇️ Direct download (recommended) — no build required:**
+**⬇️ Direct downloads (recommended) — no build required:**
 
-| Download | File | Notes |
-|---|---|---|
-| 🪟 **Windows app (installer)** | [**Download the latest `SoundControl-Setup.exe`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup.exe) | NSIS setup, Start-menu & desktop shortcuts. Ships its own built-in Bluetooth runtime — no Python needed |
+### 🪟 Windows
 
-- All builds and release notes live on the **[Releases page](https://github.com/Shankers8811/soundcontrol/releases/latest)**.
-- The same download is built into the app under **Settings → About** (**Download .exe** → latest release).
-- Windows SmartScreen may show an unsigned-publisher prompt for the current (unsigned) release; choose **More info → Run anyway** — see [Code signing & SmartScreen](#-code-signing--smartscreen). Release builds are now gated on Authenticode signing, so the prompt disappears once a certificate is configured and a signed release ships.
+**Windows installer (`SoundControl-Setup.exe`): not available on the latest published release.** [Check the actual release assets](https://github.com/Shankers8811/soundcontrol/releases/latest) before downloading. No installer link is offered until a signed Windows release contains that file.
+
+A future official Windows download would be an NSIS installer with Start-menu and desktop shortcuts and a bundled Bluetooth runtime; users would not need Python or Node.js. Publication requires a valid Authenticode certificate and the `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` credentials (or their documented aliases). The last Windows release attempt stopped at its signing-credentials gate; an unsigned CI build is **not** a downloadable official installer.
+
+### 🐧 Linux AppImage
+
+[**Download the latest `SoundControl.AppImage`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl.AppImage)
+
+On a Linux desktop with a working BlueZ adapter, `bluetoothd`, and `bluetoothctl`:
+
+```bash
+chmod +x SoundControl.AppImage
+./SoundControl.AppImage
+```
+
+### 📦 Debian / Ubuntu
+
+[**Download the latest `SoundControl.deb`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl.deb)
+
+On Debian or Ubuntu, install the downloaded file with `sudo apt install ./SoundControl.deb`
+(or use your package installer), then launch SoundControl from the application menu.
+It bundles Electron and the Python bridge runtime; the host still supplies the BlueZ Bluetooth stack.
+
+### 🔗 Release history
+
+[**View all releases and release notes**](https://github.com/Shankers8811/soundcontrol/releases)
+
+The Linux release also keeps electron-builder's version/architecture-named files attached to each release; the stable aliases above are provided for direct latest-release links. If the latest existing release predates Linux packaging, use the releases page to choose a release that contains the Linux assets.
+
+- Release links are built into the app under **Settings → About**.
+- Windows releases are required to pass Authenticode signing before publication. If no signed Windows installer is attached to the latest release yet, use the releases page for the current available assets.
 - **Lifecycle is deliberately boring:** SoundControl starts only when you launch it (it never
   registers a Windows startup entry, and a startup entry left by an older version is removed at
   launch), and closing the window exits completely — the Bluetooth helper is terminated, port
@@ -33,27 +63,35 @@
   either behaviour. The complete installed package stays far below 500 MB (measured on Windows CI).
 - More docs: [TROUBLESHOOTING.md](TROUBLESHOOTING.md) (every connect failure mode, explained from the real log messages), [ROADMAP.md](ROADMAP.md) (shipped vs open), [PROTOCOL.md](PROTOCOL.md) (verified wire spec), [PUBLISH.md](PUBLISH.md) (release checklist), [docs/WINDOWS-CODE-SIGNING.md](docs/WINDOWS-CODE-SIGNING.md) (SmartScreen & Authenticode signing).
 
-**🔎 Connecting earbuds on Windows (important).** SoundControl talks to devices **already paired
-with Windows** through a small local bridge that runs on a Python runtime **bundled inside the
-installer** — no Python to install, nothing to configure:
+**🔎 Connecting earbuds on Windows/Linux (important).** SoundControl talks to devices **already
+paired with the host computer** through a small local Bluetooth bridge:
 
-1. Pair the earbuds in **Settings → Bluetooth & devices** and leave them connected.
-2. Launch SoundControl → **Devices** page → **Scan devices**. Your paired buds are listed
-   automatically (even while playing audio) — select one and press **Connect**. If the list stays
-   empty, use the **Connect by address** field (the address appears in Settings → device →
-   Device properties).
-   The helper's start-up is logged to `%AppData%\soundcontrol\main.log`.
+1. Pair the earbuds in the host's Bluetooth settings and leave them connected. Windows uses its
+   paired-device/PnP view; Linux uses the BlueZ `bluetoothctl` view.
+2. Launch SoundControl → **Devices**. The page automatically polls the host Bluetooth stack and
+   lists detected devices without requiring a manual scan. Select a Soundcore device and press
+   **Connect** to open its RFCOMM control channel. **Device Connectivity** displays the
+   connection and identification status. A verified model is shown automatically by default;
+   **Change device model** is a secondary troubleshooting action, not a required setup step.
+   When identification is uncertain or mismatched, **Select model manually** offers only existing
+   verified protocol profiles. A manual candidate is limited to the connected Bluetooth address
+   and this session: it does not verify the physical device or override command gates. A later
+   confirmed automatic identity takes precedence, and **Reset to automatic detection** removes
+   a candidate. The **Disconnect** button closes
+   the session; SoundControl also watches that exact host Bluetooth address and clears telemetry
+   after a confirmed host-side disconnect. If the list stays empty, use the **Connect by
+   address** field (the address appears in the host Bluetooth device details).
+   The helper's start-up is logged to the app's platform-specific log folder (Windows: `%AppData%\soundcontrol\main.log`; Linux: `~/.config/soundcontrol/main.log`).
    The helper only listens on `127.0.0.1`, answers the app's own origins (never
    `Access-Control-Allow-Origin: *`), and requires a per-session token the desktop
    app mints on every launch — so an untrusted local caller can neither enumerate your
    paired devices nor write to them — see [SECURITY.md](.github/SECURITY.md).
 
-The very first launch after installing can take a few extra seconds while Windows inspects a
-freshly downloaded app — it is not hung. If SmartScreen appears, choose **More info → Run anyway**
-(see [Code signing & SmartScreen](#-code-signing--smartscreen)).
+The very first launch after installing can take a few extra seconds while the desktop runtime
+initializes — it is not hung. Windows installers must be Authenticode-signed before distribution (see [Code signing & SmartScreen](#-code-signing--smartscreen)).
 
-**Or build/run it yourself from source.** Run directly on Windows with hardware Bluetooth support:
-  ```cmd
+**Or build/run it yourself from source.** Run directly on Windows or Linux with hardware Bluetooth support:
+  ```bash
   git clone https://github.com/Shankers8811/soundcontrol.git
   cd soundcontrol
   npm install
@@ -65,23 +103,54 @@ freshly downloaded app — it is not hung. If SmartScreen appears, choose **More
   npm run build:win
   ```
   The packaged NSIS setup installer `.exe` will be generated in the **`release/`** directory.
+- **Build Linux packages**:
+  ```bash
+  npm run build:linux
+  ```
+  AppImage and Debian packages are generated in **`release/`**. Linux packages bundle the Python bridge runtime; the host still needs a working BlueZ adapter, `bluetoothd`, and `bluetoothctl`.
 
 ---
 
-## 🎧 Windows desktop feature coverage
+## Model support
 
-Every ✅ below is a command verified in [PROTOCOL.md](PROTOCOL.md); every ⚠️/❌ is a control the
+SoundControl keeps a separate profile for each verified SKU instead of
+assuming that a shared marketing name implies a shared packet layout. The
+current table includes R50i/P20i/A20i, C30i, AeroClip, V20i, Sport X20,
+C50i, P31i/R60i NC, Sleep A30, Liberty 4 NC, Liberty 3 Pro, Space A40,
+Liberty 4 Pro, P40i, Liberty 5, Q20i, Space One, Space Q45, Life Q35, Life
+Q30, Life Tune, Space One Pro and Q11i, plus the read-only Space 2 profile and catalog-only Life U2, Life U2i/R500 and Life NC neckband identities. Profiles carry their aliases, battery scale/offset, state offsets,
+`06:81` layout, EQ command and toggle capabilities together; the transport
+gate refuses a command that does not belong to the connected profile.
+
+Space 2 (D1402) is identified as a **read-only** profile. Its published
+channel-30 transport, unlock handshake and 53-byte `03:87` HearID template
+are documented in `PROTOCOL.md`, but the current desktop bridge does not
+attempt that transport or send those writes yet. Unknown and unverified model
+names remain read-only universal telemetry rather than borrowing a sibling's
+protocol.
+
+The layouts and evidence matrix are pinned by `npm run verify:protocol`,
+`npm run test:models`, `npm run test:simulator`, and `npm run test:ui`; see the
+state-offset table in [PROTOCOL.md](PROTOCOL.md) for the exact offsets and
+source projects. The current-market inventory, regional aliases, catalog-only
+rows, simulator/unit-test status, and physical-validation status are tracked
+in [`docs/MARKET-COMPATIBILITY.md`](docs/MARKET-COMPATIBILITY.md). Catalog-only
+models are identified exactly but do not get guessed device controls.
+
+## 🎧 Windows & Linux desktop feature coverage
+
+This is a Windows/Linux app, not an Android build. Every ✅ below is a command verified in [PROTOCOL.md](PROTOCOL.md); every ⚠️/❌ is a control the
 UI shows **disabled with the protocol reason** — SoundControl never renders a fake switch.
 
-| Feature | Official Android App | SoundControl for Windows |
+| Feature | Official mobile app (comparison only) | SoundControl for Windows & Linux |
 |---|:---:|:---:|
-| **Ambient Sound (ANC)** | ✅ 5-Level Manual, Adaptive, Multi-Scene | ✅ Real `06:81` frames with per-model layouts: scenes + transparency sub-modes on classic over-ears; manual level, adaptive and wind-noise bytes on TWS |
+| **Ambient Sound (ANC)** | ✅ 5-Level Manual, Adaptive, Multi-Scene | ✅ Real `06:81` frames with per-model layouts: classic four-byte modes, Space/Q45 six-byte modes, and model-specific TWS six-/seven-byte modes; only profiles whose evidence exposes scenes, vocal transparency, adaptive, or wind controls render them |
 | **Transparency Mode** | ✅ Fully Transparent & Talk Mode | ✅ Fully Transparent & Talk Mode (vocal byte where the model documents one) |
-| **Equalizer Presets** | ✅ 22 Soundcore Curated Presets | ✅ All 22 presets on EQ-capable models (`02:81` / `02:83`); HearID models (`03:87`) get a disabled page with the reason — never a guessed frame |
+| **Equalizer Presets** | ✅ 22 Soundcore Curated Presets | ✅ All 22 presets on EQ-capable models (`02:81` / `02:83` / D1202 `03:87` disabled-HearID form); other HearID models get a disabled page with the reason — never a guessed frame |
 | **Custom Graphic EQ** | ✅ 8-Band Slider Curve (-6 to +6 dB) | ✅ 8-band −6…+6 dB curve sent as the real `FE FE` custom preset (same model gating) |
-| **Per-earbud connection state** | ✅ Live per-side status | ✅ Derived from the device's own battery bytes (`0xFF` = that side is not connected); "Status unavailable" stays distinct from "Not connected" |
+| **Per-earbud connection state** | ✅ Live per-side status | ✅ Compact Dashboard battery summary derived from the device’s own battery bytes (`0xFF` = that side is not connected); unknown side status stays distinct from control-link disconnection |
 | **BassUp™ Technology** | ✅ Dynamic Low-End Boost | ⚠️ No `02:82` command exists in any public capture — bass curves live in the preset table (Bass Booster / Reducer) |
-| **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ⚠️ No HearID test/write command in any public capture — no fake audiogram UI; the `03:87` EQ is left untouched to protect measured profiles |
+| **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ⚠️ No HearID test/custom-curve command in any public capture — no fake audiogram UI; personalised `03:87` profiles remain untouched (D1202 factory presets use the disabled-HearID form) |
 | **Superior Sleep** | ✅ Ambient White Noise Mixer | ❌ Not implemented — the earlier claim was UI-only and was removed; the protocol has no sleep command |
 | **Touch Remapping** | ✅ 1-Tap, 2-Tap, 3-Tap, Hold per ear | ⚠️ No gesture-write command is publicly documented — the Noise Control page says so explicitly instead of offering remaps that cannot reach the device |
 | **Game Mode** | ✅ 80ms Low Latency | ✅ Real `01:87` toggle (`10:85` on Liberty 4 NC / Liberty 5) |
@@ -94,17 +163,17 @@ UI shows **disabled with the protocol reason** — SoundControl never renders a 
 | **Find My Device** | ✅ Acoustic Locator Chirps | ⚠️ No RFCOMM command in any public capture — never faked; see PROTOCOL.md |
 | **Capability gating** | — | ✅ Every page adapts per model: unsupported controls show a disabled state with the protocol reason |
 | **Diagnostics / Console**| ❌ Hidden / Unavailable | ✅ Live Hex Frame Inspector & TX/RX Logger |
-| **Battery telemetry** | ✅ Live L/R/Case Levels | ✅ Live L/R Levels (case never shown — many models don't report it; over-ears have none) + 30 s refresh + Windows % fallback; a side reported absent (`0xFF`) loses its level immediately — a stale % can never survive new telemetry |
+| **Battery telemetry** | ✅ Live L/R/Case Levels | ✅ Live L/R Levels (case never shown — many models don't report it; over-ears have none) + 30 s refresh + host-reported % fallback; a side reported absent (`0xFF`) loses its level immediately — a stale % can never survive new telemetry |
 | **Capture decoding** | ❌ Hidden / Unavailable | ✅ Base64→Hex + BLE→RFCOMM Map in Diagnostics |
 
 ---
 
 ## 🔬 Protocol Reverse Engineering & Technical Architecture
 
-The Windows desktop app communicates with Soundcore Bluetooth hardware over:
+The Windows/Linux desktop app communicates with Soundcore Bluetooth hardware over:
 
 1. **Bluetooth Classic RFCOMM (SPP)**: the DSP channel is model-dependent (4 on most earbuds, 10 on the P20i family, 12/15 on several over-ears, 30 on Space 2). The helper probes each candidate with the `01:01` handshake and keeps the first channel that answers with a valid `09 FF` frame — accepting a socket alone is not proof (see PROTOCOL.md).
-2. **Local Electron-to-helper IPC**: The packaged renderer talks to the bundled Python helper over an authenticated loopback HTTP/WebSocket connection; the helper performs the RFCOMM work. Liveness uses the fast `/health` endpoint; `/scan` enumerates Windows PnP devices (slow on cold machines, cached 3 s) and is only called when the helper is up.
+2. **Local Electron-to-helper IPC**: The packaged renderer talks to the Python helper over an authenticated loopback HTTP/WebSocket connection; the helper performs the RFCOMM work. Liveness uses the fast `/health` endpoint; `/scan` enumerates Windows PnP devices or Linux BlueZ devices (slow on cold adapters, cached 3 s) and is polled automatically while the Devices page is open.
 
 ### Packet Framing & Checksum Calculation
 
@@ -133,9 +202,9 @@ Every packet transmitted between the host application and the hardware device fo
   - `0x83`: 10-band EQ + DRC compensation channel (P20i/P30i family) — byte-identical to 22 live captures.
   - `0x86`: 3D Surround Sound toggle.
   - ~~`0x82` BassUp~~ and any "find my device" opcode: **no public capture in any surveyed project contains them; SoundControl does not invent frames.**
-- **Category `0x03`**: `0x87` is the model-specific HearID EQ (Liberty 4 NC / Space One / Space Q45). Layout differs per model and risks overwriting measured hearing profiles, so SoundControl disables EQ there instead of guessing.
+- **Category `0x03`**: `0x87` is the model-specific HearID EQ used by Liberty 4 NC, Space One, Space Q45, Space A40, Liberty 4 Pro, P40i, Liberty 5, Space One Pro and Space 2. Layout differs per model and risks overwriting measured hearing profiles, so SoundControl disables those writes instead of guessing.
 - **Category `0x06` (Ambient Sound & ANC)**:
-  - `0x81`: sound-mode selector, four per-model layouts. Classic over-ears: mode `0x00` = ANC, `0x01` = Transparency, `0x02` = Normal, plus NC scene (Transport/Outdoor/Indoor) and transparency sub-mode bytes. TWS models use 6–7 byte layouts (manual level, adaptive, wind, scenes). Inbound mirror is `06:01`.
+  - `0x81`: sound-mode selector with per-model layouts. Classic Q20i/Q30/Q35/Life Tune models use the four-byte body; Space One/Space Q45, Space One Pro, Space A40, Liberty 4 Pro, P40i and Liberty 5 use their documented six- or seven-byte bodies (manual level, adaptive, wind and model-specific scene fields). Inbound mirror is `06:01`.
 - **Category `0x08` (Touch & Button Controls)**:
   - **No write command is publicly documented.** Button mappings appear in some *inbound* state
     parses only; no capture shows how to send new mappings. SoundControl therefore displays
@@ -146,7 +215,7 @@ Every packet transmitted between the host application and the hardware device fo
 
 ### Android BLE captures (decode-only)
 
-The Windows app does **not** use Web Bluetooth — Electron has no reliable BLE stack on Windows, and the bundled helper reaches hardware over RFCOMM. Android BLE captures are still documented in [PROTOCOL.md](PROTOCOL.md#appendix-a--android-ble-captures-decode-only-reference) so they can be decoded in **Diagnostics → Base64 capture → hex** and mapped to the RFCOMM frames above:
+The desktop app does **not** use Web Bluetooth — Electron has no reliable BLE stack in this renderer, and the local helper reaches hardware over RFCOMM. Android BLE captures are still documented in [PROTOCOL.md](PROTOCOL.md#appendix-a--android-ble-captures-decode-only-reference) so they can be decoded in **Diagnostics → Base64 capture → hex** and mapped to the RFCOMM frames above:
 
 | BLE capture | RFCOMM equivalent |
 |---|---|
@@ -158,9 +227,9 @@ BLE frames use an XOR checksum; RFCOMM frames use the additive Σ checksum. The 
 
 ### Troubleshooting connections
 
-- **"Windows helper: not responding"** means the renderer could not reach `/health`. Restart SoundControl and check `%AppData%\soundcontrol\main.log` for `bridge started via …` or a Python startup error. The status no longer depends on the slow PnP scan, so a slow machine will not false-positive.
-- **Empty paired-device list** with the helper running means Windows has no paired RFCOMM device to enumerate. Pair in **Settings → Bluetooth & devices**, then use **Refresh** on the Devices page (which forces a fresh `?fresh=1` scan).
-- **Battery stuck?** The app re-queries `01 03` every 30 s while connected to real hardware and falls back to the Windows PnP percentage when protocol telemetry is unavailable.
+- **"Bluetooth helper: not responding"** means the renderer could not reach `/health`. Restart SoundControl and check the platform log folder for `bridge started via …` or a Python startup error. The status no longer depends on the slow PnP/BlueZ scan, so a slow adapter will not false-positive.
+- **Empty paired-device list** with the helper running means the host has no paired RFCOMM device to enumerate. Pair in the computer’s Bluetooth settings, keep the device connected, then use **Scan devices** on the Devices page (which forces a fresh `?fresh=1` scan).
+- **Battery stuck?** The app re-queries `01 03` every 30 s while connected to real hardware and falls back to the host Bluetooth percentage when protocol telemetry is unavailable.
 
 ---
 
@@ -168,9 +237,9 @@ BLE frames use an XOR checksum; RFCOMM frames use the additive Σ checksum. The 
 
 ### Prerequisites
 - **Node.js 20.19+ or 22.12+** (Node 22 recommended) — Vite 8 refuses older runtimes
-- **Python 3.9+** — only for running the bridge from source. Release installers carry their own
-  bundled Python runtime (`python-embed/`, fetched automatically by `npm run fetch:python-embed`
-  during `npm run build:win`), so desktop users install nothing extra.
+- **Python 3.9+** — needed only for source runs. Windows release installers fetch a bundled runtime
+  automatically during `npm run build:win`; Linux packages stage a relocated runtime automatically
+  during `npm run build:linux`. Linux users still need BlueZ (`bluetoothd` and `bluetoothctl`).
 
 ### Development
 ```bash
@@ -178,7 +247,7 @@ npm install
 npm run dev
 ```
 
-This starts the local Vite renderer used while developing the Windows Electron app.
+This starts the local Vite renderer used while developing the Windows/Linux Electron app.
 Use `npm run electron` with the renderer available when testing the desktop shell.
 
 ### Tests
@@ -186,6 +255,7 @@ Use `npm run electron` with the renderer available when testing the desktop shel
 npm test            # everything below in sequence
 npm run test:ui     # pure UI state derivation (capabilities, earbud presence, battery math, scan machine) + a server-side render smoke of every page
 npm run test:bridge # Python bridge unit tests (channel probe, token/origin auth, WS protocol)
+npm run test:simulator # documented profiles exercise fixtures; catalog-only profiles are rejected
 npm run test:e2e    # startup/lifecycle e2e: real helper server + real renderer transport against an emulated RFCOMM device (incl. per-side earbud telemetry)
 npm run test:lifecycle # main-process exit/restart races: window close kills the real helper, port 8765 frees, no post-shutdown restart (Electron stubbed; Windows CI repeats this against the packaged app)
 ```
@@ -197,7 +267,7 @@ Physical Soundcore hardware has **not** been validated in the development
 sandbox — [`HARDWARE-VALIDATION.md`](HARDWARE-VALIDATION.md) is the step-by-step
 checklist (pairing → discovery → connection → battery → ANC → EQ → disconnect →
 reconnect → multi-device → shutdown) for verifying the app against real devices
-on a Windows machine, with the evidence to record at each step.
+on a Windows or Linux machine, with the evidence to record at each step.
 
 ### App icon (SC monogram)
 Every shipped icon raster — window, taskbar, desktop shortcut, installer and
@@ -218,13 +288,21 @@ icon set stays pixel-consistent.
 ```bash
 npm run build
 ```
-Generates the renderer assets in `dist/` for packaging into the Windows app.
+Generates the renderer assets in `dist/` for packaging into the desktop app.
 
 ### Package Windows Desktop App
 ```bash
 npm run build:win
 ```
 Generates the NSIS Windows installer (`SoundControl Setup <version>.exe`) in `release/`.
+
+### Package Linux Desktop App
+```bash
+npm run build:linux
+```
+Generates AppImage and Debian (`.deb`) packages in `release/`. Linux packages carry the Python
+bridge runtime and use the host's BlueZ stack; install `bluetoothd` and `bluetoothctl` before
+launching the app.
 
 #### Upgrading an existing installation
 
@@ -244,8 +322,7 @@ override to verify the in-place upgrade path.
 Tagged commits are built and published automatically by the **Release Windows**
 workflow (`.github/workflows/release-windows.yml`). It builds the NSIS installer
 on `windows-latest`, creates a GitHub Release with one stable installer asset:
-`SoundControl-Setup.exe`. The in-app download button always links to the
-latest release through that stable filename:
+`SoundControl-Setup.exe`. The in-app downloader checks the latest release assets and only offers a link when that installer is actually attached:
 
 ```bash
 # Bump "version" in package.json first so the release metadata stays accurate.
@@ -253,27 +330,12 @@ git tag vX.Y.Z main
 git push origin vX.Y.Z
 ```
 
-The in-app download button and the links above resolve through
-`releases/latest/download/...`, so they always point at the newest Release.
+The in-app downloader queries the latest release and shows only assets that exist. Linux stable aliases are attached by the Linux release workflow.
 
 ### 🔏 Code signing & SmartScreen
-The currently published installer is **unsigned**, so first-time downloaders see
-the SmartScreen "Windows protected your PC — Unknown publisher" prompt. It is not
-a virus check failure; click **More info → Run anyway**, or right-click the file →
-**Properties → Unblock** before launching. The prompt can only be removed with an
-Authenticode code-signing certificate — nothing in the build config can suppress
-it, and SoundControl will never try to bypass or weaken SmartScreen.
+The Windows signing pipeline is fully implemented and enforced: **release builds are gated on signing** — the release workflow refuses to build without credentials, electron-builder runs with `forceCodeSigning`, and the generated EXE is verified (`Get-AuthenticodeSignature` + `signtool verify /pa`, publisher identity, SHA-256 recorded, every shipped executable signed) before the GitHub Release is published. All details: **[docs/WINDOWS-CODE-SIGNING.md](docs/WINDOWS-CODE-SIGNING.md)**.
 
-The signing pipeline is fully implemented and enforced: **release builds are
-gated on signing** — the release workflow refuses to build without credentials,
-electron-builder runs with `forceCodeSigning`, and the actual generated EXE is
-verified (`Get-AuthenticodeSignature` + `signtool verify /pa`, publisher
-identity, SHA-256 recorded, every shipped executable signed) before the GitHub
-Release is published. All details: **[docs/WINDOWS-CODE-SIGNING.md](docs/WINDOWS-CODE-SIGNING.md)**.
-
-What is still missing is the **certificate**: no signing credential is
-configured in this repository yet, so releases cannot be signed until one is
-added. To enable signing, set two repository secrets (Settings → Secrets and
+The latest published release has no Windows installer. A signed Windows release requires a valid code-signing certificate and the repository secrets below; the CI certificate-validation step is skipped when they are not configured. To enable signing, set two repository secrets (Settings → Secrets and
 variables → Actions):
 
 | Secret | Value |

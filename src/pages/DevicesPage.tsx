@@ -2,12 +2,15 @@ import { useCallback, useEffect, useReducer, useState } from 'react';
 import { useApp } from '../state/store';
 import {
   INITIAL_SCAN_STATE,
+  deriveCapabilities,
   nextScanState,
   type ScannedDevice,
 } from '../state/derive';
-import { DEVICES } from '../protocol/devices';
+import { DEVICES, matchDevice } from '../protocol/devices';
+import { MARKET_CATALOG, type MarketCatalogEntry } from '../protocol/marketCatalog';
+import { DeviceTypeVisual, deviceKindLabel } from '../components/DeviceTypeVisual';
 import { bridgeHealth, scanBridgeDevicesDetailed } from '../transports/bridge';
-import { IconBolt, IconBt, IconCheck, IconClose, IconRefresh } from '../components/Icons';
+import { IconBt, IconCheck, IconClose, IconRefresh } from '../components/Icons';
 import {
   Button,
   Card,
@@ -20,10 +23,11 @@ import {
 } from '../components/ui';
 
 /**
- * Devices page (PART I/M) — the real Windows scanning backend only.
+ * Devices page (PART I/M) — the real Windows/Linux Bluetooth scanning
+ * backend only.
  *
- * Scan data comes from the helper's `/scan` HTTP endpoint (PowerShell/PnP
- * enumeration in soundcore_bridge.py — unchanged), liveness from `/health`.
+ * Scan data comes from the helper's `/scan` HTTP endpoint (Windows PnP or
+ * Linux BlueZ enumeration in soundcore_bridge.py), liveness from `/health`.
  * Every state is explicit: checking helper / scanning / results / empty /
  * error + retry. No mock or demo data reaches this page in production; the
  * developer simulator lives in Settings behind `import.meta.env.DEV`.
@@ -32,7 +36,7 @@ import {
 function soundcoreFirst(a: ScannedDevice, b: ScannedDevice): number {
   const score = (d: ScannedDevice) =>
     /soundcore|anker|liberty|r50i|p30i|p20i|space|q30|q35|q45|a39|a30/i.test(d.name) ? 0 : 1;
-  return score(a) - score(b) || a.name.localeCompare(b.name);
+  return Number(Boolean(b.connected)) - Number(Boolean(a.connected)) || score(a) - score(b) || a.name.localeCompare(b.name);
 }
 
 function normalizeMac(input: string): string {
@@ -43,7 +47,54 @@ function normalizeMac(input: string): string {
 }
 
 const HELPER_OFFLINE_MESSAGE =
-  'The Windows Bluetooth helper is not responding. It starts automatically with SoundControl and may still be booting — retry in a moment. If it never starts, check %AppData%\\soundcontrol\\main.log.';
+  'The Bluetooth helper is not responding. It starts automatically with SoundControl and may still be booting — retry in a moment. If it never starts, check the SoundControl log folder in Settings.';
+
+/** Recovery-only selector. Registry profiles and their documented capabilities,
+ * never free-text model codes, offsets, or commands. */
+export function ManualModelOptions({
+  currentId,
+  onSelect,
+}: {
+  currentId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <ul className="space-y-1.5">
+      {DEVICES.filter((d) => d.verified).map((d) => {
+        const current = currentId === d.id;
+        const caps = deriveCapabilities(d);
+        const features = [
+          caps.supportsNoiseControl && 'ANC / transparency',
+          caps.supportsEqualizer && 'EQ',
+          caps.supportsGaming && 'Game Mode',
+          caps.supportsLdac && 'LDAC',
+          caps.supportsDual && 'Multipoint',
+          caps.supportsSurround && 'Spatial audio',
+        ].filter(Boolean).join(' · ') || 'Universal reads only';
+        return (
+          <li key={d.id}>
+            <button
+              type="button"
+              onClick={() => onSelect(d.id)}
+              className={`flex w-full items-center gap-3 rounded-xl border px-4 py-2.5 text-left transition-colors duration-150 ${
+                current ? 'border-accent/60 bg-accent/10' : 'border-edge bg-sunken hover:border-accent/35'
+              }`}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2 text-sm font-semibold text-ink">
+                  {d.name} <span className="font-mono text-[11px] text-faint">{d.sku}</span>
+                  <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[9px] font-bold text-accent-soft">Verified protocol profile</span>
+                </span>
+                <span className="mt-0.5 block text-[11px] text-mute">{deviceKindLabel(d.kind)} · {features}</span>
+              </span>
+              {current && <IconCheck size={16} className="text-accent" />}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 export function DevicesPage() {
   const app = useApp();
@@ -52,6 +103,11 @@ export function DevicesPage() {
   const [macHint, setMacHint] = useState<string | null>(null);
   const [connectingMac, setConnectingMac] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+
+  // Never carry an open recovery picker across disconnect/reconnect or a
+  // switch to another MAC, even when React batches the connection updates.
+  useEffect(() => setProfileOpen(false), [app.connectedMac]);
 
   /* ---------------------------------------------------------- scanning */
 
@@ -122,16 +178,16 @@ export function DevicesPage() {
     event.preventDefault();
     const mac = normalizeMac(macInput);
     if (!mac) {
-      setMacHint('Enter the Bluetooth address like AA:BB:CC:DD:EE:FF from Windows device properties.');
+      setMacHint('Enter the Bluetooth address like AA:BB:CC:DD:EE:FF from your computer’s Bluetooth device details.');
       return;
     }
     setMacHint(null);
     // When the typed address is in the current scan results, reuse the
-    // identity Windows already reported for it: the model name selects the
-    // right device profile (and with it the correct battery scale — a
-    // scale-5 model read against the generic scale-10 default would show
-    // half the real percentage). Only real scan data is used; an address
-    // Windows cannot name still connects with the honest generic default.
+            // identity the host already reported for it: the model name selects the
+            // right device profile (and with it the correct battery scale — a
+            // scale-5 model read against the generic scale-10 default would show
+            // half the real percentage). Only real scan data is used; an address
+            // the host cannot name still connects with the honest generic default.
     const known = scan.devices.find(
       (d) => typeof d.mac === 'string' && d.mac.toUpperCase() === mac,
     );
@@ -157,7 +213,7 @@ export function DevicesPage() {
                     ? 'border-danger/30 bg-danger/8 text-danger'
                     : 'border-edge bg-sunken text-mute'
               }`}
-              title="The local Python helper performs Windows PnP Bluetooth enumeration"
+              title="The local helper performs host Bluetooth enumeration"
             >
               <span
                 className={`h-1.5 w-1.5 rounded-full ${
@@ -186,8 +242,8 @@ export function DevicesPage() {
         {/* ---------------------------------------------- discovered list */}
         <div className="space-y-4 xl:col-span-7">
           <Card
-            title="Paired Windows devices"
-            subtitle="Bluetooth devices already paired in Windows Settings — SoundControl speaks RFCOMM to them directly"
+            title="Paired Bluetooth devices"
+            subtitle="Devices paired with this computer — SoundControl detects them automatically and speaks RFCOMM directly"
             actions={
               scan.lastScanAt !== null ? (
                 <span className="font-mono text-[10px] text-faint">
@@ -216,8 +272,8 @@ export function DevicesPage() {
               <div className="space-y-3 py-2">
                 <p className="text-sm leading-relaxed text-mute">{scan.message}</p>
                 <p className="text-xs text-faint">
-                  Earbuds must stay <span className="font-semibold text-ink/80">connected</span> in Windows
-                  Bluetooth settings (audio may be playing). “Pairing mode” is the wrong state.
+                  Earbuds must stay <span className="font-semibold text-ink/80">connected</span> in this
+                  computer’s Bluetooth settings (audio may be playing). “Pairing mode” is the wrong state.
                 </p>
               </div>
             )}
@@ -229,37 +285,46 @@ export function DevicesPage() {
             {scan.status === 'results' && (
               <ul className="space-y-2">
                 {scan.devices.map((device) => {
-                  const isActive = app.connected && device.mac !== undefined && device.mac === app.connectedMac;
+                  const isActive = app.connected && device.mac !== undefined && device.mac.toUpperCase() === app.connectedMac?.toUpperCase();
                   const isConnecting = connectingMac === device.mac;
+                  const matched = matchDevice(device.name);
+                  const knownProfile = matched.id !== 'unknown' ? matched : null;
                   return (
                     <li
                       key={device.id}
-                      className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors duration-200 ${
-                        isActive ? 'border-accent/55 bg-accent/8' : 'border-edge bg-sunken hover:border-accent/35'
-                      }`}
+                      className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors duration-200 ${isActive ? 'border-accent/55 bg-accent/8' : 'border-edge bg-sunken hover:border-accent/35'}`}
                     >
                       <span
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${
-                          isActive ? 'border-accent/40 bg-accent/12 text-accent' : 'border-edge bg-panel text-mute'
-                        }`}
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${isActive ? 'border-accent/40 bg-accent/12 text-accent' : 'border-edge bg-panel text-mute'}`}
+                        title={knownProfile ? deviceKindLabel(knownProfile.kind) : 'Unknown device type'}
                       >
-                        <IconBt size={19} />
+                        {knownProfile ? <DeviceTypeVisual kind={knownProfile.kind} size={19} /> : <IconBt size={19} />}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-2">
                           <span className="truncate text-sm font-semibold text-ink">{device.name}</span>
-                          {isActive && (
+                          {isActive ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-bold text-accent-soft">
-                              <IconCheck size={10} /> Connected
+                              <IconCheck size={10} /> RFCOMM connected · SoundControl
+                            </span>
+                          ) : device.connected ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-accent/8 px-2 py-0.5 text-[10px] font-semibold text-accent-soft">
+                              <IconCheck size={10} /> Bluetooth connected
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-sunken px-2 py-0.5 text-[10px] font-medium text-faint">
+                              Paired
                             </span>
                           )}
                         </span>
-                        <span className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-faint">
-                          {device.mac}
+                        <span className="mt-0.5 flex items-center gap-2 text-[11px] text-faint">
+                          {knownProfile && (
+                            <span>{deviceKindLabel(knownProfile.kind)} · name matches a protocol profile (unconfirmed)</span>
+                          )}
+                          {device.mac && <span className="font-mono">{device.mac}</span>}
                           {typeof device.battery === 'number' && (
                             <span className="inline-flex items-center gap-1 text-mute">
-                              · {device.battery}%
-                              <IconBolt size={10} className="text-warn/80" /> Windows
+                              · {device.battery}% host
                             </span>
                           )}
                         </span>
@@ -287,7 +352,7 @@ export function DevicesPage() {
           </Card>
 
           {/* Manual MAC — real connect path for nameless pairings. */}
-          <Card title="Connect by address" subtitle="For devices Windows paired without a readable name">
+          <Card title="Connect by address" subtitle="For devices paired without a readable name">
             <form onSubmit={submitMac} className="flex flex-col gap-2 sm:flex-row">
               <input
                 value={macInput}
@@ -327,7 +392,7 @@ export function DevicesPage() {
                     <button
                       onClick={() => app.forgetRecentDevice(d.mac)}
                       aria-label={`Forget ${d.name} from the recent list`}
-                      title="Remove from this local list (does not unpair the device in Windows)"
+                      title="Remove from this local list (does not unpair the device from the computer)"
                       className="rounded p-1 text-faint transition-colors hover:bg-raised hover:text-danger"
                     >
                       <IconClose size={12} />
@@ -338,15 +403,59 @@ export function DevicesPage() {
             </Card>
           )}
 
+          <Card title="Device Connectivity" subtitle="Automatic identification is the default; manual choice is a recovery option">
+            <div className="space-y-1 text-xs text-mute">
+              {app.connected && (
+                <p className="text-sm font-semibold text-ink">
+                  {app.identification === 'verified' ? app.profile.name : 'Unknown Soundcore device'}
+                </p>
+              )}
+              <p>Device name: <span className="text-ink">{app.connected ? app.deviceName : 'No device'}</span></p>
+              <p>Model code: <span className="font-mono text-ink">{app.identification === 'verified' ? app.profile.sku : 'Not verified'}</span></p>
+              <p>Connection: <span className="text-ink">{app.connected ? 'Connected' : 'Not connected'}</span></p>
+              <p>Identification: <span className="text-ink">{{
+                verified: '✓ Automatically verified (protocol profile and state layout)',
+                uncertain: '⚠ Connected but identification uncertain',
+                mismatch: '⚠ Connected with identification mismatch',
+                'not-connected': 'Not connected',
+              }[app.identification]}</span></p>
+              {app.manualCandidate && (
+                <p>
+                  {app.identification === 'verified'
+                    ? `Manual suggestion ${app.manualCandidate.name} (${app.manualCandidate.sku}) ignored — automatic identification takes precedence.`
+                    : `Manual verified protocol-profile candidate: ${app.manualCandidate.name} (${app.manualCandidate.sku}). This does not verify the physical device or authorize commands.`}
+                </p>
+              )}
+            </div>
+            {app.connected && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {app.connectedMac && <>
+                  <Button
+                    size="sm"
+                    variant={app.identification === 'verified' ? 'secondary' : 'primary'}
+                    onClick={() => setProfileOpen(true)}
+                  >
+                    {app.identification === 'verified' ? 'Change device model' : 'Select model manually'}
+                  </Button>
+                  {app.manualCandidate && (
+                    <Button size="sm" onClick={app.resetAutomaticDetection}>Reset to automatic detection</Button>
+                  )}
+                </>}
+                <Button size="sm" variant="danger" onClick={() => void app.disconnect()}>Disconnect</Button>
+              </div>
+            )}
+            <p className="mt-2 text-[11px] text-faint">
+              Automatic detection remains primary. A manual suggestion applies only to this device/session,
+              never replaces a confirmed automatic profile, and cannot unlock protocol commands.
+            </p>
+          </Card>
+
           {/* Capabilities of the connected/selected model — PART L honesty. */}
           <Card
             title="Model capabilities"
-            subtitle={`${app.profile.name} (${app.profile.sku}) — derived from the documented protocol, per model`}
-            actions={
-              <Button size="sm" onClick={() => setProfileOpen(true)}>
-                {app.connected ? 'Override profile' : 'Preview profiles'}
-              </Button>
-            }
+            subtitle={app.connected && app.identification !== 'verified'
+              ? 'Model-specific controls unavailable until identification is verified'
+              : `${app.profile.name} (${app.profile.sku}) — derived from documented protocol evidence`}
           >
             <CapabilityList />
             {app.profileNote && (
@@ -356,58 +465,116 @@ export function DevicesPage() {
             )}
             {!app.profile.verified && (
               <p className="mt-2 text-[11px] text-faint">
-                This profile has no published capture; it is the closest verified relative and the
-                UI flags it.
+                No verified model-specific profile is available. Only universal read commands are enabled.
               </p>
             )}
           </Card>
+
+          <MarketCoverageCard onOpen={() => setCatalogOpen(true)} />
         </div>
       </div>
 
-      {/* Profile picker — changes the protocol profile the app really uses. */}
-      <Modal open={profileOpen} title="Soundcore model profiles" onClose={() => setProfileOpen(false)} width="max-w-2xl">
+      {/* A candidate is scoped to the active MAC; it cannot alter the wire profile. */}
+      <Modal open={profileOpen && app.connected && Boolean(app.connectedMac)} title="Manual model selection (recovery)" onClose={() => setProfileOpen(false)} width="max-w-2xl">
         <p className="mb-3 text-xs leading-relaxed text-mute">
-          SoundControl matches the Bluetooth name automatically. Override only if it picked the
-          wrong model — the profile decides which real protocol frames (sound modes, EQ, toggles)
-          are sent, so a wrong override means wrong commands.
+          Automatic identification remains primary. Only verified protocol profiles are listed;
+          selecting one does not independently verify this physical device or bypass the command gate.
+          A later confirmed automatic identity takes precedence.
         </p>
-        <ul className="space-y-1.5">
-          {DEVICES.map((d) => {
-            const current = app.profile.id === d.id;
+        <ManualModelOptions
+          currentId={app.manualCandidate?.id ?? null}
+          onSelect={(id) => {
+            app.selectManualModel(id);
+            setProfileOpen(false);
+          }}
+        />
+      </Modal>
+
+      <Modal open={catalogOpen} title="US/EU market snapshot" onClose={() => setCatalogOpen(false)} width="max-w-4xl">
+        <p className="mb-4 text-xs leading-relaxed text-mute">
+          Catalog identity, protocol evidence, simulator/tests, and physical hardware
+          validation are separate statuses. A catalog row with unknown protocol evidence is
+          intentionally read-only: SoundControl will not guess ANC, EQ, codec, or state offsets.
+        </p>
+        <div className="space-y-4">
+          {(['tws', 'sleep', 'open-ear', 'neckband', 'headphones'] as const).map((category) => {
+            const entries = MARKET_CATALOG.filter((entry) => entry.category === category);
             return (
-              <li key={d.id}>
-                <button
-                  onClick={() => {
-                    app.setProfileId(d.id);
-                    setProfileOpen(false);
-                  }}
-                  className={`flex w-full items-center gap-3 rounded-xl border px-4 py-2.5 text-left transition-colors duration-150 ${
-                    current ? 'border-accent/60 bg-accent/10' : 'border-edge bg-sunken hover:border-accent/35'
-                  }`}
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2 text-sm font-semibold text-ink">
-                      {d.name} <span className="font-mono text-[11px] text-faint">{d.sku}</span>
-                      {!d.verified && (
-                        <span className="rounded bg-warn/15 px-1.5 py-0.5 text-[9px] font-bold text-warn">
-                          UNVERIFIED
-                        </span>
-                      )}
-                    </span>
-                    <span className="mt-0.5 block text-[11px] text-mute">
-                      {d.kind === 'earbuds' ? 'Earbuds' : 'Over-ear'} ·{' '}
-                      {d.ancLayout !== 'none' ? 'noise control' : 'no noise control'} ·{' '}
-                      {d.eqCommand ? `EQ ${d.eqCommand}` : 'EQ via 03:87 (unsupported)'}
-                    </span>
-                  </span>
-                  {current && <IconCheck size={16} className="text-accent" />}
-                </button>
-              </li>
+              <section key={category}>
+                <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.12em] text-accent-soft">
+                  {category === 'tws' ? 'Traditional TWS earbuds' : category === 'sleep' ? 'Sleep earbuds' : category === 'open-ear' ? 'Open-ear / clip-on' : category === 'neckband' ? 'Neckband earphones' : 'Over-ear / on-ear'}
+                </h3>
+                <ul className="space-y-1.5">
+                  {entries.map((entry) => <CatalogStatusRow key={entry.sku} entry={entry} />)}
+                </ul>
+              </section>
             );
           })}
-        </ul>
+        </div>
       </Modal>
     </div>
+  );
+}
+
+/** Summary card for the deduplicated official-market registry. */
+function MarketCoverageCard({ onOpen }: { onOpen: () => void }) {
+  const protocol = MARKET_CATALOG.filter((entry) => entry.protocolStatus === 'implemented').length;
+  const readOnly = MARKET_CATALOG.filter((entry) => entry.protocolStatus === 'read-only').length;
+  const unknown = MARKET_CATALOG.filter((entry) => entry.protocolStatus === 'unknown').length;
+  const tested = MARKET_CATALOG.filter((entry) => entry.unitTestCoverage === 'covered').length;
+  return (
+    <Card
+      title="Market compatibility"
+      subtitle={`${MARKET_CATALOG.length} deduplicated US/EU catalog identities · snapshot 2026-09-29`}
+      actions={<Button size="sm" onClick={onOpen}>View status</Button>}
+    >
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <MarketMetric value={protocol} label="protocol" tone="good" />
+        <MarketMetric value={readOnly} label="read-only" tone="warn" />
+        <MarketMetric value={unknown} label="catalog only" tone="muted" />
+        <MarketMetric value={tested} label="unit-tested" tone="good" />
+      </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-faint">
+        Physical validation: <span className="font-semibold text-warn">pending for every model</span>.
+        Regional names and model-number aliases are grouped into one canonical SKU row.
+      </p>
+    </Card>
+  );
+}
+
+function MarketMetric({ value, label, tone }: { value: number; label: string; tone: 'good' | 'warn' | 'muted' }) {
+  const style = tone === 'good' ? 'text-accent-soft' : tone === 'warn' ? 'text-warn' : 'text-mute';
+  return (
+    <div className="rounded-lg border border-edge bg-sunken px-2.5 py-2">
+      <div className={`font-mono text-lg font-semibold ${style}`}>{value}</div>
+      <div className="text-[10px] text-faint">{label}</div>
+    </div>
+  );
+}
+
+function CatalogStatusRow({ entry }: { entry: MarketCatalogEntry }) {
+  const protocol = entry.protocolStatus === 'implemented' ? 'Protocol: supported' : entry.protocolStatus === 'read-only' ? 'Protocol: read-only' : 'Protocol: catalog only';
+  const protocolStyle = entry.protocolStatus === 'implemented'
+    ? 'border-accent/30 bg-accent/8 text-accent-soft'
+    : entry.protocolStatus === 'read-only'
+      ? 'border-warn/30 bg-warn/8 text-warn'
+      : 'border-edge bg-sunken text-faint';
+  return (
+    <li className="rounded-xl border border-edge bg-sunken px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-[11px] font-semibold text-ink">{entry.sku}</span>
+        <span className="text-xs font-semibold text-ink">{entry.name}</span>
+        <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase ${protocolStyle}`}>{protocol}</span>
+        <span className="ml-auto text-[10px] text-faint">{entry.regions.join(' / ')}</span>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-faint">
+        <span>Simulator: <b className={entry.simulatorCoverage === 'covered' ? 'text-accent-soft' : 'text-faint'}>{entry.simulatorCoverage}</b></span>
+        <span>Unit tests: <b className={entry.unitTestCoverage === 'covered' ? 'text-accent-soft' : 'text-faint'}>{entry.unitTestCoverage}</b></span>
+        <span>Physical validation: <b className="text-warn">{entry.physicalValidation}</b></span>
+      </div>
+      <p className="mt-1 text-[10px] leading-relaxed text-faint">Aliases: {entry.aliases.join(' · ')}</p>
+      <p className="mt-1 text-[10px] leading-relaxed text-mute">{entry.protocolEvidence}</p>
+    </li>
   );
 }
 
@@ -416,8 +583,8 @@ function CapabilityList() {
   const app = useApp();
   const c = app.capabilities;
   const rows: Array<[string, boolean, string]> = [
-    ['Noise control', c.supportsNoiseControl, c.supportsNoiseControl ? `06:81 · ${app.profile.ancLayout}` : 'no sound-mode module'],
-    ['Equalizer', c.supportsEqualizer, c.supportsEqualizer ? String(app.profile.eqCommand) : '03:87 HearID — not sent on purpose'],
+    ['Noise control', c.supportsNoiseControl, c.supportsNoiseControl ? `06:81 · ${app.profile.ancLayout}` : app.connected && app.identification !== 'verified' ? 'identification not verified' : 'no sound-mode module'],
+    ['Equalizer', c.supportsEqualizer, c.supportsEqualizer ? String(app.profile.eqCommand) : app.connected && app.identification !== 'verified' ? 'identification not verified' : '03:87 HearID — not sent on purpose'],
     ['Gaming mode', c.supportsGaming, c.supportsGaming ? (app.profile.sku === 'A3947' ? '10:85' : '01:87') : 'no command for this model'],
     ['3D surround', c.supportsSurround, c.supportsSurround ? '02:86' : 'no command for this model'],
     ['Dual connection', c.supportsDual, c.supportsDual ? '0B:84' : 'no command for this model'],

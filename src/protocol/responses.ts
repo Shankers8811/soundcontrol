@@ -22,6 +22,8 @@ export interface DeviceSessionGuard {
   end(): void;
   /** True only when `id` is the currently active session. */
   isActive(id: number): boolean;
+  /** Snapshot for identity-checked asynchronous observers. */
+  current(): number | null;
 }
 
 export function createSessionGuard(): DeviceSessionGuard {
@@ -36,7 +38,23 @@ export function createSessionGuard(): DeviceSessionGuard {
       active = null;
     },
     isActive: (id: number) => active !== null && active === id,
+    current: () => active,
   };
+}
+
+/**
+ * Link-down callbacks carry the transport that actually closed. A session is
+ * current only when its id is still active and the callback's transport is
+ * the exact object installed in the store; identity is essential during a
+ * fast disconnect/reconnect where an old WebSocket may close late.
+ */
+export function isCurrentTransportSession(
+  guard: Pick<DeviceSessionGuard, 'isActive'>,
+  sessionId: number,
+  currentTransport: unknown,
+  callbackTransport: unknown,
+): boolean {
+  return guard.isActive(sessionId) && callbackTransport !== null && currentTransport === callbackTransport;
 }
 
 /* ------------------------------------------------------- firmware parsing */
@@ -97,8 +115,14 @@ export interface DeviceToggleMirror {
  * "Command sent — device confirmation unavailable" wording instead.
  */
 export function parseDeviceToggles(payload: Uint8Array, state: StateOffsets): DeviceToggleMirror {
-  const readFlag = (at: number | null | undefined): boolean | null =>
-    typeof at === 'number' && payload.length > at ? payload[at] !== 0x00 : null;
+  const readFlag = (at: number | null | undefined): boolean | null => {
+    if (typeof at !== 'number' || payload.length <= at) return null;
+    // OpenSCQ30's take_bool accepts exactly 0/1. Treat 0xFF and other
+    // non-boolean bytes as unknown rather than confirming a toggle as true.
+    if (payload[at] === 0x00) return false;
+    if (payload[at] === 0x01) return true;
+    return null;
+  };
 
   let gaming = readFlag(state.gaming);
   if (gaming !== null && state.gamingMinFirmware) {

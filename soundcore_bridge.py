@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """SoundControl RFCOMM bridge — zero third-party dependencies.
 
-Pipes exact Soundcore DSP frames (08 EE …) into Classic Bluetooth RFCOMM.
+Pipes exact Soundcore DSP frames (08 EE …) into Classic Bluetooth RFCOMM on
+Windows and Linux hosts.
 
 The DSP channel is not fixed: 4 on most earbuds, 10 on the P20i family, 12/15
 on several over-ears, 30 on the Space 2. Rather than trusting the first
@@ -13,13 +14,13 @@ frame. Pass --channel to start the probe somewhere else.
     python3 soundcore_bridge.py --mac AA:BB:CC:DD:EE:FF --channel 4
 
 Access control: the bridge listens on the loopback interface and is intended
-only for the packaged Windows desktop renderer. The renderer receives a fresh
-per-session secret from Electron and sends it on every request (see token_ok):
+only for the packaged Windows/Linux desktop renderer. The renderer receives a
+fresh per-session secret from Electron and sends it on every request (see token_ok):
 HTTP callers send `Authorization: Bearer <token>` (or `X-Bridge-Token:`), and
 the renderer connects to `/ws?token=<token>`. Configure manual runs with the
 SOUNDCONTROL_BRIDGE_TOKEN environment variable or --token.
 
-Talk to it from the Windows renderer over WebSocket JSON:
+Talk to it from the desktop renderer over WebSocket JSON:
 
     { "type": "connect", "mac": "AA:BB:CC:DD:EE:FF", "channel": 4 }
     { "type": "tx", "hex": "08EE00000001010A0002" }
@@ -53,12 +54,12 @@ from urllib.parse import parse_qs, urlsplit
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 RFCOMM = getattr(socket, "BTPROTO_RFCOMM", 3)
-# AF_BLUETOOTH exists on Windows (the only production runtime) and on most
-# Linux builds, but some CI Python distributions omit it, which used to kill
-# the channel-probe unit tests with an AttributeError before their fake
-# socket layer was even reached. Same getattr-guard pattern as RFCOMM above:
-# on Windows the real constant is always used; elsewhere the Linux value (31)
-# is a safe stand-in because tests replace socket.socket wholesale.
+# AF_BLUETOOTH exists on Windows and Linux builds, but some CI Python
+# distributions omit it, which used to kill the channel-probe unit tests with
+# an AttributeError before their fake socket layer was even reached. Same
+# getattr-guard pattern as RFCOMM above: on supported hosts the real constant
+# is used; elsewhere the Linux value (31) is a safe stand-in because tests
+# replace socket.socket wholesale.
 AF_BLUETOOTH = getattr(socket, "AF_BLUETOOTH", 31)
 
 # `08 EE 00 00 00 01 01 0A 00 02` — the state request the official app sends
@@ -67,29 +68,25 @@ AF_BLUETOOTH = getattr(socket, "AF_BLUETOOTH", 31)
 HANDSHAKE = bytes.fromhex("08EE00000001010A0002")
 
 # RFCOMM channels the Soundcore DSP has been observed on, most common first.
-# The official app resolves this from SDP; Windows gives us no reliable SDP
-# record for the vendor service, so the bridge probes in this order instead.
+# The official app resolves this from SDP; desktop Bluetooth stacks do not
+# expose a reliable vendor-service record in the same way, so the bridge
+# probes in this order instead.
 # Deliberately excluded: 12/13 are TOTA/BESOTA firmware-flash channels on some
 # families (mervin008/soundcorebridge hard-blocks them for writes) and 16 is
 # Apple iAP2. We only ever send a read-only state request, and probing never
 # writes firmware, but the exclusion keeps a future write path from guessing.
 DSP_CHANNEL_CANDIDATES = (4, 12, 15, 10, 30, 1)
 
-# A cold Windows Bluetooth stack can take a couple of seconds to accept, and a
-# busy headset a moment to answer. Kept short on purpose: the whole probe runs
-# inside the renderer's connect timeout, so 6 candidates must fit in it.
+# A cold desktop Bluetooth stack can take a couple of seconds to accept, and
+# a busy headset a moment to answer. Kept short on purpose: the whole probe
+# runs inside the renderer's connect timeout, so 6 candidates must fit in it.
 PROBE_CONNECT_TIMEOUT = 2.5
 PROBE_REPLY_TIMEOUT = 1.5
 
-# When nothing answered the handshake we still adopt the first accepting
-# channel (manual console use), but the UI would then sit at "Connected" with
-# empty battery/ANC forever. This watchdog names that condition out loud: if
-# the silent link has not produced a single device frame after this many
-# seconds, the bridge reports it instead of pretending all is well — and then
-# keeps re-sending the read-only handshake every SILENT_LINK_WATCHDOG_S, so a
-# control slot that frees up later (phone app closed) heals by itself and the
-# renderer is told "battery and ANC are live now" without a manual reconnect.
-SILENT_LINK_WATCHDOG_S = 8.0
+# A channel is adopted only after it answers the exact read-only 01:01
+# handshake. An RFCOMM service that accepts a socket but stays silent may be
+# hands-free/A2DP or a firmware channel; keeping it open would make later
+# control writes unsafe, so silent channels are rejected rather than guessed.
 
 # Input-size guards. The bridge only ever talks to the local desktop app, but
 # a compromised or buggy local caller must not be able to make the helper
@@ -101,37 +98,61 @@ WS_MAX_MESSAGE_BYTES = 1 << 20  # 1 MiB per WebSocket message
 TX_MAX_BYTES = 4096  # per RFCOMM write
 
 # --- Earbud-only control boundary (Phase 17) --------------------------------
-# SOUND CONTROL = EAR BUD / HEADPHONE DEVICE CONTROL, never Windows audio.
+# SOUND CONTROL = EAR BUD / HEADPHONE DEVICE CONTROL, never host audio.
 # This helper's only device I/O is the RFCOMM socket to the connected
 # earbuds: it contains no Windows audio, mixer, endpoint or registry APIs and
-# must never gain any. Windows is touched only for transport discovery
+# must never gain any. The host is touched only for transport discovery
 # (read-only paired-device enumeration) and the helper's own process needs.
 #
 # The renderer validates outbound frames against the earbud command registry
 # (src/protocol/targets.ts) before any write; the check below is an
 # independent second gate, so even a buggy or hostile renderer cannot make
 # this helper transmit anything but recognized Soundcore earbud commands.
-# Keep this set in sync with EARBUD_COMMANDS / EARBUD_COMMAND_FRAME_KEYS —
-# both sides are cross-checked by tests (scripts/test_bridge_probe.py and
-# scripts/test_command_targets.mjs).
+# Keep this set in sync with the renderer's currently transmissible command
+# set. The renderer registry still records the source-backed 01:85 factory
+# reset for model-gating/evidence, but the helper deliberately excludes that
+# destructive frame because it has no model identity and cannot authorize a
+# reset safely on its own.
 TX_ALLOWED_FRAMES = frozenset(
     {
         "01:01",  # state.request        (handshake)
         "01:03",  # battery.query
         "01:04",  # charging.query
         "01:05",  # device.info          (serial + firmware)
-        "01:85",  # device.factory-reset
+        # 01:85 factory reset is intentionally absent; see the policy comment.
         "01:87",  # game-mode.set
         "01:7F",  # ldac.query
         "01:FF",  # ldac.set
         "02:81",  # equalizer.set
         "02:83",  # equalizer.set-drc
+        "03:87",  # equalizer.set-hearid (D1202 disabled HearID form)
         "02:86",  # surround.set
         "06:81",  # sound-modes.set      (ANC / transparency / wind)
         "0B:84",  # dual-audio.set
         "10:85",  # game-mode.set-a3947
     }
 )
+
+# Total RFCOMM frame lengths. The helper repeats the renderer's structural
+# contract so a caller that bypasses the UI cannot send an arbitrary payload
+# under a recognized CAT:TYPE. `06:81` is the only family with several
+# documented lengths; its 4/6/7/8-byte payloads become 14/16/17/18 total.
+TX_FRAME_LENGTHS = {
+    "01:01": (10,),
+    "01:03": (10,),
+    "01:04": (10,),
+    "01:05": (10,),
+    "01:7F": (10,),
+    "01:87": (11,),
+    "01:FF": (11,),
+    "02:81": (20, 32),
+    "02:83": (32,),
+    "02:86": (11,),
+    "03:87": (124,),
+    "06:81": (14, 16, 17, 18),
+    "0B:84": (11,),
+    "10:85": (11,),
+}
 
 
 def validate_tx_frame(data: bytes) -> Optional[str]:
@@ -155,30 +176,42 @@ def validate_tx_frame(data: bytes) -> Optional[str]:
     key = f"{data[5]:02X}:{data[6]:02X}"
     if key not in TX_ALLOWED_FRAMES:
         return f"not a recognized supported earbud command ({key})"
+    allowed_lengths = TX_FRAME_LENGTHS.get(key, ())
+    if len(data) not in allowed_lengths:
+        expected = " or ".join(str(n) for n in allowed_lengths) or "none"
+        return f"unsupported payload shape for {key}: {len(data)} bytes (expected {expected})"
     return None
 
 
 def _answers_handshake(buf: bytes) -> bool:
-    """True when `buf` holds at least one checksum-valid `09 FF` frame."""
+    """True only for a complete, exact `09 FF 01 01` state response.
+
+    The declared total length is part of the framing contract. Do not use a
+    checksum-only boundary fallback here: a silent/non-DSP service must never
+    be promoted to an active control channel because arbitrary bytes happened
+    to sum to a plausible checksum.
+    """
     i = 0
     while i + 1 < len(buf):
-        if buf[i] == 0x09 and buf[i + 1] == 0xFF:
-            if i + 9 >= len(buf):
-                return False  # header found, frame still arriving
-            indicated = buf[i + 7] | (buf[i + 8] << 8)
-            end = None
-            if 10 <= indicated <= 512 and len(buf) >= i + indicated:
-                end = i + indicated
-            else:
-                for candidate in range(i + 10, min(len(buf), i + 512) + 1):
-                    if _frame_checksum(buf[i : candidate - 1]) == buf[candidate - 1]:
-                        end = candidate
-                        break
-            if end is not None and _frame_checksum(buf[i : end - 1]) == buf[end - 1]:
-                return True
-            i += 2
-        else:
+        if buf[i] != 0x09 or buf[i + 1] != 0xFF:
             i += 1
+            continue
+        if i + 9 >= len(buf):
+            return False  # header found, frame still arriving
+        # The response to 01:01 must itself be the inbound 01:01 state frame.
+        if buf[i + 5] != 0x01 or buf[i + 6] != 0x01:
+            i += 2
+            continue
+        indicated = buf[i + 7] | (buf[i + 8] << 8)
+        if not 10 <= indicated <= 512:
+            i += 2
+            continue
+        if len(buf) < i + indicated:
+            return False
+        end = i + indicated
+        if _frame_checksum(buf[i : end - 1]) == buf[end - 1]:
+            return True
+        i += 2
     return False
 
 
@@ -190,17 +223,13 @@ class Bridge:
         self.channel = 4
         self.clients: list[socket.socket] = []
         # Serialises writes to the RFCOMM socket: the WebSocket handler thread
-        # (tx commands) and the silent-link watchdog thread (background
-        # handshake retries) can both sendall() it, and interleaved writes
-        # would garble frames on the device link.
+        # can issue a command while another request is being handled, and
+        # interleaved sendall() calls would garble frames on the device link.
         self.tx_lock = threading.Lock()
         # Serialises whole connect attempts (see connect()). Separate from
         # self.lock, which guards the WebSocket client list and is taken by
         # broadcast() *inside* a connect — nesting the two would deadlock.
         self.connect_lock = threading.Lock()
-        # Set by the reader on the first inbound device frame after _adopt;
-        # the silent-link watchdog waits on it.
-        self.first_rx = threading.Event()
 
     def broadcast(self, payload: dict) -> None:
         raw = json.dumps(payload).encode("utf-8")
@@ -243,10 +272,9 @@ class Bridge:
         the first channel that accepted and reported success.
 
         So each candidate is probed with the `01:01` handshake and only a
-        channel that answers with a valid `09 FF` frame is kept. If nothing
-        answers — a device that only replies to a later command, or a manual
-        console session — fall back to the first channel that at least
-        accepted, and say so in the log.
+        channel that answers with a valid `09 FF 01 01` state frame is kept.
+        If nothing answers, the bridge refuses to adopt an unproven RFCOMM
+        service rather than risking later control writes on the wrong channel.
         """
         # Validate before touching any socket: a malformed address must be
         # reported as such, not surface as a confusing OS-level "host down".
@@ -257,6 +285,12 @@ class Bridge:
                 "e.g. AA:BB:CC:DD:EE:FF"
             )
         mac = normalized
+        if channel not in DSP_CHANNEL_CANDIDATES:
+            allowed = ", ".join(str(candidate) for candidate in DSP_CHANNEL_CANDIDATES)
+            raise RuntimeError(
+                f"Unsupported RFCOMM channel {channel}; refusing to probe it. "
+                f"Documented DSP candidates are: {allowed}"
+            )
         self.close()
 
         candidates = [channel] + [c for c in DSP_CHANNEL_CANDIDATES if c != channel]
@@ -300,30 +334,10 @@ class Bridge:
                 pass
             sock.close()
 
-        if silent:
-            # Nothing spoke Soundcore, but something accepted. Prefer the
-            # requested channel so a manual `--channel` run still works.
-            ch = silent[0]
-            sock = socket.socket(AF_BLUETOOTH, socket.SOCK_STREAM, RFCOMM)
-            try:
-                sock.settimeout(PROBE_CONNECT_TIMEOUT)
-                sock.connect((mac, ch))
-            except Exception as exc:  # noqa: BLE001
-                raise RuntimeError(self._failure_message(failures, silent, exc)) from exc
-            self._adopt(sock, mac, ch)
-            msg = (
-                f"connected to channel {ch}, but the earbuds did not answer the "
-                f"handshake — battery and ANC will stay empty until they do"
-            )
-            if failures:
-                # The user needs to see why the other candidates were rejected,
-                # not just that two channels stayed silent.
-                msg += ". Other channels refused: " + "; ".join(failures[:4])
-            sys.stderr.write(f"bridge: {msg}\n")
-            self.broadcast({"type": "sys", "message": msg, "channel": ch})
-            threading.Thread(target=self._silent_watchdog, args=(sock, ch), daemon=True).start()
-            return
-
+        # An accepting but silent RFCOMM service is not proven to be the
+        # Soundcore DSP. Never adopt it: later writes could target a hands-free,
+        # A2DP-control, or firmware service. The caller gets the complete probe
+        # diagnosis and may retry after closing the phone app.
         raise RuntimeError(self._failure_message(failures, silent, None))
 
     @staticmethod
@@ -342,9 +356,9 @@ class Bridge:
         if not silent and not failures and last is not None:
             parts.append(str(last))
         parts.append(
-            "Leave the earbuds connected in Windows Bluetooth settings (not in "
-            "pairing mode) and close the Soundcore phone app — it holds the "
-            "single control slot."
+            "Leave the earbuds connected in this computer's Bluetooth settings "
+            "(not in pairing mode) and close the Soundcore phone app — it holds "
+            "the single control slot."
         )
         return " ".join(parts)
 
@@ -353,57 +367,11 @@ class Bridge:
         self.sock = sock
         self.mac = mac
         self.channel = ch
-        self.first_rx.clear()
         threading.Thread(target=self._reader, daemon=True).start()
-
-    def _silent_watchdog(self, sock: socket.socket, ch: int) -> None:
-        """Name the fake-"Connected" condition, then keep trying to heal it.
-
-        Only started when the adopted channel never answered the handshake.
-        After SILENT_LINK_WATCHDOG_S of silence the socket is almost certainly
-        a non-DSP profile, or the Soundcore phone app still holds the single
-        control slot. The bridge says so out loud (stderr + the renderer
-        console) instead of sitting at a forever-empty "Connected" — and then
-        keeps re-sending the read-only handshake in the background. When the
-        slot frees up and the device finally answers, the reader thread sets
-        `first_rx` and this thread announces that battery/ANC are live, so the
-        user does not have to reconnect by hand. The socket is never closed
-        here: a manual console session must keep working either way.
-        """
-        reported = False
-        while self.sock is sock and not self.first_rx.is_set():
-            if self.first_rx.wait(SILENT_LINK_WATCHDOG_S):
-                break  # the device spoke (spontaneously or after a retry)
-            if self.sock is not sock:
-                return  # a reconnect replaced this link while we waited
-            if not reported:
-                msg = (
-                    f"silent-link watchdog: channel {ch} has sent nothing for "
-                    f"{int(SILENT_LINK_WATCHDOG_S)}s — that socket is probably not "
-                    "the DSP, or the Soundcore phone app still holds the control "
-                    "slot. Keeping the link open and retrying the handshake in "
-                    "the background; close the phone app if it is open."
-                )
-                sys.stderr.write(f"bridge: {msg}\n")
-                self.broadcast({"type": "sys", "error": msg, "channel": ch})
-                reported = True
-            try:
-                with self.tx_lock:
-                    sock.sendall(HANDSHAKE)
-            except OSError:
-                return  # the link died; the reader thread reports the close
-        if self.sock is not sock:
-            return
-        msg = (
-            f"DSP answered on channel {ch} after retry — battery and ANC are "
-            "live now"
-        )
-        sys.stderr.write(f"bridge: {msg}\n")
-        self.broadcast({"type": "sys", "message": msg, "channel": ch})
 
     @staticmethod
     def _probe(sock: socket.socket) -> bool:
-        """Send the handshake; true when a valid `09 FF` frame comes back."""
+        """Send 01:01; true only for a valid declared-length 01:01 reply."""
         try:
             sock.sendall(HANDSHAKE)
         except OSError:
@@ -474,15 +442,15 @@ class Bridge:
                     break
                 buf = remainder
                 if frame:
-                    if frame[:1] == b"\x09":
-                        # First device-originated frame of this link; stops
-                        # the silent-link watchdog if one is waiting.
-                        self.first_rx.set()
                     self.broadcast({"type": "rx", "hex": frame.hex().upper()})
+        # Only the reader that still owns the active socket may clear state or
+        # announce a link-down. A reconnect can replace self.sock while this
+        # thread is unwinding; broadcasting the old reader's close used to
+        # tear down the new renderer session as well.
         if self.sock is sock:
             self.sock = None
             self.mac = ""
-        self.broadcast({"type": "sys", "error": "RFCOMM closed"})
+            self.broadcast({"type": "sys", "error": "RFCOMM closed"})
 
 
 def _frame_checksum(data: bytes) -> int:
@@ -617,12 +585,12 @@ def _normalize_mac(raw: str) -> str:
 
 
 def _parse_windows_scan_output(text: str) -> list[dict[str, object]]:
-    """Parse the ``MAC|Name|Battery`` lines produced by PowerShell.
+    """Parse MAC|Name|Battery|Connected lines produced by PowerShell.
 
-    Windows PowerShell can emit non-ASCII Bluetooth names using the active
-    console code page. The caller explicitly decodes UTF-8, and this parser
-    also removes the common all-question-mark placeholder instead of showing
-    it as a device name in the UI.
+    Connected comes from the Bluetooth connection-state PnP property rather
+    than from the pairing registry or PnP PresentOnly presence. This keeps
+    paired, Bluetooth-connected, and RFCOMM-connected as separate states in
+    the desktop UI.
     """
     devices: list[dict[str, object]] = []
     seen: set[str] = set()
@@ -630,10 +598,11 @@ def _parse_windows_scan_output(text: str) -> list[dict[str, object]]:
         line = line.strip()
         if not line:
             continue
-        parts = line.split("|", 2)
+        parts = line.split("|", 3)
         mac_part = parts[0]
         name = parts[1].strip() if len(parts) > 1 else ""
         raw_battery = parts[2].strip() if len(parts) > 2 else ""
+        raw_connected = parts[3].strip().lower() if len(parts) > 3 else ""
         mac = _normalize_mac(mac_part)
         if not mac or mac in seen:
             continue
@@ -649,10 +618,129 @@ def _parse_windows_scan_output(text: str) -> list[dict[str, object]]:
         except (TypeError, ValueError):
             pass
         item: dict[str, object] = {"mac": mac, "name": name}
+        # Missing/unsupported PnP property is UNKNOWN, not proof of link-down.
+        if raw_connected in {"1", "true", "yes", "0", "false", "no"}:
+            item["connected"] = raw_connected in {"1", "true", "yes"}
         if battery is not None:
             item["battery"] = battery
         devices.append(item)
     return devices
+
+
+def _parse_bluetoothctl_devices_output(text: str) -> list[dict[str, object]]:
+    """Parse ``bluetoothctl devices`` / ``paired-devices`` output.
+
+    BlueZ prints one device per line as ``Device MAC friendly name``. Names
+    may contain spaces, and a device can appear in more than one command's
+    output, so addresses are normalized and deduplicated here rather than in
+    the subprocess caller.
+    """
+    devices: list[dict[str, object]] = []
+    by_mac: dict[str, dict[str, object]] = {}
+    for line in text.splitlines():
+        match = re.match(r"^\s*Device\s+([0-9A-Fa-f:]{12,17})(?:\s+(.*?))?\s*$", line)
+        if not match:
+            continue
+        mac = _normalize_mac(match.group(1))
+        if not mac:
+            continue
+        name = (match.group(2) or "").replace("\x00", "").strip()
+        item = by_mac.get(mac)
+        if item is None:
+            item = {"mac": mac, "name": name or mac}
+            by_mac[mac] = item
+            devices.append(item)
+        elif name and item.get("name") == mac:
+            item["name"] = name
+    return devices
+
+
+def _parse_bluetoothctl_info_output(text: str) -> dict[str, object]:
+    """Extract the useful fields from ``bluetoothctl info MAC`` output."""
+    result: dict[str, object] = {}
+    name = ""
+    alias = ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Name:"):
+            name = stripped.split(":", 1)[1].strip()
+        elif stripped.startswith("Alias:"):
+            alias = stripped.split(":", 1)[1].strip()
+        elif stripped.startswith("Connected:"):
+            state = stripped.split(":", 1)[1].strip().lower()
+            if state in ("yes", "no"):
+                result["connected"] = state == "yes"
+        elif stripped.startswith("Battery Percentage:"):
+            # BlueZ normally prints `0x5a (90)`, but older versions expose
+            # only the hexadecimal value. Accept both without treating an
+            # absent battery service as an error.
+            value = re.search(r"\((\d{1,3})\)", stripped)
+            if value is None:
+                value = re.search(r"0x([0-9A-Fa-f]{1,2})", stripped)
+            if value is not None:
+                try:
+                    battery = int(value.group(1), 16) if value.group(0).lower().startswith("0x") else int(value.group(1))
+                    if 0 <= battery <= 100:
+                        result["battery"] = battery
+                except ValueError:
+                    pass
+    if alias and alias != "(null)":
+        result["name"] = alias
+    elif name and name != "(null)":
+        result["name"] = name
+    return result
+
+
+def _bluetoothctl(*args: str) -> str:
+    """Run a read-only bluetoothctl query, returning empty output on failure."""
+    try:
+        env = os.environ.copy()
+        # Keep command/status words stable while allowing UTF-8 device names.
+        env.setdefault("LC_ALL", "C.UTF-8")
+        result = subprocess.run(
+            ["bluetoothctl", *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=4,
+            check=False,
+            env=env,
+        )
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout or ""
+
+
+def _linux_paired_devices() -> list[dict[str, object]]:
+    """Enumerate BlueZ-known devices and their connected/battery state.
+
+    `bluetoothctl` is part of the standard BlueZ user tools and does not need
+    root privileges for these read-only queries. We merge paired and cached
+    discovery output so a device that is currently connected is visible even
+    when a particular bluetoothctl version does not support the `Connected`
+    filter. RFCOMM connection itself is still performed by the bridge socket.
+    """
+    discovered: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for command in (("paired-devices",), ("devices",), ("devices", "Connected")):
+        for item in _parse_bluetoothctl_devices_output(_bluetoothctl(*command)):
+            mac = str(item["mac"])
+            if mac in seen:
+                continue
+            seen.add(mac)
+            discovered.append(item)
+
+    for item in discovered:
+        mac = str(item["mac"])
+        info = _parse_bluetoothctl_info_output(_bluetoothctl("info", mac))
+        if info.get("name"):
+            item["name"] = info["name"]
+        if "connected" in info:
+            item["connected"] = info["connected"]
+        if "battery" in info:
+            item["battery"] = info["battery"]
+    return discovered
 
 
 def _windows_paired_devices() -> list[dict[str, object]]:
@@ -668,6 +756,28 @@ def _windows_paired_devices() -> list[dict[str, object]]:
 $OutputEncoding = [Text.Encoding]::UTF8
 $levels = @{}
 $names = @{}
+$present = @{}
+# PnP -PresentOnly means "present in the PnP tree", not necessarily
+# currently connected over Bluetooth. The Bluetooth connection-state property
+# is the authoritative host-side signal (DEVPROPKEY_Bluetooth_IsConnected,
+# property 15); use it below while keeping paired addresses from the registry.
+# Some adapters do not expose the property, so those devices remain paired with
+# connected=unknown rather than being promoted by a weaker PresentOnly heuristic.
+$connectedKey = '{83DA6326-97A6-4088-9453-A1923F573B29} 15'
+Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | ForEach-Object {
+    $id = [string]$_.InstanceId
+    $mac = ""
+    if ($id -match '(?i)DEV_([0-9A-F]{12})') { $mac = $Matches[1].ToUpper() }
+    elseif ($id -match '(?i)([0-9A-F]{12})_C[0-9A-F]+$') { $mac = $Matches[1].ToUpper() }
+    if (-not $mac) { return }
+    $state = Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName $connectedKey -ErrorAction SilentlyContinue |
+        Where-Object { $_.Type -ne 'Empty' -and $null -ne $_.Data } |
+        Select-Object -First 1
+    if ($null -ne $state -and ([string]$state.Data) -match '(?i)^(true|false|1|0|yes|no)$') {
+        if ([string]$state.Data -match '(?i)^(true|1|yes)$') { $present[$mac] = 'true' }
+        elseif (-not $present.ContainsKey($mac)) { $present[$mac] = 'false' }
+    }
+}
 Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | ForEach-Object {
     $id = [string]$_.InstanceId
     $friendly = [string]$_.FriendlyName
@@ -703,7 +813,8 @@ Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Device
         if ($names.ContainsKey($key) -and $names[$key]) { $n = [string]$names[$key] }
         if (-not $n -or -not $n.Trim("?")) { $n = $key }
         $b = if ($levels.ContainsKey($key)) { $levels[$key] } else { "" }
-        "{0}|{1}|{2}" -f $key, $n, $b
+        $connected = if ($present.ContainsKey($key)) { $present[$key] } else { "" }
+        "{0}|{1}|{2}|{3}" -f $key, $n, $b, $connected
     }
 """
     try:
@@ -728,13 +839,13 @@ _SCAN_CACHE_LOCK = threading.Lock()
 
 
 def scan_devices(fresh: bool = False) -> list[dict[str, object]]:
-    # The packaged bridge is intentionally Windows-only. Windows registry and
-    # PnP enumeration are what let us find already-paired devices reliably.
-    # Enumeration shells out to PowerShell (~1-4s), so cache briefly: the
-    # renderer polls for liveness separately via /health and only needs a
-    # fresh device list on user refresh. Pass fresh=True (?fresh=1) to bypass.
+    # Windows uses the paired-device registry/PnP view; Linux uses BlueZ's
+    # read-only bluetoothctl view. Both are deliberately polled by the
+    # renderer so a device connected after launch appears without a manual
+    # refresh. Enumeration shells out and can take seconds on a cold adapter,
+    # so cache briefly; fresh=True (?fresh=1) bypasses the cache.
     global _SCAN_CACHE, _SCAN_CACHE_AT
-    if sys.platform != "win32":
+    if sys.platform not in ("win32", "linux"):
         return []
     import time as _time
 
@@ -742,7 +853,7 @@ def scan_devices(fresh: bool = False) -> list[dict[str, object]]:
     with _SCAN_CACHE_LOCK:
         if not fresh and _SCAN_CACHE and (now - _SCAN_CACHE_AT) < _SCAN_CACHE_TTL:
             return [dict(d) for d in _SCAN_CACHE]
-    devices = _windows_paired_devices()
+    devices = _windows_paired_devices() if sys.platform == "win32" else _linux_paired_devices()
     with _SCAN_CACHE_LOCK:
         _SCAN_CACHE = [dict(d) for d in devices]
         _SCAN_CACHE_AT = now
@@ -789,7 +900,7 @@ def bearer_from(headers) -> Optional[str]:
 
 
 def origin_allowed(origin: Optional[str], user_agent: str = "") -> bool:
-    """True when a request comes from the Windows renderer or local tooling."""
+    """True when a request comes from the desktop renderer or local tooling."""
     if not origin:
         # Main-process probes, curl, tests, and native local tooling have no
         # Origin header and are already protected by loopback/token policy.
@@ -917,7 +1028,7 @@ class Handler(BaseHTTPRequestHandler):
         page = (
             "<!doctype html><meta charset=utf-8><title>SoundControl bridge</title>"
             "<body style='font-family:sans-serif;background:#07080c;color:#f3efe6;padding:2rem'>"
-            "<h1>SoundControl Windows helper</h1><p>Local IPC endpoint: <code>/ws</code></p>"
+            "<h1>SoundControl Bluetooth helper</h1><p>Local IPC endpoint: <code>/ws</code></p>"
         ).encode()
         self.send_response(200)
         self._cors()
@@ -1042,9 +1153,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    if sys.platform != "win32":
-        raise SystemExit("SoundControl is a Windows-only desktop application")
-    p = argparse.ArgumentParser(description="SoundControl Windows Bluetooth helper")
+    if sys.platform not in ("win32", "linux"):
+        raise SystemExit("SoundControl supports Windows and Linux desktop hosts")
+    p = argparse.ArgumentParser(description="SoundControl Windows/Linux Bluetooth helper")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--mac", default="")
@@ -1098,13 +1209,11 @@ def main() -> None:
             print(f"preconnect failed: {exc}", file=sys.stderr)
     if args.host not in ("127.0.0.1", "localhost", "::1"):
         # Anyone on the LAN could then write raw frames to the paired device.
-        # A token authenticates the caller but the channel is still plain
-        # HTTP, so loopback remains the only supported binding.
-        print(
-            f"bridge: WARNING binding {args.host}:{args.port} exposes Bluetooth writes "
-            f"to the network ({'token required' if BRIDGE_TOKEN else 'no token configured'}); "
-            "use the default 127.0.0.1",
-            file=sys.stderr,
+        # A token authenticates the caller but the channel is still plain HTTP,
+        # so a non-loopback bind is never permitted, even for manual runs.
+        raise SystemExit(
+            f"bridge: refusing non-loopback host {args.host!r}; "
+            "the Bluetooth helper must bind to 127.0.0.1/localhost/::1"
         )
     try:
         httpd = ThreadingHTTPServer((args.host, args.port), Handler)

@@ -4,11 +4,11 @@
  *
  * Every function degrades to `null`/`false` outside the packaged app (plain
  * browser dev mode) — the Settings page uses that to show an honest
- * "available in the Windows desktop app" state instead of a dead control.
+ * "available in the desktop app" state instead of a dead control.
  *
  * There is intentionally no settings read/write API: launch-at-login and
  * minimize-to-tray no longer exist. The product policy is fixed — the app
- * never starts with Windows and always quits when the window closes — and is
+ * never starts with the host OS and always quits when the window closes — and is
  * enforced in the main process (autostart.cjs), so no persisted or renderer
  * state can change it.
  */

@@ -72,8 +72,37 @@ function Start-InstalledAppAndClose {
     Start-Sleep -Milliseconds 500
   }
   if (-not $helper) { throw "run ${Label}: installed app did not start its bundled helper within 30s" }
-  $port = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue
-  if (-not $port) { throw "run ${Label}: helper is running but nothing listens on port 8765" }
+  # The Electron main process intentionally waits for the helper's /health
+  # endpoint before adopting it. Seeing python.exe first is therefore not
+  # sufficient evidence that startup failed: the interpreter can still be
+  # importing the bundled runtime / bridge and binding the socket. Wait for
+  # the listener, while also detecting an early helper exit so a real startup
+  # failure remains actionable.
+  $portDeadline = (Get-Date).AddSeconds(20)
+  $port = $null
+  while ((Get-Date) -lt $portDeadline) {
+    $port = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue |
+      Select-Object -First 1
+    if ($port) { break }
+    $currentHelper = Get-Helper | Select-Object -First 1
+    if (-not $currentHelper) {
+      if ($app.HasExited) {
+        throw "run ${Label}: helper exited before port 8765 became ready (app exit code $($app.ExitCode))"
+      }
+      Start-Sleep -Milliseconds 250
+      continue
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  if (-not $port) {
+    $currentHelper = Get-Helper | Select-Object -First 1
+    $detail = if ($currentHelper) {
+      "helper pid $($currentHelper.ProcessId) is still running; command: $($currentHelper.CommandLine)"
+    } else {
+      'helper process is no longer running'
+    }
+    throw "run ${Label}: helper did not expose port 8765 within 20s; $detail"
+  }
 
   if (-not $app.CloseMainWindow()) { throw "run ${Label}: the app had no main window to close" }
   if (-not (Wait-ForExit -Process $app -Seconds 20)) { throw "run ${Label}: SoundControl did not exit within 20s of the window close" }

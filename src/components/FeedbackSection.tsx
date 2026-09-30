@@ -42,7 +42,7 @@ export function FeedbackSection() {
       rating,
       text,
       version: BUILD_VERSION,
-      platform: isDesktop() ? 'Windows desktop app' : 'browser session',
+      platform: isDesktop() ? 'desktop app' : 'browser session',
     });
     const copied = await copyText(payload);
     downloadText('soundcontrol-feedback.txt', payload);

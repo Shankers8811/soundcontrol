@@ -1,7 +1,7 @@
 import { useApp } from '../state/store';
 import { batteryPercent } from '../state/derive';
-import { EarbudStatusCard } from '../components/EarbudStatusCard';
-import { IconBattery, IconBolt, IconBt, IconDevices } from '../components/Icons';
+import { DeviceTypeVisual, deviceKindLabel } from '../components/DeviceTypeVisual';
+import { IconBattery, IconBolt, IconDevices } from '../components/Icons';
 import { QuickActions } from '../components/QuickActions';
 import { VolumeControl } from '../components/VolumeControl';
 import { Button, Card, InfoRow, PageHeader, StatusBadge } from '../components/ui';
@@ -10,7 +10,7 @@ import { Button, Card, InfoRow, PageHeader, StatusBadge } from '../components/ui
  * Dashboard (PART E) — the primary desktop view.
  *
  * Header: page title, the real connected-device name, the derived connection
- * phase, and battery ONLY when the device (or Windows) actually reported it —
+ * phase, and battery ONLY when the device (or host Bluetooth stack) actually reported it —
  * otherwise an explicit "Battery unavailable", never an invented percentage.
  */
 
@@ -26,8 +26,16 @@ function BatteryPill() {
 
   // TWS with live per-side telemetry: show each connected side.
   if (caps.supportsPerEarbudBattery && presence !== 'unknown') {
-    const l = batteryPercent(presence === 'right' ? null : app.battery.left, app.battery.batteryScale);
-    const r = batteryPercent(presence === 'left' ? null : app.battery.right, app.battery.batteryScale);
+    const l = batteryPercent(
+      presence === 'right' ? null : app.battery.left,
+      app.battery.batteryScale,
+      app.battery.batteryOffset ?? 0,
+    );
+    const r = batteryPercent(
+      presence === 'left' ? null : app.battery.right,
+      app.battery.batteryScale,
+      app.battery.batteryOffset ?? 0,
+    );
     const parts: string[] = [];
     if (presence === 'both' || presence === 'left') parts.push(l !== null ? `L ${l}%` : 'L —');
     if (presence === 'both' || presence === 'right') parts.push(r !== null ? `R ${r}%` : 'R —');
@@ -39,9 +47,13 @@ function BatteryPill() {
     );
   }
 
-  // Over-ears, or a Windows-reported aggregate before device telemetry: one
+  // Over-ears, or a host-reported aggregate before device telemetry: one
   // real number.
-  const single = batteryPercent(app.battery.left, app.battery.batteryScale);
+  const single = batteryPercent(
+    app.battery.left,
+    app.battery.batteryScale,
+    app.battery.batteryOffset ?? 0,
+  );
   if (single !== null) {
     return (
       <span className="inline-flex items-center gap-2 rounded-full border border-edge bg-sunken px-3 py-1 font-mono text-xs font-semibold text-ink">
@@ -49,6 +61,10 @@ function BatteryPill() {
         {single}%
       </span>
     );
+  }
+
+  if (typeof app.battery.hostPercent === 'number') {
+    return <span className="rounded-full border border-edge bg-sunken px-3 py-1 text-xs font-medium text-ink">Host battery {app.battery.hostPercent}%</span>;
   }
 
   return (
@@ -72,8 +88,8 @@ function ConnectionHero() {
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-mute">
             {app.connecting
-              ? 'The Bluetooth helper is opening the RFCOMM link and verifying the DSP channel. This can take a few seconds on a cold Windows stack.'
-              : 'SoundControl controls Soundcore devices that are already paired with Windows. Open the Devices page to scan, connect, and manage them.'}
+              ? 'The Bluetooth helper is opening the RFCOMM link and verifying the DSP channel. This can take a few seconds on a cold Bluetooth stack.'
+              : 'SoundControl controls Soundcore devices that are already paired with this computer. Open the Devices page to see automatic detection, connect, and manage them.'}
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-stretch gap-2">
@@ -99,17 +115,28 @@ function ConnectionHero() {
 
 function DeviceSummaryCard() {
   const app = useApp();
+  const verifiedModel = app.identification === 'verified';
+  const displayName = verifiedModel ? app.profile.name : app.deviceName;
+
   return (
-    <Card title="Device" subtitle={app.connected ? app.profile.name : 'Nothing connected yet'}>
+    <Card title="Device" subtitle={app.connected ? displayName : 'Nothing connected yet'}>
       {app.connected ? (
         <>
-          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink">
-            <IconBt size={16} className="text-accent" />
-            <span className="truncate">{app.deviceName}</span>
+          <div className="mb-3 flex items-center gap-3 text-sm font-semibold text-ink">
+            <span className="flex h-11 w-14 items-center justify-center rounded-lg border border-accent/25 bg-accent/8 text-accent">
+              <DeviceTypeVisual kind={app.profile.kind} size={25} />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate">{displayName}</span>
+              <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-[0.12em] text-accent-soft">
+                {deviceKindLabel(app.profile.kind)}
+              </span>
+            </span>
           </div>
-          <InfoRow label="Model profile" value={`${app.profile.name} (${app.profile.sku})`} />
+          <InfoRow label="Model code" value={verifiedModel ? app.profile.sku : 'Not verified'} mono />
           <InfoRow label="Firmware" value={app.firmware} mono />
-          {app.serial && <InfoRow label="Serial" value={app.serial} mono />}
+          {app.serial && <InfoRow label="S/N" value={app.serial} mono />}
+          <InfoRow label="Connection" value="Connected" />
           <InfoRow label="Transport" value={app.transportLabel} mono />
           {app.linkInfo && <InfoRow label="Link" value={app.linkInfo} mono />}
           {app.profileNote && (
@@ -133,9 +160,8 @@ function DeviceSummaryCard() {
         </>
       ) : (
         <p className="text-xs leading-relaxed text-mute">
-          Device identity, firmware version, and serial number are read from the hardware itself
-          (the <span className="font-mono text-ink/80">01:05</span> query) after connecting —
-          SoundControl never fabricates them.
+          Model codes come from verified registry profiles only after identification; firmware
+          and S/N appear only when reported by the device. A Bluetooth name is not a serial number.
         </p>
       )}
     </Card>
@@ -144,9 +170,14 @@ function DeviceSummaryCard() {
 
 function HeadsetBatteryCard() {
   const app = useApp();
-  const level = batteryPercent(app.battery.left, app.battery.batteryScale);
+  const level = batteryPercent(
+    app.battery.left,
+    app.battery.batteryScale,
+    app.battery.batteryOffset ?? 0,
+  );
+  const singleBody = app.profile.kind === 'neckband' ? 'neckband' : 'headset';
   return (
-    <Card title="Battery" subtitle="Reported by the headset over 01:03 / 01:01">
+    <Card title="Battery" subtitle={`Reported by the ${singleBody} over 01:03 / 01:01`}>
       <div className="flex items-center gap-5">
         <span className="relative">
           <IconBattery level={level} label="" charging={Boolean(app.battery.leftCharging)} />
@@ -165,13 +196,13 @@ function HeadsetBatteryCard() {
                 {level}% {app.battery.leftCharging && <span className="text-warn">(charging)</span>}
               </p>
               <p className="mt-1">
-                Over-ear models report a single 0–5 level; SoundControl converts it and re-polls
-                every 30 s while connected.
+                The device reports a single battery level. SoundControl uses this profile’s
+                documented scale and re-polls every 30 s while connected.
               </p>
             </>
           ) : (
             <p>
-              <span className="font-semibold text-ink">Battery unavailable.</span> The headset has
+              <span className="font-semibold text-ink">Battery unavailable.</span> The {singleBody} has
               not reported a level yet — it answers the battery query shortly after the DSP channel
               is verified.
             </p>
@@ -194,7 +225,7 @@ export function DashboardPage() {
           <>
             <StatusBadge phase={app.connectionPhase} />
             {app.connected && (
-              <span className="truncate font-medium text-ink/90">{app.deviceName}</span>
+              <span className="truncate font-medium text-ink/90">{app.identification === 'verified' ? app.profile.name : app.deviceName}</span>
             )}
           </>
         }
@@ -210,8 +241,7 @@ export function DashboardPage() {
           </div>
 
           <div className="space-y-4 xl:col-span-5">
-            {/* Per-side card only for hardware that actually has two sides. */}
-            {caps.supportsEarbudState ? <EarbudStatusCard /> : app.connected ? <HeadsetBatteryCard /> : null}
+            {app.connected && !caps.supportsEarbudState && <HeadsetBatteryCard />}
             <VolumeControl />
             <DeviceSummaryCard />
           </div>

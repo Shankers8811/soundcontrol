@@ -83,7 +83,7 @@ ipcMain.handle('soundcontrol:app-version', () => {
 // double-clicking the exe "did nothing". Every lifecycle step is now appended
 // to main.log in the userData folder so problems are actually debuggable:
 //   Windows: %AppData%\soundcontrol\main.log
-//   Linux/macOS: ~/.config/soundcontrol/main.log (or platform equivalent)
+//   Linux: ~/.config/soundcontrol/main.log (or platform equivalent)
 // ---------------------------------------------------------------------------
 function logFilePath() {
   try {
@@ -139,9 +139,9 @@ function bridgeScriptPath() {
   return path.join(__dirname, 'soundcore_bridge.py');
 }
 
-// The installer ships the official Python embeddable runtime
-// (resources/python on Windows) so the RFCOMM bridge works with zero user
-// setup. Nothing is added to PATH; the runtime only runs inside SoundControl.
+// Windows and Linux installers ship a Python runtime; source development can
+// fall back to the host's python3 so the RFCOMM bridge needs no pip packages.
+// Nothing is added to PATH; the runtime only runs inside SoundControl.
 function bundledPythonPath() {
   const exe = process.platform === 'win32' ? 'python.exe' : 'python3';
   const candidates = [
@@ -186,8 +186,8 @@ function pythonCandidates() {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Is something already serving the bridge port? (user-run bridge, leftover
-// instance). Uses the fast /health endpoint: /scan enumerates Windows PnP /
-// Bluetooth devices and can take seconds, so probing it here used to report a
+// instance). Uses the fast /health endpoint: /scan enumerates Windows PnP or
+// Linux BlueZ Bluetooth devices and can take seconds, so probing it here used to report a
 // healthy helper as "not responding" on slow machines.
 //
 // Resolves with the HTTP status code the listener returned, or null when
@@ -387,7 +387,7 @@ async function startBridgeIfAvailable() {
 // With a normal installation this should never happen.
 function onBridgeMissing() {
   log('bridge could not be started (no usable interpreter)');
-  if (process.platform !== 'win32' || !app.isPackaged) return;
+  if (!['win32', 'linux'].includes(process.platform) || !app.isPackaged) return;
   try {
     const flag = path.join(app.getPath('userData'), 'bridge-help-shown');
     if (fs.existsSync(flag)) return;
@@ -397,9 +397,9 @@ function onBridgeMissing() {
       type: 'warning',
       title: 'Bluetooth helper could not start',
       message:
-        'SoundControl ships its own Bluetooth helper, so this usually means the installation is incomplete.\n\n' +
-        'Reinstall from the latest GitHub Release to fix it.\n\n' +
-        'Alternatively, using your own Python 3 (winget install -e --id Python.Python.3.12) also works.',
+        process.platform === 'linux'
+          ? 'SoundControl could not start its bundled Linux Bluetooth helper. Reinstall the AppImage/deb package; source runs need Python 3, and Linux still needs the BlueZ user tools (bluetoothctl).'
+          : 'SoundControl ships its own Bluetooth helper, so this usually means the installation is incomplete.\n\nReinstall from the latest GitHub Release to fix it.\n\nAlternatively, using your own Python 3 (winget install -e --id Python.Python.3.12) also works.',
       buttons: ['OK'],
     });
   } catch {
@@ -537,13 +537,13 @@ if (!gotTheLock) {
 
   app.whenReady().then(() => {
     log(`starting ${app.getVersion()} on ${process.platform} ${os.release()}`);
-    if (process.platform !== 'win32') {
-      showFatal('Windows only', 'SoundControl is distributed as a Windows desktop application.');
+    if (!['win32', 'linux'].includes(process.platform)) {
+      showFatal('Unsupported platform', 'SoundControl supports Windows and Linux desktop hosts.');
       app.quit();
       return;
     }
     // Proper taskbar grouping / notification attribution on Windows.
-    app.setAppUserModelId('com.soundcontrol.desktop');
+    if (process.platform === 'win32') app.setAppUserModelId('com.soundcontrol.desktop');
     // Release policy, every launch: strip obsolete keys an older install
     // persisted, and make sure no Windows startup registration survives.
     try {
