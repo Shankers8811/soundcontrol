@@ -955,6 +955,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
             `${simProfile.name} (${simProfile.sku}) has no independently documented packet layout, so the simulator is unavailable`,
           );
         }
+        if (!sessionGuardRef.current.isActive(mySession)) return;
+        // Simulator switching must not retain the previous real device MAC
+        // or its manual suggestion, even while the new session is attaching.
+        clearDeviceState();
         const guardedRx = (data: Uint8Array) => {
           if (!sessionGuardRef.current.isActive(mySession)) return;
           onRx(data);
@@ -962,9 +966,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const { transport, name, battery: b } = connectSimulator(guardedRx, simProfile);
         if (!sessionGuardRef.current.isActive(mySession)) { await transport.close(); return; }
         await attach(transport, name, b, null, null, mySession);
-        if (sessionGuardRef.current.isActive(mySession)) setConnectedMac(null);
+        if (sessionGuardRef.current.isActive(mySession)) {
+          connectedMacRef.current = null;
+          setConnectedMac(null);
+        }
       }),
-    [attach, onRx, releaseTransport, wrapConnect],
+    [attach, clearDeviceState, onRx, releaseTransport, wrapConnect],
   );
 
   const setSurroundSound = useCallback(
