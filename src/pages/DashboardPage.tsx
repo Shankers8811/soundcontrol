@@ -1,6 +1,5 @@
 import { useApp } from '../state/store';
 import { batteryPercent } from '../state/derive';
-import { EarbudStatusCard } from '../components/EarbudStatusCard';
 import { DeviceTypeVisual, deviceKindLabel } from '../components/DeviceTypeVisual';
 import { IconBattery, IconBolt, IconDevices } from '../components/Icons';
 import { QuickActions } from '../components/QuickActions';
@@ -112,8 +111,11 @@ function ConnectionHero() {
 
 function DeviceSummaryCard() {
   const app = useApp();
+  const verifiedModel = app.connected && app.profile.verified && app.profile.id !== 'unknown';
+  const displayName = verifiedModel ? app.profile.name : app.deviceName;
+
   return (
-    <Card title="Device" subtitle={app.connected ? app.profile.name : 'Nothing connected yet'}>
+    <Card title="Device" subtitle={app.connected ? displayName : 'Nothing connected yet'}>
       {app.connected ? (
         <>
           <div className="mb-3 flex items-center gap-3 text-sm font-semibold text-ink">
@@ -121,15 +123,18 @@ function DeviceSummaryCard() {
               <DeviceTypeVisual kind={app.profile.kind} size={25} />
             </span>
             <span className="min-w-0">
-              <span className="block truncate">{app.deviceName}</span>
+              <span className="block truncate">{displayName}</span>
               <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-[0.12em] text-accent-soft">
                 {deviceKindLabel(app.profile.kind)}
               </span>
             </span>
           </div>
-          <InfoRow label="Model profile" value={`${app.profile.name} (${app.profile.sku})`} />
+          {verifiedModel && (
+            <InfoRow label="Model code" value={app.profile.sku} mono />
+          )}
           <InfoRow label="Firmware" value={app.firmware} mono />
-          {app.serial && <InfoRow label="Serial" value={app.serial} mono />}
+          {app.serial && <InfoRow label="S/N" value={app.serial} mono />}
+          <InfoRow label="Connection" value="Connected" />
           <InfoRow label="Transport" value={app.transportLabel} mono />
           {app.linkInfo && <InfoRow label="Link" value={app.linkInfo} mono />}
           {app.profileNote && (
@@ -153,9 +158,8 @@ function DeviceSummaryCard() {
         </>
       ) : (
         <p className="text-xs leading-relaxed text-mute">
-          Device identity, firmware version, and serial number are read from the hardware itself
-          (the <span className="font-mono text-ink/80">01:05</span> query) after connecting —
-          SoundControl never fabricates them.
+          Device identity, model code, firmware, and serial number are read from the
+          connected device/profile where supported. SoundControl never fabricates them.
         </p>
       )}
     </Card>
@@ -235,8 +239,7 @@ export function DashboardPage() {
           </div>
 
           <div className="space-y-4 xl:col-span-5">
-            {/* Per-side card only for hardware that actually has two sides. */}
-            {caps.supportsEarbudState ? <EarbudStatusCard /> : app.connected ? <HeadsetBatteryCard /> : null}
+            {app.connected && !caps.supportsEarbudState && <HeadsetBatteryCard />}
             <VolumeControl />
             <DeviceSummaryCard />
           </div>
