@@ -25,7 +25,7 @@ Live status for `main`:
 
 The repository currently requires all three checks to pass before a validated `main` change is considered ready. CI is automated validation; it is not physical Soundcore-device or Windows audio-regression validation.
 
-**Install or download:** Linux AppImage and Debian packages are available below. The latest published release has **no signed Windows installer**; the Windows download remains unavailable until an Authenticode-verified release is published. The Windows Build badge above shows live GitHub Actions status for `main`, not a signed-release indicator.
+**Install or download:** Linux AppImage and Debian packages are available below. The latest published release has **no Windows installer asset**; the Windows download remains unavailable until an Authenticode-verified installer is published. The Windows Build badge above shows live GitHub Actions status for `main`, not a signed-release indicator.
 
 ---
 
@@ -33,15 +33,17 @@ The repository currently requires all three checks to pass before a validated `m
 
 **⬇️ Direct downloads (recommended) — no build required:**
 
+**Latest published release:** [v1.0.7-linux-validation-3](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.7-linux-validation-3) (assets checked 2026-09-30). It contains `SoundControl.AppImage`, `SoundControl-1.0.7.AppImage`, `SoundControl.deb`, and `soundcontrol_1.0.7_amd64.deb` — no Windows installer asset.
+
 ### 🪟 Windows
 
-**Windows installer (`SoundControl-Setup.exe`): not available on the latest published release.** [Check the actual release assets](https://github.com/Shankers8811/soundcontrol/releases/latest) before downloading. No installer link is offered until a signed Windows release contains that file.
+**Windows installer: not included in the latest published release.** There is no `SoundControl-Setup.exe` asset, so there is no official Windows download link to provide.
 
-A future official Windows download would be an NSIS installer with Start-menu and desktop shortcuts and a bundled Bluetooth runtime; users would not need Python or Node.js. Publication requires a valid Authenticode certificate and the `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` credentials (or their documented aliases). The last Windows release attempt stopped at its signing-credentials gate; an unsigned CI build is **not** a downloadable official installer.
+A future official Windows release would attach an Authenticode-signed NSIS installer with Start-menu and desktop shortcuts and a bundled Bluetooth runtime; users would not need Node.js or Python. Publication is gated by a valid Authenticode certificate and the `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` credentials (or their documented aliases). A passing Windows Build workflow, a local `npm run build:win` result, or an unsigned CI artifact is **not** a published signed Windows installer.
 
 ### 🐧 Linux AppImage
 
-[**Download the latest `SoundControl.AppImage`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl.AppImage)
+[**Download `SoundControl.AppImage`**](https://github.com/Shankers8811/soundcontrol/releases/download/v1.0.7-linux-validation-3/SoundControl.AppImage)
 
 On a Linux desktop with a working BlueZ adapter, `bluetoothd`, and `bluetoothctl`:
 
@@ -52,20 +54,18 @@ chmod +x SoundControl.AppImage
 
 ### 📦 Debian / Ubuntu
 
-[**Download the latest `SoundControl.deb`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl.deb)
+[**Download `SoundControl.deb`**](https://github.com/Shankers8811/soundcontrol/releases/download/v1.0.7-linux-validation-3/SoundControl.deb)
 
 On Debian or Ubuntu, install the downloaded file with `sudo apt install ./SoundControl.deb`
 (or use your package installer), then launch SoundControl from the application menu.
-It bundles Electron and the Python bridge runtime; the host still supplies the BlueZ Bluetooth stack.
+Both published Linux packages bundle Electron and the Python bridge runtime — no separate Node.js or Python installation is needed; the host still supplies the BlueZ Bluetooth stack.
 
 ### 🔗 Release history
 
 [**View all releases and release notes**](https://github.com/Shankers8811/soundcontrol/releases)
 
-The Linux release also keeps electron-builder's version/architecture-named files attached to each release; the stable aliases above are provided for direct latest-release links. If the latest existing release predates Linux packaging, use the releases page to choose a release that contains the Linux assets.
-
 - Release links are built into the app under **Settings → About**.
-- Windows releases are required to pass Authenticode signing before publication. If no signed Windows installer is attached to the latest release yet, use the releases page for the current available assets.
+- Windows releases are required to pass Authenticode signing before publication; a CI artifact is not a published release asset.
 - **Lifecycle is deliberately boring:** SoundControl starts only when you launch it (it never
   registers a Windows startup entry, and a startup entry left by an older version is removed at
   launch), and closing the window exits completely — the Bluetooth helper is terminated, port
