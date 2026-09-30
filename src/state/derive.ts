@@ -15,21 +15,29 @@ import type { AncLayout, AncMode, AncScene, BatteryState, DeviceProfile, EarbudP
 
 /**
  * Which sub-features of the `06:81` sound-mode frame a layout really
- * carries. Derived byte-by-byte from the four documented layouts in
+ * carries. Derived byte-by-byte from the documented layouts in
  * PROTOCOL.md — this is the honest source, not the marketing flags:
  *
  * - `classic`  [mode, nc_scene, transparency, custom_nc]
  *   → scenes + vocal transparency; NO manual level byte and NO wind byte.
+ * - `classic-a3035` / `classic-a3040` carry six bytes and a manual/adaptive
+ *   ANC level plus a wind byte; A3040 also has Talk/Manual transparency modes.
  * - `tws-p30i` [ambient, manual<<4|adaptive, ambient, automation, wind,
  *   adaptive_sensitivity, multi_scene]
  *   → level + scenes + wind + adaptive; NO transparency sub-mode
  *   (OpenSCQ30 changelog: "R50i NC should not have transparency modes").
- * - `tws-l4nc` [ambient, manual<<4|adaptive, transparency, automation,
- *   wind, environment_detection, transportation]
- *   → level + transportation scenes + vocal + wind + adaptive.
- * - `tws-l3pro` [ambient, manual<<4|adaptive, transparency, automation,
- *   wind, unknown]
- *   → level + vocal + wind + adaptive; NO scene byte.
+ * - `tws-l4nc` / `tws-p40i` [ambient, manual<<4|adaptive, transparency,
+ *   automation, wind, model-specific scene]
+ *   → level + vocal + wind + adaptive; P40i also exposes multi-scene ANC.
+ * - `tws-l3pro` / `tws-a3936` [ambient, manual<<4|adaptive, transparency,
+ *   automation, wind, sensitivity]
+ *   → level + vocal + wind + adaptive; no generic scene byte.
+ * - `tws-a3062` has custom transparency levels rather than a vocal toggle;
+ *   `tws-l4pro` has a slider and wind bit but no generic adaptive scene;
+ *   `tws-l5` has vocal transparency, wind and adaptive ANC.
+ * - `tws-a3968` has named adaptive ANC, vocal transparency and wind.
+ * - `tws-d1202` adds named adaptive ANC, multi-scene ANC, real-time ANC,
+ *   vocal transparency and wind.
  */
 export interface AncSubFeatures {
   /** Manual ANC strength 1..5 (the `manual << 4` nibble). */
@@ -46,9 +54,18 @@ export interface AncSubFeatures {
 
 export const ANC_SUB_FEATURES: Record<Exclude<AncLayout, 'none'>, AncSubFeatures> = {
   classic: { level: false, scenes: true, transVocal: true, wind: false, adaptive: false },
+  'classic-a3035': { level: true, scenes: false, transVocal: false, wind: true, adaptive: true },
+  'classic-a3040': { level: true, scenes: false, transVocal: true, wind: true, adaptive: true },
   'tws-p30i': { level: true, scenes: true, transVocal: false, wind: true, adaptive: true },
   'tws-l4nc': { level: true, scenes: true, transVocal: true, wind: true, adaptive: true },
   'tws-l3pro': { level: true, scenes: false, transVocal: true, wind: true, adaptive: true },
+  'tws-a3062': { level: true, scenes: false, transVocal: false, wind: true, adaptive: true },
+  'tws-a3936': { level: true, scenes: false, transVocal: true, wind: true, adaptive: true },
+  'tws-l4pro': { level: true, scenes: false, transVocal: false, wind: true, adaptive: false },
+  'tws-p40i': { level: true, scenes: true, transVocal: true, wind: true, adaptive: true },
+  'tws-l5': { level: true, scenes: false, transVocal: true, wind: true, adaptive: true },
+  'tws-a3968': { level: true, scenes: false, transVocal: true, wind: true, adaptive: true },
+  'tws-d1202': { level: true, scenes: true, transVocal: true, wind: true, adaptive: true },
 };
 
 export const NO_ANC_SUB: AncSubFeatures = {
@@ -94,7 +111,7 @@ export interface Capabilities {
 }
 
 export function deriveCapabilities(profile: DeviceProfile): Capabilities {
-  const tws = profile.kind === 'earbuds' && profile.state.batteryRight !== null;
+  const tws = (profile.kind === 'earbuds' || profile.kind === 'open-ear') && profile.state.batteryRight !== null;
   return {
     supportsNoiseControl: profile.ancLayout !== 'none',
     supportsEqualizer: profile.eqCommand !== null,
@@ -110,7 +127,22 @@ export function deriveCapabilities(profile: DeviceProfile): Capabilities {
     supportsSurround: profile.surround,
     supportsDual: profile.dual,
     supportsLdac: profile.ldac,
-    ancSub: profile.ancLayout === 'none' ? NO_ANC_SUB : ANC_SUB_FEATURES[profile.ancLayout],
+    ancSub:
+      profile.ancLayout === 'none'
+        ? NO_ANC_SUB
+        : (() => {
+            const layout = ANC_SUB_FEATURES[profile.ancLayout];
+            return {
+              ...layout,
+              // The layout describes which bytes exist; the profile describes
+              // which values this exact SKU exposes in its OpenSCQ30 module.
+              level: layout.level && profile.ancLevels,
+              scenes: layout.scenes && profile.scenes,
+              transVocal: layout.transVocal && profile.transparency,
+              wind: layout.wind && profile.wind,
+              adaptive: layout.adaptive && profile.ancLevels,
+            };
+          })(),
   };
 }
 
@@ -134,17 +166,23 @@ export function batteryLevel(value: number | undefined): number | null {
 
 /**
  * Level → percent. `scale` is the model's raw maximum (5 or 10 steps for
- * device telemetry); `null` means the value is already a percentage (Windows
- * PnP battery). A level above its scale is passed through clamped rather
- * than rescaled, so firmware that reports percents in a 0..5 slot degrades
- * gracefully instead of showing 1700%.
+ * device telemetry); `offset` handles models whose first raw step is 1
+ * (A3005/A3062/A3957), and `null` means the value is already a percentage
+ * (host Bluetooth battery). A level above its scale is passed through clamped
+ * rather than rescaled, so firmware that reports percents in a 0..5 slot
+ * degrades gracefully instead of showing 1700%.
  */
-export function batteryPercent(level: number | null, scale: number | null | undefined | 'unknown'): number | null {
+export function batteryPercent(
+  level: number | null,
+  scale: number | null | undefined | 'unknown',
+  offset = 0,
+): number | null {
   if (level === null || level === undefined) return null;
   // A non-finite or negative level is corrupt telemetry, not a charge
   // state: clamping or rescaling it would invent a plausible-looking
   // number (§13). Unavailable is the honest answer.
   if (!Number.isFinite(level) || level < 0) return null;
+  if (!Number.isFinite(offset) || offset < 0) return null;
   // 'unknown' scale: the device model is unidentified, so the raw level
   // cannot be interpreted — neither as scale-5 nor scale-10 nor as a
   // percent. A precise-looking number here would be a guess; the honest
@@ -154,10 +192,11 @@ export function batteryPercent(level: number | null, scale: number | null | unde
   // is not a percent passthrough either — it is corrupt profile data.
   // Refuse to guess intent; report unavailable.
   if (scale !== null && scale !== undefined && (!Number.isFinite(scale) || scale <= 0)) return null;
-  if (scale === null || scale === undefined || level > scale) {
-    return Math.max(0, Math.min(100, Math.round(level)));
+  const adjusted = level + offset;
+  if (scale === null || scale === undefined || adjusted > scale) {
+    return Math.max(0, Math.min(100, Math.round(adjusted)));
   }
-  return Math.round((level * 100) / scale);
+  return Math.round((adjusted * 100) / scale);
 }
 
 /* ------------------------------------------------------------------ */
@@ -239,13 +278,16 @@ export interface BatteryFrame {
   rawLeft: number | undefined;
   rawRight: number | undefined;
   /** Only `01:01`/`01:04` carry charging bits; `01:03` leaves them unset. */
-  chargingLeft?: boolean;
-  chargingRight?: boolean;
+  /** `null` means the field was present but not a strict 0/1 boolean. */
+  chargingLeft?: boolean | null;
+  chargingRight?: boolean | null;
   /**
    * The model's raw-level maximum (0..5 / 0..10), null for percents, or
    * 'unknown' when the device model — and therefore the scale — is unknown.
    */
   scale: number | null | 'unknown';
+  /** Raw-level offset applied by the matched model before percent scaling. */
+  offset?: number;
 }
 
 /**
@@ -261,18 +303,29 @@ export interface BatteryFrame {
  * `unknown` instead of pretending an older confirmation still holds.
  */
 export function mergeBatteryTelemetry(previous: BatteryState, frame: BatteryFrame): BatteryState {
-  const side = (raw: number | undefined) => ({
-    trusted: raw !== undefined && raw !== 0xff && raw <= 100,
-    level: batteryLevel(raw),
-  });
+  const side = (raw: number | undefined) => {
+    const level = batteryLevel(raw);
+    return {
+      trusted: level !== null,
+      level,
+    };
+  };
   const l = side(frame.rawLeft);
   const r = side(frame.rawRight);
   return {
     left: l.level,
     right: r.level,
-    leftCharging: l.trusted ? frame.chargingLeft ?? previous.leftCharging : undefined,
-    rightCharging: r.trusted ? frame.chargingRight ?? previous.rightCharging : undefined,
+    // `undefined` means this frame legitimately carried no charging field, so
+    // keep the last confirmed value. `null` means a charging field was present
+    // but malformed, so clear it rather than retaining a misleading `true`.
+    leftCharging: l.trusted ? frame.chargingLeft === undefined ? previous.leftCharging : frame.chargingLeft : undefined,
+    rightCharging: r.trusted ? frame.chargingRight === undefined ? previous.rightCharging : frame.chargingRight : undefined,
     batteryScale: frame.scale,
+    batteryOffset: frame.offset ?? previous.batteryOffset ?? 0,
+    // Host-reported percentage is independent from the device's raw
+    // telemetry and must survive protocol refreshes for the dedicated
+    // Windows/Linux battery box.
+    hostPercent: previous.hostPercent ?? null,
     presence: presenceFromRaw(frame.rawLeft, frame.rawRight),
   };
 }
@@ -307,8 +360,11 @@ export function deriveEarbudState(battery: BatteryState, caps: Capabilities): Ea
     const charging = which === 'left' ? battery.leftCharging : battery.rightCharging;
     return {
       state,
-      battery: state === 'connected' ? batteryPercent(raw, battery.batteryScale) : null,
-      charging: state === 'connected' && charging !== undefined ? charging : null,
+      battery:
+        state === 'connected'
+          ? batteryPercent(raw, battery.batteryScale, battery.batteryOffset ?? 0)
+          : null,
+      charging: state === 'connected' && charging !== undefined && charging !== null ? charging : null,
     };
   };
 
@@ -324,7 +380,7 @@ export interface SoundModeReport {
   mode: AncMode;
   /** Manual ANC level 1..5 when the layout carries one in the high nibble. */
   level?: number;
-  /** Classic over-ears only. */
+  /** Scene selector where the model layout carries one. */
   scene?: AncScene;
   transVocal?: boolean;
   wind?: boolean;
@@ -340,35 +396,84 @@ export function parseSoundModes(
   payload: ArrayLike<number>,
   layout: AncLayout,
 ): SoundModeReport | null {
-  if (layout === 'none' || payload.length < 2) return null;
+  if (layout === 'none') return null;
+  const minimumLength: Record<Exclude<AncLayout, 'none'>, number> = {
+    classic: 4,
+    'classic-a3035': 6,
+    'classic-a3040': 6,
+    'tws-p30i': 7,
+    'tws-l4nc': 7,
+    'tws-l3pro': 6,
+    'tws-a3062': 6,
+    'tws-a3936': 6,
+    'tws-l4pro': 4,
+    'tws-p40i': 7,
+    'tws-l5': 7,
+    'tws-a3968': 6,
+    'tws-d1202': 8,
+  };
+  if (payload.length < minimumLength[layout]) return null;
   const b0 = payload[0];
   if (b0 !== 0x00 && b0 !== 0x01 && b0 !== 0x02) return null;
   const report: SoundModeReport = {
     mode: b0 === 0x00 ? 'anc' : b0 === 0x01 ? 'transparency' : 'normal',
   };
   const manual = (payload[1] >> 4) & 0x0f;
-  if (manual >= 1 && manual <= 5) report.level = manual;
+  if (layout === 'tws-l4pro' && payload[1] >= 1 && payload[1] <= 5) {
+    report.level = 6 - payload[1];
+  } else if (layout === 'tws-l4pro' && payload[1] >= 7 && payload[1] <= 11) {
+    report.level = payload[1] - 6;
+  } else if (manual >= 1 && manual <= 5) {
+    report.level = manual;
+  }
   // TWS sound-mode mirrors carry the automation selector at byte 3:
   // 01 means Adaptive ANC. Preserve that device-confirmed state instead of
   // reducing every ANC mirror to manual ANC.
   if (
     b0 === 0x00 &&
-    (layout === 'tws-p30i' || layout === 'tws-l4nc' || layout === 'tws-l3pro') &&
+    (
+      layout === 'tws-p30i' ||
+      layout === 'tws-l4nc' ||
+      layout === 'tws-l3pro' ||
+      layout === 'tws-a3062' ||
+      layout === 'tws-a3936' ||
+      layout === 'tws-p40i' ||
+      layout === 'tws-l5' ||
+      layout === 'tws-a3968' ||
+      layout === 'tws-d1202' ||
+      layout === 'classic-a3035' ||
+      layout === 'classic-a3040'
+    ) &&
     payload.length >= 4 &&
     payload[3] === 0x01
   ) {
     report.mode = 'adaptive';
   }
-  if (layout === 'tws-l4nc' && payload.length >= 5) {
+  if (
+    (layout === 'tws-l4nc' || layout === 'tws-a3936' || layout === 'tws-p40i' || layout === 'tws-l5' || layout === 'tws-a3968' || layout === 'tws-d1202') &&
+    payload.length >= 5
+  ) {
     report.transVocal = (payload[2] & 0x01) !== 0;
     report.wind = (payload[4] & 0x01) !== 0;
-  } else if ((layout === 'tws-p30i' || layout === 'tws-l3pro') && payload.length >= 5) {
+  } else if (
+    (layout === 'tws-p30i' || layout === 'tws-l3pro' || layout === 'tws-a3062' || layout === 'classic-a3035' || layout === 'classic-a3040') &&
+    payload.length >= 5
+  ) {
     report.wind = (payload[4] & 0x01) !== 0;
+    if (layout === 'classic-a3040') report.transVocal = payload[2] === 0x00;
+  } else if (layout === 'tws-l4pro' && payload.length >= 4) {
+    report.wind = (payload[3] & 0x01) !== 0;
   }
   if (layout === 'classic' && payload.length >= 4) {
     report.transVocal = (payload[2] & 0x01) !== 0;
     const scene = payload[1];
     report.scene = scene === 0x00 ? 'transport' : scene === 0x02 ? 'indoor' : 'outdoor';
+  } else if (layout === 'tws-p30i' || layout === 'tws-p40i' || layout === 'tws-d1202') {
+    const scene = payload.length >= 7 ? payload[6] : 0;
+    report.scene = scene === 0x00 ? 'transport' : scene === 0x02 ? 'indoor' : 'outdoor';
+  } else if (layout === 'tws-l4nc' && payload.length >= 7) {
+    const scene = payload[6];
+    report.scene = scene === 0x00 ? 'transport' : 'outdoor';
   }
   return report;
 }
@@ -407,6 +512,8 @@ export interface ScannedDevice {
   name: string;
   mac?: string;
   battery?: number | null;
+  /** Host Bluetooth stack reports the device as currently connected. */
+  connected?: boolean;
 }
 
 export interface ScanState {
@@ -434,7 +541,7 @@ export type ScanEvent =
   | { type: 'helper-offline'; message: string };
 
 export const EMPTY_SCAN_MESSAGE =
-  'No paired Soundcore devices found. Pair them once in Windows Settings → Bluetooth & devices, then scan again.';
+  'No paired Soundcore devices found. Pair them once in this computer’s Bluetooth settings, then keep them connected and try again.';
 
 /**
  * Pure reducer for the Devices-page scan flow, so every transition

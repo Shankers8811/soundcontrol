@@ -85,13 +85,26 @@ const {
   DEVICE_INFO,
   BATTERY_QUERY,
   buildClassicAnc,
+  buildSpaceOneAnc,
+  buildSpaceQ45Anc,
   buildP30iAnc,
   buildLiberty4NcAnc,
   buildLiberty3ProAnc,
+  buildSpaceOneProAnc,
+  buildSpaceA40Anc,
+  buildLiberty4ProAnc,
+  buildP40iAnc,
+  buildLiberty5Anc,
+  buildSportX20Anc,
+  buildD1202Anc,
   buildEq81,
+  buildEq81Dual,
   buildEq83,
+  buildEq83Dual,
+  buildEq87D1202,
   buildSurroundSound,
   buildResetDevice,
+  buildDeviceInfoQuery,
   buildGameMode,
   EQ_PRESETS,
   DEVICES,
@@ -132,6 +145,8 @@ for (const intent of [
   everyFrame.push(['p30i anc', buildP30iAnc(intent)]);
   everyFrame.push(['l4nc anc', buildLiberty4NcAnc(intent)]);
   everyFrame.push(['l3pro anc', buildLiberty3ProAnc(intent)]);
+  everyFrame.push(['sport-x20 anc', buildSportX20Anc(intent)]);
+  everyFrame.push(['d1202 anc', buildD1202Anc(intent)]);
 }
 
 for (const [label, frame] of everyFrame) {
@@ -322,6 +337,7 @@ check(
 );
 /* request_serial_number_and_firmware_version.rs test. */
 check('OpenSCQ30 01:05 request', hex(DEVICE_INFO), '08 ee 00 00 00 01 05 0a 00 06');
+check('buildDeviceInfoQuery uses the 01:05 request (not the 01:01 handshake)', hex(buildDeviceInfoQuery()), hex(DEVICE_INFO));
 /* request_state.rs — the handshake. */
 check('OpenSCQ30 01:01 request', hex(INIT), '08 ee 00 00 00 01 01 0a 00 02');
 /* request_battery_level is `01:03` with an empty body. */
@@ -339,6 +355,26 @@ ok('DRC band 9 is neutral', applyDrc([40, 10, 20, 20, 40, 40, 40, 20, 0, -120])[
 ok('DRC band 10 is the -120 default', applyDrc([40, 10, 20, 20, 40, 40, 40, 20, 0, -120])[9] === -120);
 console.log('  4 DRC vectors');
 
+/* --------------------------------------------------------- EQ shape variants */
+// The expanded profiles use distinct channel shapes even when the CAT:TYPE
+// bytes are shared. These are shape/fixture guards until a physical capture
+// for each new SKU is added; they must never be mistaken for hardware proof.
+const dualBands = [1, -1, 2, -2, 3, -3, 4, -4];
+const eq83Dual = buildEq83Dual(0x0100, dualBands);
+ok('A3388 02:83 dual frame has 20 channel bands', eq83Dual.length === 32);
+ok('A3388 02:83 dual frame checksum', verifyFrame(eq83Dual));
+ok('A3388 02:83 dual channels mirror the documented curve', hex(eq83Dual.slice(11, 21)) === hex(eq83Dual.slice(21, 31)));
+const eq81Dual = buildEq81Dual(0x0100, dualBands);
+ok('D1101 02:81 dual frame has 20 channel bands', eq81Dual.length === 32);
+ok('D1101 02:81 dual frame checksum', verifyFrame(eq81Dual));
+ok('D1101 02:81 dual default tenth band is -12 dB', eq81Dual[20] === 0x00 && eq81Dual[30] === 0x00);
+const d1202HearId = buildEq87D1202(0x0002, dualBands);
+ok('D1202 03:87 disabled-HearID frame has the source-backed 114-byte payload', d1202HearId.length === 124);
+ok('D1202 03:87 disabled-HearID frame uses the registered CAT:TYPE', d1202HearId[5] === 0x03 && d1202HearId[6] === 0x87);
+ok('D1202 03:87 disabled-HearID frame checksum', verifyFrame(d1202HearId));
+ok('D1202 03:87 leaves HearID curves absent', d1202HearId.slice(36, 56).every((byte) => byte === 0xff) && d1202HearId.slice(61, 81).every((byte) => byte === 0xff));
+console.log('  10 EQ shape checks');
+
 /* ------------------------------------------------------------ TWS shapes */
 
 // P30i: 7-byte payload, ambient repeated at byte 2, automation at byte 3.
@@ -347,7 +383,7 @@ ok('P30i ANC payload is 7 bytes', p30iMax.length === 17, `${p30iMax.length}`);
 ok('P30i byte0 == byte2 (ambient repeated)', p30iMax[9] === p30iMax[11]);
 ok('P30i manual level in the high nibble', (p30iMax[10] >> 4) === 5, `0x${p30iMax[10].toString(16)}`);
 ok('P30i manual sub-level matches Android (5)', (p30iMax[10] & 0x0f) === 5, `0x${p30iMax[10].toString(16)}`);
-ok('P30i automation = manual', p30iMax[12] === 0x00);
+ok('P30i outdoor scene selects multi-scene automation', p30iMax[12] === 0x02);
 const p30iAdaptive = buildP30iAnc({ mode: 'adaptive', level: 3, scene: 'outdoor', transVocal: false, wind: false });
 ok('P30i automation = adaptive', p30iAdaptive[12] === 0x01);
 ok('P30i adaptive vector matches Android (0x51)', p30iAdaptive[10] === 0x51);
@@ -368,10 +404,46 @@ const l3pro = buildLiberty3ProAnc({ mode: 'anc', level: 4, scene: 'outdoor', tra
 ok('L3Pro payload is 6 bytes', l3pro.length === 16, `${l3pro.length}`);
 ok('L3Pro manual level', (l3pro[10] >> 4) === 4);
 
+// Model-specific layouts from OpenSCQ30 are intentionally kept as separate
+// builders: a valid 06:81 frame with the wrong payload length can still be
+// silently ignored or interpreted as a different setting by the headset.
+const extendedIntent = { mode: 'adaptive', level: 4, scene: 'outdoor', transVocal: true, wind: true };
+const shapeChecks = [
+  ['Space One A3035', buildSpaceOneAnc(extendedIntent), 6],
+  ['Space Q45 A3040', buildSpaceQ45Anc(extendedIntent), 6],
+  ['Space One Pro A3062', buildSpaceOneProAnc(extendedIntent), 6],
+  ['Space A40 A3936', buildSpaceA40Anc(extendedIntent), 6],
+  ['Liberty 4 Pro A3954', buildLiberty4ProAnc(extendedIntent), 4],
+  ['P40i A3955', buildP40iAnc(extendedIntent), 7],
+  ['Liberty 5 A3957', buildLiberty5Anc(extendedIntent), 7],
+];
+for (const [name, packet, payloadLength] of shapeChecks) {
+  ok(`${name} uses 06:81`, packet[5] === 0x06 && packet[6] === 0x81);
+  ok(`${name} payload length is ${payloadLength}`, packet.length === 10 + payloadLength, `${packet.length}`);
+  ok(`${name} frame checksum is valid`, verifyFrame(packet));
+}
+for (const [name, packet, payloadLength] of [
+  ['Sport X20 A3968', buildSportX20Anc(extendedIntent), 6],
+  ['P31i/R60i NC D1202', buildD1202Anc(extendedIntent), 8],
+]) {
+  ok(`${name} uses 06:81`, packet[5] === 0x06 && packet[6] === 0x81);
+  ok(`${name} provisional payload length is ${payloadLength}`, packet.length === 10 + payloadLength, `${packet.length}`);
+  ok(`${name} frame checksum is valid`, verifyFrame(packet));
+}
+ok('Sport X20 adaptive uses named adaptive nibble 1 at level 4', buildSportX20Anc(extendedIntent)[10] === 0x51);
+ok('D1202 preserves the multi-scene byte at payload offset 6', buildD1202Anc(extendedIntent)[15] === 0x01);
+ok('A3954 ANC strength 5 maps to slider 1', buildLiberty4ProAnc({ ...extendedIntent, mode: 'anc', level: 5 })[10] === 1);
+ok('A3954 transparency strength 5 maps to slider 11', buildLiberty4ProAnc({ ...extendedIntent, mode: 'transparency', level: 5 })[10] === 11);
+ok('A3035 direct adaptive field keeps the documented five-step value', buildSpaceOneAnc({ ...extendedIntent, level: 5 })[10] === 0x55);
+ok('A3040 Talk/Manual byte follows the documented transparency enum', buildSpaceQ45Anc({ ...extendedIntent, mode: 'transparency', transVocal: true })[11] === 0x00);
+ok('A3936 named adaptive field stays in the documented 0..2 enum', buildSpaceA40Anc({ ...extendedIntent, level: 5 })[10] === 0x52);
+ok('A3957 named adaptive field stays in the documented 0..2 enum', buildLiberty5Anc({ ...extendedIntent, level: 5 })[10] === 0x52);
+ok('A3957 uses car transportation for non-transport scenes', buildLiberty5Anc(extendedIntent)[15] === 3);
+
 // A3949 / A3948 have no sound-mode control: buildAnc must refuse.
 const a3949 = DEVICES.find((d) => d.sku === 'A3949');
 ok('A3949 buildAnc returns null', P.buildAnc(a3949.ancLayout, { mode: 'anc', level: 5, scene: 'outdoor', transVocal: false, wind: false }) === null);
-console.log('  13 TWS sound-mode shape checks');
+console.log('  21 TWS sound-mode shape checks');
 
 /* ----------------------------------------------------------- device table */
 
@@ -381,11 +453,26 @@ const EXPECTED = {
   A3948: { name: 'A20i', eq: '02:83', anc: 'none', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false, customEq: true },
   A3947: { name: 'Liberty 4 NC', eq: null, anc: 'tws-l4nc', batteryMax: 5, gaming: true, ldac: false, dual: false, surround: true, customEq: false },
   A3952: { name: 'Liberty 3 Pro', eq: null, anc: 'tws-l3pro', batteryMax: 5, gaming: false, ldac: true, dual: false, surround: false, customEq: false },
-  A3035: { name: 'Space One', eq: null, anc: 'classic', batteryMax: 5, gaming: false, ldac: true, dual: true, surround: false, customEq: false },
-  A3040: { name: 'Space Q45', eq: null, anc: 'classic', batteryMax: 5, gaming: false, ldac: true, dual: true, surround: false, customEq: false },
+  A3035: { name: 'Space One', eq: null, anc: 'classic-a3035', batteryMax: 5, gaming: false, ldac: true, dual: true, surround: false, customEq: false },
+  A3040: { name: 'Space Q45', eq: null, anc: 'classic-a3040', batteryMax: 5, gaming: false, ldac: true, dual: true, surround: false, customEq: false },
+  A3936: { name: 'Space A40', eq: null, anc: 'tws-a3936', batteryMax: 5, gaming: true, ldac: true, dual: true, surround: false, customEq: false },
+  A3954: { name: 'Liberty 4 Pro', eq: null, anc: 'tws-l4pro', batteryMax: 100, gaming: false, ldac: true, dual: true, surround: false, customEq: false },
+  A3955: { name: 'P40i', eq: null, anc: 'tws-p40i', batteryMax: 5, gaming: false, ldac: false, dual: true, surround: false, customEq: false },
+  A3957: { name: 'Liberty 5', eq: null, anc: 'tws-l5', batteryMax: 10, gaming: true, ldac: true, dual: true, surround: false, customEq: false },
+  A3062: { name: 'Space One Pro', eq: null, anc: 'tws-a3062', batteryMax: 10, gaming: false, ldac: true, dual: true, surround: false, customEq: false },
+  A3004: { name: 'Q20i', eq: '02:83', anc: 'classic', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false, customEq: true },
+  A3005: { name: 'Q11i', eq: '02:83', anc: 'none', batteryMax: 10, gaming: false, ldac: false, dual: true, surround: false, customEq: true },
+  D1402: { name: 'Space 2 (read-only)', eq: null, anc: 'none', batteryMax: 10, gaming: false, ldac: false, dual: false, surround: false, customEq: false },
   A3027: { name: 'Life Q35', eq: '02:81', anc: 'classic', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false, customEq: true },
   A3028: { name: 'Life Q30', eq: '02:81', anc: 'classic', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false, customEq: true },
   A3029: { name: 'Life Tune', eq: '02:81', anc: 'classic', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false, customEq: true },
+  A3330: { name: 'C30i', eq: '02:83-single', anc: 'none', batteryMax: 5, gaming: false, ldac: false, dual: true, surround: false, customEq: true },
+  A3388: { name: 'AeroClip', eq: '02:83-dual', anc: 'none', batteryMax: 10, gaming: false, ldac: false, dual: true, surround: false, customEq: true },
+  A3876: { name: 'V20i', eq: '02:83-single', anc: 'none', batteryMax: 10, gaming: true, ldac: false, dual: true, surround: false, customEq: true },
+  A3968: { name: 'Sport X20', eq: null, anc: 'tws-a3968', batteryMax: 5, gaming: false, ldac: false, dual: true, surround: true, customEq: false },
+  D1101: { name: 'C50i', eq: '02:81-dual', anc: 'none', batteryMax: 10, gaming: false, ldac: true, dual: true, surround: false, customEq: true },
+  D1202: { name: 'P31i / R60i NC', eq: '03:87', anc: 'tws-d1202', batteryMax: 10, gaming: false, ldac: true, dual: true, surround: false, customEq: false },
+  D1301: { name: 'Sleep A30', eq: null, anc: 'none', batteryMax: 10, gaming: false, ldac: false, dual: false, surround: false, customEq: false },
 };
 for (const [sku, want] of Object.entries(EXPECTED)) {
   const d = DEVICES.find((x) => x.sku === sku);
@@ -414,6 +501,10 @@ const STATE_PINS = {
   A3948: { soundModes: null, batteryCase: null, eqPresetId: 32, eqBandsAt: 34, eqBandsN: 10 },
   A3947: { soundModes: 126, batteryCase: 139, eqPresetId: 37, eqBandsAt: 39, eqBandsN: 10 },
   A3952: { soundModes: 120, batteryCase: 129, eqPresetId: 32, eqBandsAt: 34, eqBandsN: 10 },
+  A3936: { soundModes: 111, batteryCase: 118, eqPresetId: 32, eqBandsAt: 34, eqBandsN: 20 },
+  A3954: { soundModes: 125, batteryCase: 37, eqPresetId: 44, eqBandsAt: 46, eqBandsN: 20 },
+  A3955: { soundModes: 119, batteryCase: 37, eqPresetId: 38, eqBandsAt: 40, eqBandsN: 20 },
+  A3957: { soundModes: 119, batteryCase: 37, eqPresetId: 38, eqBandsAt: 40, eqBandsN: 20 },
 };
 for (const [sku, want] of Object.entries(STATE_PINS)) {
   const d = DEVICES.find((x) => x.sku === sku);
@@ -428,12 +519,52 @@ for (const [sku, want] of Object.entries(STATE_PINS)) {
 }
 console.log(`  ${Object.keys(STATE_PINS).length * 6} state-offset pin checks`);
 
-/* Over-ears read only the single battery level from the state blob. */
-for (const sku of ['A3027', 'A3028', 'A3029', 'A3035', 'A3040']) {
-  const s = DEVICES.find((x) => x.sku === sku).state;
-  check(`state ${sku} single battery`, `${s.batteryLeft},${s.batteryRight},${s.batteryCase},${s.soundModes}`, '2,null,null,null');
+/* Expanded rows use two documented state-head families plus model-specific
+   late fields. Keep those offsets independently pinned so a generic helper
+   cannot silently move a new SKU onto the wrong telemetry layout. */
+const EXPANDED_STATE_PINS = {
+  A3330: { battery: '2,3,null,null', firmware: { at: 4, length: 10 }, serial: { at: 14, length: 16 }, eq: '50,52,10', sound: 'null', length: 7, dual: 47, surround: 44, gaming: null },
+  A3388: { battery: '2,3,null,null', firmware: { at: 4, length: 10 }, serial: { at: 14, length: 16 }, eq: '50,52,10', sound: 'null', length: 7, dual: 47, surround: 44, gaming: null },
+  A3876: { battery: '2,3,null,null', firmware: { at: 4, length: 10 }, serial: { at: 14, length: 16 }, eq: '36,38,20', sound: 'null', length: 7, dual: 74, surround: null, gaming: 72 },
+  A3968: { battery: '2,3,4,5', firmware: { at: 6, length: 10 }, serial: { at: 16, length: 16 }, eq: '38,40,20', sound: '117', length: 6, dual: 128, surround: 126, gaming: null },
+  D1101: { battery: '2,3,null,null', firmware: { at: 4, length: 10 }, serial: { at: 14, length: 16 }, eq: '30,32,10', sound: 'null', length: 7, dual: 53, surround: null, gaming: null },
+  D1202: { battery: '2,3,4,5', firmware: { at: 6, length: 10 }, serial: { at: 16, length: 16 }, eq: '38,40,20', sound: '119', length: 8, dual: 131, surround: null, gaming: null },
+  D1301: { battery: '2,3,null,null', firmware: { at: 6, length: 10 }, serial: { at: 16, length: 16 }, eq: 'null,null,null', sound: 'null', length: 7, dual: null, surround: null, gaming: null },
+};
+for (const [sku, want] of Object.entries(EXPANDED_STATE_PINS)) {
+  const d = DEVICES.find((x) => x.sku === sku);
+  if (!d) { ok(`expanded state pin ${sku} present`, false); continue; }
+  const s = d.state;
+  check(`expanded state ${sku} battery head`, `${s.batteryLeft},${s.batteryRight},${s.batteryChargingLeft},${s.batteryChargingRight}`, want.battery);
+  check(`expanded state ${sku} firmware`, JSON.stringify(s.firmware), JSON.stringify(want.firmware));
+  check(`expanded state ${sku} serial`, JSON.stringify(s.serial), JSON.stringify(want.serial));
+  check(`expanded state ${sku} eq`, `${s.eqPresetId},${s.eqBands?.at ?? null},${s.eqBands?.count ?? null}`, want.eq);
+  check(`expanded state ${sku} sound modes`, String(s.soundModes), want.sound);
+  check(`expanded state ${sku} sound length`, String(s.soundModeLength ?? 7), String(want.length));
+  check(`expanded state ${sku} toggles`, `${s.dualConnections ?? null},${s.surround ?? null},${s.gaming ?? null}`, `${want.dual ?? null},${want.surround ?? null},${want.gaming ?? null}`);
 }
-console.log('  5 over-ear state checks');
+console.log(`  ${Object.keys(EXPANDED_STATE_PINS).length * 7} expanded state-offset checks`);
+
+/* OpenSCQ30 A3004/A3027/A3028/A3035/A3040 state bodies all begin with
+   the single battery at offset 0. A3027/A3028 also expose the classic
+   four-byte sound-mode block at offset 35. */
+for (const [sku, batteryAt, chargingAt, soundModes] of [
+  ['A3027', 0, 1, 35],
+  ['A3028', 0, 1, 35],
+  ['A3029', 0, 1, 35],
+  ['A3035', 0, null, null],
+  ['A3040', 0, null, null],
+]) {
+  const s = DEVICES.find((x) => x.sku === sku).state;
+  check(`state ${sku} single battery`, `${s.batteryLeft},${s.batteryRight},${s.batteryCase},${s.batteryChargingLeft},${s.soundModes}`, `${batteryAt},null,null,${chargingAt},${soundModes}`);
+}
+const q20iState = DEVICES.find((x) => x.sku === 'A3004').state;
+check('state A3004: battery/firmware/serial/EQ/sound-mode offsets', `${q20iState.batteryLeft},${q20iState.batteryChargingLeft},${q20iState.firmware.at},${q20iState.serial.at},${q20iState.eqPresetId},${q20iState.soundModes}`, '0,1,2,7,23,35');
+const q11iState = DEVICES.find((x) => x.sku === 'A3005').state;
+check('state A3005: battery/firmware/serial/EQ/dual offsets', `${q11iState.batteryLeft},${q11iState.batteryChargingLeft},${q11iState.firmware.at},${q11iState.serial.at},${q11iState.eqPresetId},${q11iState.eqBands.at},${q11iState.dualConnections}`, '0,1,2,7,23,25,41');
+const a3062State = DEVICES.find((x) => x.sku === 'A3062').state;
+check('state A3062: battery/firmware/serial/EQ/sound/dual offsets', `${a3062State.batteryLeft},${a3062State.batteryChargingLeft},${a3062State.firmware.at},${a3062State.serial.at},${a3062State.eqPresetId},${a3062State.eqBands.at},${a3062State.soundModes},${a3062State.dualConnections}`, '0,1,2,7,23,25,69,79');
+console.log('  8 over-ear state checks');
 
 /* Name matching has to prefer the longest alias: "R50i NC" is A3959, but
    "R50i" on its own is A3949. Getting this wrong attaches the wrong

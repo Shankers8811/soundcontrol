@@ -1,7 +1,7 @@
 import { useApp } from '../state/store';
 import type { EarbudSide } from '../state/derive';
 import { Card } from './ui';
-import { IconBolt } from './Icons';
+import { IconBolt, IconEarbudLeft, IconEarbudRight } from './Icons';
 
 /**
  * Earbud Connection card (PART J/K).
@@ -11,7 +11,7 @@ import { IconBolt } from './Icons';
  * "that bud is not connected to the host" (PROTOCOL.md, verified against
  * OpenSCQ30's request_battery_level parser). Presence is therefore
  * `both`/`left`/`right`/`none` only once the hardware answered — until then
- * (or with only a Windows aggregate battery) each side renders as
+ * (or with only a host aggregate battery) each side renders as
  * "Status unavailable", never a guessed "Not connected".
  *
  * Battery is shown for a side only while the device reports that side as
@@ -59,33 +59,14 @@ function SidePanel({
       }`}
       aria-label={spoken}
     >
-      {/* Earbud glyph — darker/saturated when live, washed out when not. */}
-      <svg width="34" height="44" viewBox="0 0 34 44" aria-hidden className="mt-0.5">
-        <g
-          className={connected ? 'text-accent-soft' : unknown ? 'text-mute' : 'text-faint'}
-          opacity={connected ? 1 : unknown ? 0.65 : 0.38}
-        >
-          <rect
-            x="6"
-            y="2"
-            width="22"
-            height="28"
-            rx="10"
-            fill="currentColor"
-            opacity="0.16"
-            stroke="currentColor"
-            strokeWidth="1.6"
-          />
-          <circle cx="17" cy="14" r="3.4" fill="currentColor" />
-          <path
-            d={label === 'Left' ? 'M13 30 C13 37 12 39 10 42' : 'M21 30 C21 37 22 39 24 42'}
-            stroke="currentColor"
-            strokeWidth="4.5"
-            fill="none"
-            strokeLinecap="round"
-          />
-        </g>
-      </svg>
+      {/* Side-specific glyph — darker/saturated when live, washed out when not. */}
+      <span className={connected ? 'text-accent-soft' : unknown ? 'text-mute' : 'text-faint'} aria-hidden>
+        {label === 'Left' ? (
+          <IconEarbudLeft size={42} opacity={connected ? 1 : unknown ? 0.65 : 0.38} />
+        ) : (
+          <IconEarbudRight size={42} opacity={connected ? 1 : unknown ? 0.65 : 0.38} />
+        )}
+      </span>
 
       <span
         className={`text-[11px] font-bold uppercase tracking-[0.14em] ${

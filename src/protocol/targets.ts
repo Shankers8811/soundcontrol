@@ -34,7 +34,7 @@ import { checksum } from './codec';
  *      `withEarbudOnlyBoundary()`, which wraps every transport the store
  *      installs, so ALL writes (UI actions, connect handshake, background
  *      polls, the diagnostics console) pass through it.
- *   2. The Windows helper (`soundcore_bridge.py`) independently re-validates
+ *   2. The desktop helper (`soundcore_bridge.py`) independently re-validates
  *      every `tx` frame against the same command set before transmitting it
  *      on the RFCOMM socket — so even a buggy or hostile renderer cannot make
  *      the helper send anything but recognized earbud commands.
@@ -87,11 +87,12 @@ export const EARBUD_COMMANDS: readonly EarbudCommandSpec[] = [
   { id: 'device.info', label: 'Serial + firmware query', target: 'earbud', frames: ['01:05'] },
   { id: 'device.factory-reset', label: 'Factory reset', target: 'earbud', frames: ['01:85'] },
   { id: 'game-mode.set', label: 'Gaming / low-latency mode', target: 'earbud', frames: ['01:87'] },
-  { id: 'game-mode.set-a3947', label: 'Gaming mode (Liberty 4 NC variant)', target: 'earbud', frames: ['10:85'] },
+  { id: 'game-mode.set-a3947', label: 'Gaming mode (Liberty variant)', target: 'earbud', frames: ['10:85'] },
   { id: 'ldac.query', label: 'LDAC codec state query', target: 'earbud', frames: ['01:7F'] },
   { id: 'ldac.set', label: 'LDAC codec enable/disable', target: 'earbud', frames: ['01:FF'] },
   { id: 'equalizer.set', label: 'Equalizer preset/bands', target: 'earbud', frames: ['02:81'] },
   { id: 'equalizer.set-drc', label: 'Equalizer with DRC (TWS models)', target: 'earbud', frames: ['02:83'] },
+  { id: 'equalizer.set-hearid', label: 'Equalizer with disabled HearID (D1202)', target: 'earbud', frames: ['03:87'] },
   { id: 'surround.set', label: '3D Surround Sound toggle', target: 'earbud', frames: ['02:86'] },
   { id: 'sound-modes.set', label: 'ANC / transparency / wind noise modes', target: 'earbud', frames: ['06:81'] },
   { id: 'dual-audio.set', label: 'Dual audio enable/disable', target: 'earbud', frames: ['0B:84'] },
@@ -104,9 +105,34 @@ const FRAME_INDEX: ReadonlyMap<string, EarbudCommandSpec> = new Map(
 
 /**
  * The complete set of frame keys the application may transmit — the contract
- * shared with the Windows helper (`TX_ALLOWED_FRAMES` in soundcore_bridge.py).
+ * shared with the desktop helper (`TX_ALLOWED_FRAMES` in soundcore_bridge.py).
  */
 export const EARBUD_COMMAND_FRAME_KEYS: readonly string[] = [...FRAME_INDEX.keys()].sort();
+
+/**
+ * Wire lengths for the registered command families. A CAT:TYPE and checksum
+ * alone are not enough: several commands have fixed payload shapes, and
+ * `06:81` has only the documented 4/6/7/8-byte model layouts. Keeping this
+ * second structural gate here prevents a malformed or wrong-model frame from
+ * reaching even the model-aware capability check.
+ */
+const FRAME_LENGTHS: ReadonlyMap<string, readonly number[]> = new Map([
+  ['01:01', [10]],
+  ['01:03', [10]],
+  ['01:04', [10]],
+  ['01:05', [10]],
+  ['01:7F', [10]],
+  ['01:85', [10]],
+  ['01:87', [11]],
+  ['01:FF', [11]],
+  ['02:81', [20, 32]],
+  ['02:83', [32]],
+  ['02:86', [11]],
+  ['03:87', [124]],
+  ['06:81', [14, 16, 17, 18]],
+  ['0B:84', [11]],
+  ['10:85', [11]],
+]);
 
 /** Resolve the earbud command a `CAT:TYPE` frame key implements, if any. */
 export function commandForFrameKey(key: string): EarbudCommandSpec | undefined {
@@ -153,6 +179,13 @@ export function validateOutboundFrame(data: Uint8Array): OutboundFrameCheck {
   // added to the registry, it still may not be transmitted.
   if ((command as { target?: CommandTarget }).target !== 'earbud') {
     return { ok: false, reason: `command ${command.id} targets the Windows host — never transmitted` };
+  }
+  const allowedLengths = FRAME_LENGTHS.get(key);
+  if (!allowedLengths || !allowedLengths.includes(data.length)) {
+    return {
+      ok: false,
+      reason: `unsupported payload shape for ${key}: ${data.length} bytes (expected ${allowedLengths?.join(' or ') ?? 'none'})`,
+    };
   }
   return { ok: true, command };
 }
