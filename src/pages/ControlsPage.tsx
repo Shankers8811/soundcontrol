@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../state/store';
 import { EarbudsArt, OverEarArt, type ArtSideState } from '../components/DeviceArt';
+import { DeviceTypeVisual, deviceKindLabel } from '../components/DeviceTypeVisual';
 import type { EarbudSideState } from '../state/derive';
 import {
   IconAlert,
@@ -12,6 +13,7 @@ import {
 } from '../components/Icons';
 import { Button, Card, Modal, PageHeader, StatusBadge, Toggle, UnavailableNote } from '../components/ui';
 import { NoiseControl } from '../components/NoiseControl';
+import { DeviceSettingsHeader } from '../components/DeviceSettingsHeader';
 import type { ReactNode } from 'react';
 
 /**
@@ -101,10 +103,11 @@ export function ControlsPage() {
         sub={
           <>
             <StatusBadge phase={app.connectionPhase} />
-            {app.connected && <span className="font-medium text-ink/90">{app.deviceName}</span>}
           </>
         }
       />
+
+      <DeviceSettingsHeader />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <div className="space-y-4 xl:col-span-7">
@@ -181,9 +184,9 @@ export function ControlsPage() {
               </div>
             ) : (
               <UnavailableNote title="No feature switches for this model">
-                {app.profile.name} ({app.profile.sku}) has no documented gaming, surround, dual
-                or LDAC command in the Soundcore protocol, so there is nothing SoundControl can
-                honestly switch here.
+                {app.connected && app.identification !== 'verified'
+                  ? 'Model identification is uncertain or mismatched; gaming, spatial audio, multipoint and LDAC stay disabled until the state layout is confirmed. Manual selection does not unlock commands.'
+                  : `${app.profile.name} (${app.profile.sku}) has no documented gaming, surround, dual or LDAC command in the Soundcore protocol, so there is nothing SoundControl can honestly switch here.`}
               </UnavailableNote>
             )}
           </Card>
@@ -209,7 +212,13 @@ export function ControlsPage() {
 
         {/* ------------------------------------------------ right column */}
         <div className="space-y-4 xl:col-span-5">
-          <Card title={app.profile.kind === 'earbuds' ? 'Your earbuds' : 'Your headset'}>
+          <Card title={`Your ${deviceKindLabel(app.profile.kind).toLowerCase()}`}>
+            <div className="mb-3 flex items-center justify-center gap-2 text-accent-soft">
+              <DeviceTypeVisual kind={app.profile.kind} size={26} />
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em]">
+                {deviceKindLabel(app.profile.kind)}
+              </span>
+            </div>
             {/* Non-interactive illustration (PART O). For TWS models with
                 live telemetry the two buds dim/brighten INDEPENDENTLY from
                 the device-reported per-side state — the image mirrors real
@@ -221,6 +230,10 @@ export function ControlsPage() {
                   leftState={artSide(app.earbudState.left.state)}
                   rightState={artSide(app.earbudState.right.state)}
                 />
+              ) : app.profile.kind === 'neckband' ? (
+                <div className="flex justify-center py-5 text-accent-soft">
+                  <DeviceTypeVisual kind="neckband" size={72} />
+                </div>
               ) : (
                 <OverEarArt live={app.connected} />
               )}
@@ -279,7 +292,7 @@ export function ControlsPage() {
                 documented only for the Soundcore Motion+ (A3116) speaker. Sending an
                 undocumented destructive command to headphones or earbuds risks bricking device
                 settings, so SoundControl does not guess. Reset through the Soundcore mobile app
-                or Windows Bluetooth settings instead.
+                or this computer’s Bluetooth settings instead.
               </UnavailableNote>
             )}
           </Card>

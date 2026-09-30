@@ -6,24 +6,25 @@ messages, offsets). If a message you see is not covered here, export the log
 
 ## Before anything else
 
-1. **Pair the earbuds in Windows Settings → Bluetooth & devices and leave them
+1. **Pair the earbuds in the computer's Bluetooth settings and leave them
    connected** (audio may even be playing). "Pairing mode" is the wrong state —
-   the bridge talks to *paired* hardware over RFCOMM.
+   the bridge talks to *paired* hardware over RFCOMM. Windows uses its Bluetooth
+   device list; Linux uses BlueZ/`bluetoothctl`.
 2. **Close the Soundcore phone app.** The headset serves exactly one control
    client; while the phone holds the slot, new clients are accepted but stay
    silent.
-3. Use the Windows desktop app (or the web app **plus** the bundled helper).
-   Web Bluetooth alone cannot drive ANC reliably — that is a browser API
-   limitation, not a bug.
+3. Use the Windows/Linux desktop app (or the web app **plus** a manually
+   running helper). Web Bluetooth alone cannot drive ANC reliably — that is a
+   browser API limitation, not a bug.
 
 ## "The helper is not responding"
 
-The desktop app starts the bundled Python helper automatically; the web app
-expects it on the loopback port. If ConnectSheet shows
-*Windows helper: not responding*:
+The desktop app starts its Python helper automatically; the web app expects it
+on the loopback port. If ConnectSheet shows *Bluetooth helper: not responding*:
 
 - restart SoundControl;
-- check `%AppData%\soundcontrol\main.log` (helper stderr is mirrored there);
+- check the platform log folder (`%AppData%\soundcontrol\main.log` on Windows,
+  `~/.config/soundcontrol/main.log` on Linux; helper stderr is mirrored there);
 - a manual run is `python3 soundcore_bridge.py` (Python 3.8+, no pip
   packages). If a token is configured, the renderer receives it from Electron
   automatically; manual `curl` needs `X-Bridge-Token`.
@@ -56,9 +57,9 @@ The failure message lists **per-channel reasons**, e.g.
 
 | Symptom | Meaning / fix |
 |---|---|
-| every channel `Host is down` | earbuds asleep or not connected in Windows settings; take them out of the case and retry |
+| every channel `Host is down` | earbuds asleep or not connected in the computer's Bluetooth settings; take them out of the case and retry |
 | channels accept but *never answer* | another client holds the control slot (phone app) — close it and retry |
-| `no Bluetooth socket` | the Windows Bluetooth stack is off or has no radio |
+| `no Bluetooth socket` | the host Bluetooth stack is off or has no adapter |
 
 ## "Connected, but battery and ANC stay empty"
 

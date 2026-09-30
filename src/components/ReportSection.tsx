@@ -52,12 +52,12 @@ export function ReportSection() {
       description,
       device: {
         name: app.connected ? app.deviceName : '',
-        model: app.connected ? `${app.profile.name} (${app.profile.sku})` : '',
+        model: app.connected && app.identification === 'verified' ? `${app.profile.name} (${app.profile.sku})` : 'Not verified',
         firmware: app.connected ? app.firmware : '',
         serial: app.connected ? app.serial : null,
       },
       version: BUILD_VERSION,
-      platform: isDesktop() ? 'Windows desktop app' : 'browser session',
+      platform: isDesktop() ? 'desktop app' : 'browser session',
       diagnostics: includeDiag ? app.log : null,
       attachmentNames: [...images, ...videos],
     });
@@ -76,9 +76,9 @@ export function ReportSection() {
         {app.connected ? (
           <>
             <InfoRow label="Device" value={app.deviceName} />
-            <InfoRow label="Model" value={`${app.profile.name} (${app.profile.sku})`} />
+            <InfoRow label="Model" value={app.identification === 'verified' ? `${app.profile.name} (${app.profile.sku})` : 'Not verified'} />
             <InfoRow label="Firmware" value={app.firmware} mono />
-            <InfoRow label="Serial" value={app.serial ?? '(not read)'} mono />
+            <InfoRow label="S/N" value={app.serial ?? '(not read)'} mono />
           </>
         ) : (
           <p className="text-xs text-mute">

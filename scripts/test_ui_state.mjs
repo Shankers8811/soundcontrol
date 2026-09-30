@@ -101,7 +101,7 @@ const byId = (id) => DEVICES.find((d) => d.id === id);
 
 console.log('\n[1] capability derivation (protocol truth per model)');
 
-check('model table has the 10 documented profiles', DEVICES.length === 10, `got ${DEVICES.length}`);
+check('model table has the 47 documented profiles', DEVICES.length === 47, `got ${DEVICES.length}`);
 
 for (const d of DEVICES) {
   const c = deriveCapabilities(d);
@@ -113,13 +113,14 @@ for (const d of DEVICES) {
   check(`${d.id}: firmware info supported`, c.supportsFirmwareInfo === true);
   // Noise control exactly when a sound-mode layout exists.
   eq(`${d.id}: supportsNoiseControl`, c.supportsNoiseControl, d.ancLayout !== 'none');
-  // EQ exactly when a real EQ command exists (never for the 03:87 models).
+  // EQ exactly when a real, model-specific EQ command exists, including the
+  // source-backed disabled-HearID 03:87 factory form.
   eq(`${d.id}: supportsEqualizer`, c.supportsEqualizer, d.eqCommand !== null);
   // Per-side earbud state only for TWS hardware with two battery bytes.
   eq(
     `${d.id}: supportsEarbudState`,
     c.supportsEarbudState,
-    d.kind === 'earbuds' && d.state.batteryRight !== null,
+    (d.kind === 'earbuds' || d.kind === 'open-ear') && d.state.batteryRight !== null,
   );
   eq(`${d.id}: gaming/surround/dual/ldac flags`, [c.supportsGaming, c.supportsSurround, c.supportsDual, c.supportsLdac], [d.gaming, d.surround, d.dual, d.ldac]);
   // 01:85 is documented ONLY for the Motion+ (A3116) speaker — no profile in
@@ -141,11 +142,21 @@ eq('tws-l3pro layout sub-features (no scene byte)', ANC_SUB_FEATURES['tws-l3pro'
   level: true, scenes: false, transVocal: true, wind: true, adaptive: true,
 });
 
+eq('classic A3035/A3040 layouts expose documented wind and A3040 vocal controls', [
+  ANC_SUB_FEATURES['classic-a3035'].wind,
+  ANC_SUB_FEATURES['classic-a3040'].transVocal,
+  ANC_SUB_FEATURES['classic-a3040'].wind,
+], [true, true, true]);
+
 // Spot-check the capability consequences for representative models.
-eq('q30 (classic): no ANC level slider, scenes yes', [
+eq('q30 (classic): no ANC level slider, scenes yes, no unsupported vocal sub-mode', [
   deriveCapabilities(byId('q30')).ancSub.level,
   deriveCapabilities(byId('q30')).ancSub.scenes,
-], [false, true]);
+  deriveCapabilities(byId('q30')).ancSub.transVocal,
+], [false, true, false]);
+eq('q20i: common four-byte mode has no unsupported sub-features', deriveCapabilities(byId('q20i')).ancSub, {
+  level: false, scenes: false, transVocal: false, wind: false, adaptive: false,
+});
 eq('space-q45 (classic): EQ disabled (03:87), NC enabled', [
   deriveCapabilities(byId('q45')).supportsEqualizer,
   deriveCapabilities(byId('q45')).supportsNoiseControl,
@@ -159,6 +170,19 @@ eq('liberty-4-nc: EQ disabled, earbud state enabled', [
   deriveCapabilities(byId('liberty-4-nc')).supportsEarbudState,
 ], [false, true]);
 eq('p30i: 0..10 battery scale', byId('p30i').batteryMax, 10);
+eq('Space One uses the six-byte A3035 layout, wind byte, and state battery offset 0', [byId('space-one').ancLayout, byId('space-one').wind, byId('space-one').state.batteryLeft], ['classic-a3035', true, 0]);
+eq('Space Q45 uses the six-byte A3040 layout, transparency/wind bytes, and state battery offset 0', [byId('q45').ancLayout, byId('q45').transparency, byId('q45').wind, byId('q45').state.batteryLeft], ['classic-a3040', true, true, 0]);
+eq('A3062 and A3005 use two-byte battery heads and corrected state offsets', [
+  byId('space-one-pro').state.batteryChargingLeft,
+  byId('space-one-pro').state.firmware.at,
+  byId('space-one-pro').state.soundModes,
+  byId('q11i').state.batteryChargingLeft,
+  byId('q11i').state.dualConnections,
+], [1, 2, 69, 1, 41]);
+eq('Space A40 uses its six-byte layout and state sound modes at 111', [byId('space-a40').ancLayout, byId('space-a40').state.soundModes], ['tws-a3936', 111]);
+eq('P40i uses seven-byte modes at state offset 119', [byId('p40i').ancLayout, byId('p40i').state.soundModes], ['tws-p40i', 119]);
+eq('Liberty 5 uses 10-step battery with offset 1', [byId('liberty-5').batteryMax, byId('liberty-5').batteryOffset], [10, 1]);
+eq('Space 2 is read-only by capability profile', [byId('space-2-readonly').ancLayout, byId('space-2-readonly').eqCommand, byId('space-2-readonly').gaming], ['none', null, false]);
 
 /* ============================== 2. battery math ========================= */
 
@@ -172,6 +196,8 @@ eq('level 4 stays 4', batteryLevel(4), 4);
 
 eq('4 of 5 steps = 80%', batteryPercent(4, 5), 80);
 eq('8 of 10 steps = 80%', batteryPercent(8, 10), 80);
+eq('A3005/A3062 offset: raw 0 of 10 steps = 10%', batteryPercent(0, 10, 1), 10);
+eq('A3005/A3062 offset: raw 9 of 10 steps = 100%', batteryPercent(9, 10, 1), 100);
 eq('0 of 5 steps = 0%', batteryPercent(0, 5), 0);
 eq('Windows PnP percent passes through (scale null)', batteryPercent(87, null), 87);
 eq('null level stays unavailable', batteryPercent(null, 5), null);
@@ -254,6 +280,14 @@ eq('emptyBattery: no levels, no flags, presence unknown', emptyBattery(), {
   left: null, right: null, leftCharging: undefined, rightCharging: undefined,
   batteryScale: null, presence: 'unknown',
 });
+const hostBattery = { ...emptyBattery(), hostPercent: 87 };
+const hostMerged = merge(hostBattery, 8, 7);
+check(
+  'host battery percentage survives Soundcore telemetry refresh',
+  hostMerged.hostPercent === 87,
+  JSON.stringify(hostMerged),
+);
+
 
 // TEST 10 — fresh connection: unknown until the first valid frame, then confirmed.
 const t10a = merge(emptyBattery(), undefined, undefined);
@@ -310,6 +344,8 @@ const c1 = merge(emptyBattery(), 100, 90, { chargingLeft: true, chargingRight: t
 eq('charging flags stored from a state frame', [c1.leftCharging, c1.rightCharging], [true, true]);
 const c2 = merge(c1, 100, 90); // 01:03-style frame without charging bits
 eq('a frame without charging bits keeps the confirmed flags', [c2.leftCharging, c2.rightCharging], [true, true]);
+const malformedCharging = merge(c2, 100, 90, { chargingLeft: null, chargingRight: null });
+eq('malformed charging flags clear confirmation instead of retaining true', [malformedCharging.leftCharging, malformedCharging.rightCharging], [null, null]);
 const c3 = merge(c2, 100, 0xff);
 eq('absent side loses its charging flag too', c3.rightCharging, undefined);
 const c4 = merge(c3, 100, undefined);
@@ -347,22 +383,30 @@ eq('classic ANC + transport scene + vocal', parseSoundModes([0x00, 0x00, 0x01, 0
 eq('classic transparency + indoor', parseSoundModes([0x01, 0x02, 0x00, 0x00], 'classic'), {
   mode: 'transparency', transVocal: false, scene: 'indoor',
 });
-eq('l4nc: manual level 3 + wind on', parseSoundModes([0x00, 0x30, 0x00, 0x00, 0x01], 'tws-l4nc'), {
-  mode: 'anc', level: 3, transVocal: false, wind: true,
+eq('l4nc: manual level 3 + wind on', parseSoundModes([0x00, 0x30, 0x00, 0x00, 0x01, 0x00, 0x00], 'tws-l4nc'), {
+  mode: 'anc', level: 3, transVocal: false, wind: true, scene: 'transport',
 });
-eq('p30i: adaptive nibble below 1 is not a level', parseSoundModes([0x02, 0x00, 0x00, 0x00, 0x00], 'tws-p30i'), {
-  mode: 'normal', wind: false,
+eq('p30i: adaptive nibble below 1 is not a level', parseSoundModes([0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], 'tws-p30i'), {
+  mode: 'normal', wind: false, scene: 'transport',
 });
-eq('p30i: automation byte confirms adaptive ANC', parseSoundModes([0x00, 0x53, 0x00, 0x01, 0x00], 'tws-p30i'), {
-  mode: 'adaptive', level: 5, wind: false,
+eq('p30i: automation byte confirms adaptive ANC', parseSoundModes([0x00, 0x53, 0x00, 0x01, 0x00, 0x00, 0x00], 'tws-p30i'), {
+  mode: 'adaptive', level: 5, wind: false, scene: 'transport',
 });
-eq('l4nc: automation byte confirms adaptive ANC', parseSoundModes([0x00, 0x32, 0x00, 0x01, 0x00], 'tws-l4nc'), {
-  mode: 'adaptive', level: 3, transVocal: false, wind: false,
+eq('l4nc: automation byte confirms adaptive ANC', parseSoundModes([0x00, 0x32, 0x00, 0x01, 0x00, 0x00, 0x00], 'tws-l4nc'), {
+  mode: 'adaptive', level: 3, transVocal: false, wind: false, scene: 'transport',
+});
+eq('A3035 mirror parses wind while keeping custom transparency opaque', parseSoundModes([0x00, 0x50, 0x00, 0x01, 0x01, 0x05], 'classic-a3035'), {
+  mode: 'adaptive', level: 5, wind: true,
+});
+eq('A3040 mirror parses Talk transparency and wind', parseSoundModes([0x01, 0x50, 0x00, 0x01, 0x01, 0x05], 'classic-a3040'), {
+  mode: 'transparency', level: 5, wind: true, transVocal: true,
 });
 // TEST 12 input — a malformed mirror must be REJECTED, so the last confirmed
 // mode survives (the store only moves ANC state on a non-null report).
 eq('garbage mode byte → null (confirmed state untouched)', parseSoundModes([0x07, 0x00, 0x00, 0x00], 'classic'), null);
 eq('short payload → null', parseSoundModes([0x00], 'classic'), null);
+eq('six-byte layout rejects a five-byte prefix', parseSoundModes([0x00, 0x50, 0x00, 0x01, 0x00], 'tws-a3968'), null);
+eq('eight-byte D1202 layout rejects a seven-byte prefix', parseSoundModes([0x00, 0x50, 0x00, 0x01, 0x00, 0x00, 0x00], 'tws-d1202'), null);
 eq('layouts without ANC never parse', parseSoundModes([0x00, 0x00, 0x00, 0x00], 'none'), null);
 
 console.log('\n[3d] single-earbud ANC capability');
@@ -434,6 +478,7 @@ eq('unverified SKU A3953 stays on the unknown profile', matchDevice('A3953').id,
 eq('unverified "Sport X10" stays on the unknown profile', matchDevice('Soundcore Sport X10').id, 'unknown');
 eq('unverified "Sleep A10" stays on the unknown profile', matchDevice('soundcore Sleep A10').id, 'unknown');
 eq('unverified SKUs A3961/A6610 stay unknown', [matchDevice('A3961').id, matchDevice('A6610').id], ['unknown', 'unknown']);
+eq('unverified Life aliases stay unknown', [matchDevice('A3935').id, matchDevice('A3939').id, matchDevice('A3933').id], ['unknown', 'unknown', 'unknown']);
 check('unverified alias note explains the unknown treatment', /unknown model/.test(matchNote('Soundcore Liberty 4') ?? ''), String(matchNote('Soundcore Liberty 4')).slice(0, 80));
 check('unverified alias note never claims a borrowed profile', !/using the/i.test(matchNote('Soundcore Sport X10') ?? ''), String(matchNote('Soundcore Sport X10')).slice(0, 80));
 eq('longest-alias ranking still separates Liberty 4 NC from Liberty 3 Pro', [matchDevice('Soundcore Liberty 4 NC').id, matchDevice('Soundcore Liberty 3 Pro').id], ['liberty-4-nc', 'liberty-3-pro']);
@@ -504,6 +549,112 @@ const promoted = matchDevice('soundcore Liberty 4 NC');
 eq('identity resolution promotes to the real model', [promoted.id, promoted.batteryMax], ['liberty-4-nc', 5]);
 const afterKnown = mergeBatteryTelemetry(afterUnknown, { rawLeft: 4, rawRight: 4, scale: promoted.batteryMax });
 eq('fresh telemetry under the known scale reads 80/80 again', [batteryPercent(afterKnown.left, afterKnown.batteryScale), batteryPercent(afterKnown.right, afterKnown.batteryScale)], [80, 80]);
+
+/* Host disconnect and manual identification: neither an unrelated device nor
+   an enumeration failure can terminate the active session. */
+const hostDir = mkdtempSync(join(tmpdir(), 'soundcontrol-host-check-'));
+try {
+  const out = join(hostDir, 'host.mjs');
+  const { build: buildHost } = await import('esbuild');
+  await buildHost({ stdin: {
+    contents: "export * from './src/state/hostDisconnect.ts'; export * from './src/state/identification.ts';",
+    sourcefile: 'host-barrel.ts', resolveDir: ROOT, loader: 'ts',
+  }, bundle: true, format: 'esm', platform: 'node', outfile: out, logLevel: 'error' });
+  const {
+    hostDisconnectObservation: observe, verifiedCandidate,
+    candidateForAddress, discardCandidateOnAutomaticVerification, identificationState: identify,
+  } = await import(pathToFileURL(out).href);
+  const addr = 'AA:BB:CC:DD:EE:FF';
+  let step = observe(addr, [{mac: '11:22:33:44:55:66', connected: false}], 0);
+  eq('other device disappearing never disconnects active MAC', step, {misses: 0, disconnect: false});
+  step = observe(addr, [{mac: addr.toLowerCase(), connected: false}], step.misses);
+  eq('first explicit disconnect is not sufficient', step, {misses: 1, disconnect: false});
+  step = observe(addr, [], step.misses, true);
+  eq('scan failure resets confirmation (not proof of disconnect)', step, {misses: 0, disconnect: false});
+  step = observe(addr, [{mac: addr, connected: false}], step.misses);
+  step = observe(addr, [{mac: addr, connected: false}], step.misses);
+  eq('two consecutive reports about same address confirm disconnect', step, {misses: 2, disconnect: true});
+  eq('unknown connection property cannot confirm disconnect', observe(addr, [{mac: addr}], 1), {misses: 0, disconnect: false});
+  const known = verifiedCandidate('liberty-4-nc');
+  const other = verifiedCandidate('p20i');
+  const unverified = DEVICES.find((d) => !d.verified);
+  check('manual selector refuses arbitrary IDs, model codes and unverified profiles',
+    verifiedCandidate('unknown') === null && verifiedCandidate('A1234') === null &&
+    verifiedCandidate('does-not-exist') === null && Boolean(unverified) && verifiedCandidate(unverified.id) === null);
+  eq('automatic verified identity needs no manual choice', identify(true, known, true, null), 'verified');
+  eq('manual selection never verifies an unidentified physical device', identify(true, UNKNOWN_PROFILE, false, known), 'uncertain');
+  eq('tentative automatic identification and incompatible manual candidate produce mismatch',
+    identify(true, known, false, other), 'mismatch');
+  eq('later verified automatic identification wins over incompatible manual candidate',
+    identify(true, known, true, other), 'verified');
+  eq('disconnected stays disconnected regardless of candidate', identify(false, known, true, other), 'not-connected');
+  const manualForTwo = { [addr]: other.id, '11:22:33:44:55:66': known.id };
+  eq('manual choices are scoped by MAC (including case-normalization)',
+    [candidateForAddress(manualForTwo, addr.toLowerCase())?.id,
+      candidateForAddress(manualForTwo, '11:22:33:44:55:66')?.id,
+      candidateForAddress(manualForTwo, '22:33:44:55:66:77')],
+    [other.id, known.id, null]);
+  const afterAutomatic = discardCandidateOnAutomaticVerification(manualForTwo, addr.toLowerCase());
+  eq('automatic confirmation drops only its own stale manual candidate',
+    [candidateForAddress(afterAutomatic, addr)?.id, candidateForAddress(afterAutomatic, '11:22:33:44:55:66')?.id],
+    [null, known.id]);
+  eq('automatic verification recalculates from the automatic profile, not the conflicting candidate',
+    [deriveCapabilities(known).supportsNoiseControl, deriveCapabilities(other).supportsNoiseControl],
+    [true, false]);
+  eq('unknown identity cannot gain ANC by manual selection',
+    deriveCapabilities(UNKNOWN_PROFILE).supportsNoiseControl, false);
+} finally { rmSync(hostDir, {recursive: true, force: true}); }
+
+const releaseDir = mkdtempSync(join(tmpdir(), 'soundcontrol-release-check-'));
+try {
+  const out = join(releaseDir, 'download.mjs');
+  const { build: buildDownloads } = await import('esbuild');
+  await buildDownloads({ entryPoints: [join(ROOT, 'src/lib/downloads.ts')], bundle: true,
+    format: 'esm', platform: 'node', outfile: out, logLevel: 'error',
+    define: { __REPO_URL__: JSON.stringify('https://github.com/Shankers8811/soundcontrol') } });
+  const D = await import(pathToFileURL(out).href);
+  const url = (file) => `https://github.com/Shankers8811/soundcontrol/releases/download/v1.0.7/${file}`;
+  const assets = D.releaseAssetLinks({assets: [
+    {name: 'SoundControl.AppImage', browser_download_url: url('SoundControl.AppImage')},
+    {name: 'SoundControl.deb', browser_download_url: url('SoundControl.deb')},
+    {name: 'SoundControl-Setup.exe', browser_download_url: 'https://evil.example/Setup.exe'},
+  ]});
+  eq('downloader offers only actual official release assets', assets,
+    {appimage: url('SoundControl.AppImage'), deb: url('SoundControl.deb')});
+  eq('malformed release cannot create a fake Windows installer link', D.releaseAssetLinks({assets: []}), {});
+} finally { rmSync(releaseDir, {recursive: true, force: true}); }
+
+const scanDir = mkdtempSync(join(tmpdir(), 'soundcontrol-scan-check-'));
+try {
+  const out = join(scanDir, 'scan.mjs');
+  const { build: buildScan } = await import('esbuild');
+  await buildScan({ entryPoints: [join(ROOT, 'src/transports/bridge.ts')], bundle: true,
+    format: 'esm', platform: 'node', outfile: out, logLevel: 'error' });
+  const realLocation = globalThis.location;
+  const realWindow = globalThis.window;
+  const realFetchForScan = globalThis.fetch;
+  globalThis.location = {hostname: '127.0.0.1', protocol: 'http:'};
+  globalThis.window = {};
+  try {
+    const bridge = await import(pathToFileURL(out).href);
+    globalThis.fetch = async () => ({ok: true, status: 200, json: async () => ({devices: [
+      {mac: 'AA:BB:CC:DD:EE:FF', name: 'device', battery: 999},
+      {mac: '11:22:33:44:55:66', name: 'second', connected: false, battery: 73},
+    ]})});
+    const scan = await bridge.scanBridgeDevicesDetailed();
+    check('missing host connection property is unknown, never explicit false',
+      scan.error === null && scan.devices[0].connected === undefined && scan.devices[0].battery === null);
+    check('explicit false for another address remains scoped, valid host battery retained',
+      scan.devices[1].connected === false && scan.devices[1].battery === 73);
+    globalThis.fetch = async () => ({ok: true, status: 200, json: async () => ({message: 'bad scan'})});
+    check('malformed scan is an error rather than an empty authoritative enumeration',
+      (await bridge.scanBridgeDevicesDetailed()).error !== null);
+  } finally {
+    globalThis.location = realLocation;
+    globalThis.window = realWindow;
+    globalThis.fetch = realFetchForScan;
+  }
+} finally { rmSync(scanDir, {recursive: true, force: true}); }
 
 /* ------------------------------------------- update checker (Settings → Updates) */
 

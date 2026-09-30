@@ -1,10 +1,10 @@
 /**
  * Android BLE capture reference for Soundcore devices.
  *
- * The Windows desktop app talks to already-paired hardware over Classic
+ * The Windows/Linux desktop app talks to already-paired hardware over Classic
  * Bluetooth RFCOMM (see PROTOCOL.md and src/protocol/packets.ts). It does
- * NOT use Web Bluetooth: Electron has no reliable Web Bluetooth stack on
- * Windows, and RFCOMM is what the bundled helper can reach with zero setup.
+ * NOT use Web Bluetooth: the desktop renderer has no reliable Web Bluetooth
+ * stack, and RFCOMM is what the local helper can reach.
  *
  * This module exists because Android captures are still useful for reverse
  * engineering. The official mobile app exposes the same DSP families over a
