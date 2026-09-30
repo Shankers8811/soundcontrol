@@ -233,8 +233,9 @@ function CustomFaders() {
       <p className="mt-2 text-[10px] leading-relaxed text-faint">
         Dragging commits the custom curve (preset id FE FE) to the device after a short debounce;
         the device's own EQ reports keep this view in sync when anything changes from the phone
-        app. HearID personalisation is deliberately absent: the RFCOMM protocol exposes no command
-        to create or switch a hearing profile, so SoundControl does not offer one.
+        app. HearID personalisation is deliberately absent: per-model reference writes exist,
+        but this app has no measured-profile read/verify workflow and will not overwrite a
+        hearing profile or invent a hearing test.
       </p>
     </div>
   );

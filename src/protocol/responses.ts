@@ -1,4 +1,6 @@
-import type { StateOffsets } from '../types';
+import type { DeviceProfile, StateOffsets } from '../types';
+import { validStatePayloadLength } from './modelRegistry';
+import { verifyFrame } from './codec';
 
 /* -------------------------------------------------------------------------- */
 /* Phase 18 — response validation + device-session isolation helpers          */
@@ -142,4 +144,32 @@ function asciiSlice(data: Uint8Array, at: number, length: number): string {
     out += data[i] >= 0x20 && data[i] <= 0x7e ? String.fromCharCode(data[i]) : ' ';
   }
   return out;
+}
+
+/**
+ * Decode case charge ONLY from a complete 01:01 update for an identified,
+ * layout-verified SKU. 01:03 reports buds only; 0xFF/invalid levels mean
+ * unavailable, not a percent. Unlike the bud fallback we refuse values above
+ * the case scale: a case byte with an unknown encoding cannot become 100%.
+ * Scales/offsets are independent model registrations in OpenSCQ30.
+ */
+export function parseCaseBatteryPercent(payload: Uint8Array, profile: DeviceProfile): number | null {
+  const at = profile.state.batteryCase;
+  const max = profile.caseBatteryMax;
+  const offset = profile.caseBatteryOffset ?? 0;
+  if (!profile.verified || (profile.kind !== 'earbuds' && profile.kind !== 'open-ear') ||
+      at === null || max === undefined || !Number.isInteger(max) || max <= 0 ||
+      !Number.isInteger(offset) || offset < 0 || offset > max ||
+      !validStatePayloadLength(profile.state, payload.length)) return null;
+  const raw = payload[at];
+  if (raw === undefined || raw === 0xff || raw > max - offset) return null;
+  return Math.round(((raw + offset) * 100) / max);
+}
+
+/** Complete device→host case-bearing state frame (not a 01:03 battery reply). */
+export function parseCaseBatteryStateFrame(frame: Uint8Array, profile: DeviceProfile): number | null {
+  if (frame.length < 10 || frame[0] !== 0x09 || frame[1] !== 0xff ||
+      frame[5] !== 0x01 || frame[6] !== 0x01 ||
+      (frame[7] | (frame[8] << 8)) !== frame.length || !verifyFrame(frame)) return null;
+  return parseCaseBatteryPercent(frame.slice(9, -1), profile);
 }
