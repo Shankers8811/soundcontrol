@@ -30,18 +30,18 @@ two-byte little-endian length including the checksum, payload, checksum byte).
 | Layout | Builder | Length | Payload fields | Modes | Manual level | Adaptive | Scene | Transparency sub-mode | Wind | Invalid input |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `classic` | `buildClassicAnc` | 14 | `[mode, scene, transparency_mode, custom_nc=0]` | NC / Transparency / Normal | none (no level byte — a level value is ignored) | no | Transport / Outdoor / Indoor | full vs vocal | no | unknown mode/scene → rejected |
-| `classic-a3035` | `buildSpaceOneAnc` | 16 | `[ambient, manual<<4\|adaptive, ambient, nc_mode, wind, transparency_level]` | NC / Transparency / Normal + adaptive | 1..5 | yes | no | no (fixed custom transparency) | yes | level ∉ 1..5 → rejected |
-| `classic-a3040` | `buildSpaceQ45Anc` | 16 | `[ambient, manual<<4\|adaptive, transparency_mode, nc_mode, wind, transparency_level]` | NC / Transparency / Normal + adaptive | 1..5 | yes | no | full vs Talk/Manual | yes | level ∉ 1..5 → rejected |
-| `tws-p30i` | `buildP30iAnc` | 17 | `[ambient, manual<<4\|adaptive, ambient, automation, wind, adaptive_sensitivity, scene]` | NC / Transparency / Normal + adaptive + multi-scene | 1..5 | yes | Transport / Outdoor / Indoor | **none** (documented: R50i NC has no transparency modes) | yes | level ∉ 1..5 → rejected |
-| `tws-l4nc` | `buildLiberty4NcAnc` | 17 | `[ambient, manual<<4\|adaptive, transparency, automation, wind, environment_detection, transportation]` | NC / Transparency / Normal + adaptive | 1..5 | yes | Transportation byte (Plane/Train/Bus/Car) | full vs vocal | yes | level ∉ 1..5 → rejected |
-| `tws-l3pro` | `buildLiberty3ProAnc` | 16 | `[ambient, manual<<4\|adaptive, transparency, nc_automation, wind, unknown]` | NC / Transparency / Normal + adaptive | 1..5 | yes | no | full vs vocal | yes | level ∉ 1..5 → rejected |
-| `tws-a3062` | `buildSpaceOneProAnc` | 16 | `[ambient, manual<<4\|adaptive, custom_transparency=1, adaptive, wind, transparency_level]` | NC / Transparency / Normal + adaptive | 1..5 | yes | no | no (custom transparency only) | yes | level ∉ 1..5 → rejected |
-| `tws-a3936` | `buildSpaceA40Anc` | 16 | `[ambient, manual<<4\|adaptive, transparency, adaptive, wind, sensitivity]` | NC / Transparency / Normal + adaptive | 1..5 | yes | no | full vs vocal | yes | level ∉ 1..5 → rejected |
+| `classic-a3035` | `buildSpaceOneAnc` | 16 | `[ambient, manual<<4\|adaptive, ambient, adaptive, wind, 0x05/0x01]` | NC / Transparency / Normal + adaptive | 1..5 | yes | no | no (fixed custom transparency) | yes | level ∉ 1..5 → rejected |
+| `classic-a3040` | `buildSpaceQ45Anc` | 16 | `[ambient, manual<<4\|adaptive, transVocal, adaptive, wind, 0x05/0x01]` | NC / Transparency / Normal + adaptive | 1..5 | yes | no | full vs Talk/Manual | yes | level ∉ 1..5 → rejected |
+| `tws-p30i` | `buildP30iAnc` | 17 | `[ambient, manual<<4\|adaptive, ambient, automation, wind, 0x00, scene]` | NC / Transparency / Normal + adaptive + multi-scene | 1..5 | yes | Transport / Outdoor / Indoor | **none** (documented: R50i NC has no transparency modes) | yes | level ∉ 1..5 → rejected |
+| `tws-l4nc` | `buildLiberty4NcAnc` | 17 | `[ambient, manual<<4\|adaptive, transVocal, automation, wind, 0x00, transportation]` | NC / Transparency / Normal + adaptive | 1..5 | yes | — (transportation byte written from the internal scene; no UI control) | full vs vocal | yes | level ∉ 1..5 → rejected |
+| `tws-l3pro` | `buildLiberty3ProAnc` | 16 | `[ambient, manual<<4\|adaptive, transVocal, adaptive, wind, 0x00]` | NC / Transparency / Normal + adaptive | 1..5 | yes | no | full vs vocal | yes | level ∉ 1..5 → rejected |
+| `tws-a3062` | `buildSpaceOneProAnc` | 16 | `[ambient, manual<<4\|adaptive, 0x01, adaptive, wind, 0x05/0x01]` | NC / Transparency / Normal + adaptive | 1..5 | yes | no | no (custom transparency only) | yes | level ∉ 1..5 → rejected |
+| `tws-a3936` | `buildSpaceA40Anc` | 16 | `[ambient, manual<<4\|adaptive, transVocal, adaptive, wind, adaptive_sensitivity]` | NC / Transparency / Normal + adaptive | 1..5 | yes | no | full vs vocal | yes | level ∉ 1..5 → rejected |
 | `tws-l4pro` | `buildLiberty4ProAnc` | 14 | `[ambient, slider, 0, wind]` | NC / Transparency / Normal | slider: ANC `6−level`, transparency `6+level` (1..5 → 1..5 / 7..11) | no (nibble design has no adaptive field) | no | no | yes | level ∉ 1..5 → rejected |
-| `tws-p40i` | `buildP40iAnc` | 17 | `[ambient, manual<<4\|adaptive, transparency, automation, wind, adaptive_sensitivity, scene]` | NC / Transparency / Normal + adaptive + multi-scene | 1..5 | yes | Transport / Outdoor / Indoor | full vs vocal | yes | level ∉ 1..5 → rejected |
-| `tws-l5` | `buildLiberty5Anc` | 17 | `[ambient, manual<<4\|adaptive, transparency, automation, wind, adaptive_sensitivity, scene]` | NC / Transparency / Normal + adaptive | 1..5 | yes | Transport / Outdoor | full vs vocal | yes | level ∉ 1..5 → rejected |
-| `tws-a3968` | `buildSportX20Anc` | 16 | `[ambient, manual<<4\|adaptive, transparency, adaptive, wind, 0xFF]` | NC / Transparency / Normal + adaptive | 1..5 | yes | no | full vs vocal | yes | level ∉ 1..5 → rejected |
-| `tws-d1202` | `buildD1202Anc` | 18 | `[ambient, manual<<4\|adaptive, transparency, nc_mode, wind, reserved, multi_scene, real_time_adaptive]` | NC / Transparency / Normal + adaptive + multi-scene | 1..5 | yes | Transport / Outdoor / Indoor | full vs vocal | yes | level ∉ 1..5 → rejected |
+| `tws-p40i` | `buildP40iAnc` | 17 | `[ambient, manual<<4\|adaptive, transVocal, automation, wind, adaptive_sensitivity, scene]` | NC / Transparency / Normal + adaptive + multi-scene | 1..5 | yes | Transport / Outdoor / Indoor | full vs vocal | yes | level ∉ 1..5 → rejected |
+| `tws-l5` | `buildLiberty5Anc` | 17 | `[ambient, manual<<4\|adaptive, transVocal, automation, wind, adaptive_sensitivity, scene]` | NC / Transparency / Normal + adaptive | 1..5 | yes | — (scene byte written; no UI control) | full vs vocal | yes | level ∉ 1..5 → rejected |
+| `tws-a3968` | `buildSportX20Anc` | 16 | `[ambient, manual<<4\|adaptive, transVocal, adaptive, wind, 0xFF]` | NC / Transparency / Normal + adaptive | 1..5 | yes | no | full vs vocal | yes | level ∉ 1..5 → rejected |
+| `tws-d1202` | `buildD1202Anc` | 18 | `[ambient, manual<<4\|adaptive, transVocal, adaptive, wind, 0x00, scene, 0x00]` | NC / Transparency / Normal + adaptive + multi-scene | 1..5 | yes | Transport / Outdoor / Indoor | full vs vocal | yes | level ∉ 1..5 → rejected |
 
 Shared rules (asserted in the matrix test):
 
@@ -52,9 +52,14 @@ Shared rules (asserted in the matrix test):
   is never invented for it;
 * a `classic` frame is byte-identical for levels 1..5 (there is no level byte,
   so a "0–4 level" cannot reach a discrete-mode model);
-* on level-carrying layouts the manual nibble/slider equals the strength the
-  UI sent, and any level outside the integer range 1..5, `NaN` or `Infinity`
-  makes `buildAnc()` return `null` (no frame).
+* the UI's level always lands in that layout's documented strength field, but
+  each builder keeps its own documented composition: l4nc/l3pro/p40i/l5 encode
+  `manual << 4 | adaptive` from the level, a3035/a3040/a3062/a3936/a3968 keep
+  the documented manual baseline of 5 for Transparency/Normal frames, p30i
+  fixes `manual=5, adaptive=1` in adaptive mode and uses the Android level-5
+  baseline when switching modes, and l4pro maps 1..5 to ANC bytes 1..5 and
+  transparency bytes 7..11. Any level outside the integer range 1..5, `NaN` or
+  `Infinity` makes `buildAnc()` return `null` (no frame).
 * `layout: none` builds nothing at all.
 
 ## 2. Profiles (what each SKU's UI can expose)
