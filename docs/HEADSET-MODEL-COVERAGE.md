@@ -228,6 +228,17 @@ generic telemetry only.
   offsets); everything catalog-only (no layout proof at all); A3023 Life 2 vs
   A3033 Life 2 Neo (similar names, different hardware and no shared-layout
   evidence).
+* **Explicit non-merges reviewed in the 2026-10-01 audit:** A3024 Life 2 NC vs
+  A3025 Life Q20 (different FCC IDs, no capture for either); D1406 Space 2 Pro
+  vs D1402 Space 2 (the D1402 unlock/transport has no port in this repository,
+  D1406 has no packet source at all); A3032 Life Q10 vs A3033 Life 2 Neo/Q10i
+  (one is a Q10-series product, the other is registered as Life 2 Neo — the
+  Q10i retail name is an A3033 alias only); A3005 Q11i vs A3004 Q20i/Q21i NC
+  (the shared multilingual manual title is not an identity merge). The classic
+  four-byte Life/Q layouts are not a licence to route other models to them:
+  a classic frame is only accepted for the four SKUs whose upstream module
+  documents it, and the model gate additionally refuses any `06:81` frame whose
+  length does not match the connected profile.
 
 ## 7. Gaming headsets
 

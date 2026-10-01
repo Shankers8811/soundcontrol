@@ -114,7 +114,7 @@ write.
 
 ## 4. What is asserted automatically
 
-`npm run test:matrix` (814 checks) fails if any of the following changes
+`npm run test:matrix` (980 checks) fails if any of the following changes
 without new evidence:
 
 * a profile's layout/flags/EQ/battery row in the pinned matrix;
@@ -127,4 +127,8 @@ without new evidence:
 * the model gate accepting a `06:81` frame whose length does not match the
   connected profile's layout;
 * any profile claiming volume, gestures, a factory reset or physical
-  validation.
+  validation;
+* an equalizer frame changing length, CAT:TYPE, `total_len` or byte range under
+  a short, long, non-finite or absurd band array, or a wrong-shape EQ frame
+  (20-byte `02:81` on a two-channel profile, 32-byte `02:83` on D1202, a
+  truncated `03:87`) being accepted by the model gate.
