@@ -26,14 +26,14 @@ jobs:
   release-linux:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ inputs.source_ref || github.ref }}
       # Use the Python 3 runtime supplied by the Ubuntu runner. It is built
       # against the same distro/glibc as the Linux package and is what the
       # relocation probe is intended to copy into the app.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -102,6 +102,16 @@ jobs:
           RELEASE_TAG: ${{ steps.release-tag.outputs.tag }}
         run: |
           set -euo pipefail
+          # A pre-release is never a Linux distribution target. GitHub refuses
+          # to mark a pre-release as "latest", which is exactly why a `v*`
+          # unsigned-Windows testing tag used to fail this step; Linux assets
+          # belong on the stable `vX.Y.Z` release instead. Handle that case
+          # explicitly (visible notice, no assets touched) and keep every
+          # other failure path below unchanged.
+          if gh release view "$RELEASE_TAG" --json isPrerelease -q '.isPrerelease' 2>/dev/null | grep -qx true; then
+            echo "::notice::release $RELEASE_TAG is a pre-release; skipping Linux asset publication (pre-releases cannot be marked latest and are not the Linux release channel)."
+            exit 0
+          fi
           gh release create "$RELEASE_TAG" \
             --title "SoundControl $RELEASE_TAG" \
             --generate-notes \
@@ -112,7 +122,7 @@ jobs:
           # architecture information for users who prefer them.
           gh release upload "$RELEASE_TAG" release-assets/* --clobber
           gh release view "$RELEASE_TAG"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: SoundControl-Linux-Release
           path: |

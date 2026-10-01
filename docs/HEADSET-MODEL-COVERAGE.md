@@ -5,13 +5,17 @@ This document is the headset-side companion to
 over-ear / on-ear, neckband and gaming headphones discovered in this review,
 what SoundControl can honestly do with each one, and which gaps are deliberate.
 
-* Review date: **2026-10-01** (repository state: `main` @ `3a57326` plus this
-  change set).
+* Review date: **2026-10-01** (repository state: `main` @ `3c32041` plus this
+  change set, which adds the A3021/A3024 catalog identities and the automated
+  feature/protocol matrix tests).
 * Machine-readable sources: [`src/protocol/devices.ts`](../src/protocol/devices.ts)
   (exact SKU profiles) and [`src/protocol/marketCatalog.ts`](../src/protocol/marketCatalog.ts)
   (market inventory). Where this document and the code disagree, the code wins.
 * Scope: headsets only. True-wireless, open-ear/clip and sleep earbuds are
   tracked in [`docs/MARKET-COMPATIBILITY.md`](MARKET-COMPATIBILITY.md).
+* ANC/sound-mode packet matrix: [`docs/ANC-SOUND-MODE-MATRIX.md`](ANC-SOUND-MODE-MATRIX.md)
+  pins each model to its `06:81` layout, frame length, valid modes/levels and
+  rejected inputs (asserted by `npm run test:matrix`).
 
 ## 1. How claims are classified
 
@@ -51,15 +55,15 @@ Headset-related inventory after the 2026-10-01 additions:
 
 | Metric | Count | Notes |
 | --- | --- | --- |
-| Over-ear / on-ear profiles in `DEVICES` | 19 | 10 `verified: true` profiles + 9 `catalogOnly` read-only profiles |
-| Over-ear / on-ear rows in `MARKET_CATALOG` | 19 | includes legacy SKUs confirmed by official support pages |
+| Over-ear / on-ear profiles in `DEVICES` | 21 | 10 `verified: true` profiles + 11 `catalogOnly` read-only profiles |
+| Over-ear / on-ear rows in `MARKET_CATALOG` | 21 | includes legacy SKUs confirmed by official support pages / FCC registrations |
 | Protocol-verified over-ear profiles (writes implemented) | 9 | A3004, A3005, A3027, A3028, A3029, A3030, A3035, A3040, A3062 |
 | Partially verified / read-only over-ear profiles | 1 | D1402 Space 2 (reads only, unlock sequence not ported) |
-| Catalog-only over-ear identities | 9 | D1404, D1406, A3012, A3023, A3025, A3031, A3032, A3033, A3045 |
+| Catalog-only over-ear identities | 11 | D1404, D1406, A3012, A3021, A3023, A3024, A3025, A3031, A3032, A3033, A3045 |
 | Neckband identities | 3 | A3201, A3212, A3213 — all catalog-only |
 | Gaming headsets with a Bluetooth protocol path | 0 | Wired / USB-dongle products; see §7 |
 | Physically validated headsets | **0** | Every row is `physicalValidation: 'pending'` |
-| Market catalog total (all categories) | 49 | was 41 before 2026-10-01 |
+| Market catalog total (all categories) | 51 | was 41 before 2026-10-01; 49 before the A3021/A3024 additions |
 
 > SoundControl does not claim support for every Soundcore headset. The
 > implemented set is exactly the nine write-capable profiles above plus
@@ -87,7 +91,9 @@ profile implements the **write**, not that the product advertises the feature.
 | D1406 | Space 2 Pro | CATALOG ONLY | NOT PROTOCOL VERIFIED | — | — | — | universal presence only | PENDING |
 | D1404 | Q31i | CATALOG ONLY | NOT PROTOCOL VERIFIED | — | — | — | universal presence only | PENDING |
 | A3012 | H30i (on-ear) | CATALOG ONLY | NOT PROTOCOL VERIFIED | — | — | — | universal presence only | PENDING |
+| A3021 | Space NC | CATALOG ONLY | NOT PROTOCOL VERIFIED | — | — | — | universal presence only | PENDING |
 | A3025 | Life Q20 | CATALOG ONLY | NOT PROTOCOL VERIFIED | — | — | — | universal presence only | PENDING |
+| A3024 | Life 2 NC | CATALOG ONLY | NOT PROTOCOL VERIFIED | — | — | — | universal presence only | PENDING |
 | A3023 | Life 2 | CATALOG ONLY | NOT PROTOCOL VERIFIED | — | — | — | universal presence only | PENDING |
 | A3032 | Life Q10 | CATALOG ONLY | NOT PROTOCOL VERIFIED | — | — | — | universal presence only | PENDING |
 | A3045 | Life Q20+ | CATALOG ONLY | NOT PROTOCOL VERIFIED | — | — | — | universal presence only | PENDING |
@@ -127,10 +133,13 @@ guessed battery scale, ANC byte, EQ band or codec write.
   scale 5. **Q21i NC is a regional marketing name for the same A3004 SKU**
   (Anker EU/UK Declaration of Conformity lists both names on A3004), so it
   resolves to this profile and no second SKU row is created.
-* **Q11i (A3005)** — no sound-mode module at all, so the app exposes no ANC
-  controls for this SKU even though the product is sold with noise cancelling
-  marketing; the profile only implements `02:83` DRC EQ, dual connection and
-  battery/state reads.
+* **Q11i (A3005)** — the official soundcore Q11i product page states the
+  model **does not feature active noise cancelling (ANC)**, and the OpenSCQ30
+  A3005 definition confirms there is no sound-mode module at all, so the app
+  exposes no ANC controls for this SKU. The profile only implements `02:83`
+  DRC EQ, dual connection and battery/state reads — a marketing feature list
+  would never have justified a `06:81` write, and here it agrees with the
+  protocol.
 * **Life Q35 (A3027)** — classic four-byte sound modes with scene selection and
   vocal transparency; `02:81` EQ with custom curves; battery scale 5. LDAC is
   advertised for the product but has **no implemented command in SoundControl**,
@@ -149,6 +158,13 @@ guessed battery scale, ANC byte, EQ band or codec write.
   serial-number guide and service pages, but no public packet layout exists in
   the reviewed sources (no OpenSCQ30 implementation for A3023/A3025/A3032/
   A3045). They are catalog-only with protocol-universal reads only.
+* **Space NC (A3021)** and **Life 2 NC (A3024)** — the two oldest ANC
+  headphone identities, confirmed by Anker FCC registrations (FCC IDs
+  `2AOKB-A3021` and `2AOKB-A3024` with their user manuals). No packet layout is
+  published in the reviewed sources and neither appears in OpenSCQ30, so both
+  are catalog-only: identity matching plus protocol-universal reads, and every
+  model-specific write denied. Being ANC *products* in marketing is not
+  protocol evidence, so no `06:81` behavior is claimed for them.
 * **Life Q10 SKU correction** — the previously circulating claim that Life Q10
   is A3016 is not supported by any official source found; the official
   serial-number guide and soundcore product page identify it as **A3032**.
@@ -159,7 +175,11 @@ guessed battery scale, ANC byte, EQ band or codec write.
   (equalizer, wearing detection, single battery) implementations, but those
   packet layouts have **not been ported or validated** in SoundControl, so both
   SKUs are catalog-only here. Porting them is tracked as a documented gap, not
-  as support.
+  as support. The retail variant `A3033Y11` is marketed in several regions as
+  **Soundcore Q10i**; that name is handled as a regional alias of the same
+  A3033 hardware (Anker registration `A3033C` = Life 2 Neo), while the separate
+  **A3032 Life Q10** row is a different product. No Q10i-specific packet exists
+  in the reviewed sources, so the alias changes identification only.
 
 ### 4.3 Features that stay unknown on purpose
 
@@ -219,7 +239,7 @@ SoundControl therefore does **not** add a gaming category or catalog row:
 | Product | Evidence | Status |
 | --- | --- | --- |
 | Strike 3 (A3830) | Official manual + retail listings: wired USB-A, Soundcore Gaming app | NOT APPLICABLE — no Bluetooth control path |
-| Strike 1 | Retail listing: wired 3.5 mm, no SKU confirmed in this review | NOT APPLICABLE; not catalogued (SKU unconfirmed) |
+| Strike 1 | Retail listings suggest `A3811` / `A3811H11` (not confirmed by an official Anker document found in this review); wired 3.5 mm | NOT APPLICABLE; not catalogued (SKU unconfirmed) |
 | Strike 2 (A3829) | SKU claim could not be confirmed | Deliberately not catalogued |
 
 Adding a gaming entry would imply Bluetooth control that does not exist, so
