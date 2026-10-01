@@ -2,22 +2,30 @@ name: Publish Windows Test Installer (unsigned)
 
 # Publishes the ALREADY-BUILT, ALREADY-TESTED unsigned Windows installer that the
 # Windows Build workflow produced (artifact `SoundControl-Windows-Test-Unsigned`)
-# to a clearly labelled GitHub PRE-RELEASE, so that the tested installer is
+# to an existing, clearly labelled PRE-RELEASE, so the tested installer becomes
 # publicly downloadable from the Releases page.
 #
-# This workflow does not build and does not sign anything, and it does not touch
-# the signed release path: `.github/workflows/release-windows.yml` still requires
-# Authenticode credentials, still builds with `forceCodeSigning`, and still
-# verifies the real generated installer's signature before it publishes an
-# installer. Publishing these unsigned bytes here is deliberate and honest — the
-# release is a pre-release, its notes say UNSIGNED in plain language, and every
-# byte is verified against the SHA-256 of the tested build before it is uploaded.
+# This workflow does not build, does not sign, and does not create releases. It
+# uploads exactly one artifact — `SoundControl-Setup.exe` — after verifying the
+# artifact's provenance through the API, the artifact-zip digest, the installer's
+# name/size/SHA-256 and that the installer is NotSigned. If anything does not
+# match, the job fails and nothing is uploaded.
 #
-# Why not attach the installer through Release Windows instead? That workflow
-# rebuilds from source and hard-fails without signing credentials; disabling any
-# of its gates to publish an unsigned build is exactly what must not happen. This
-# workflow republishes the existing tested bytes unchanged instead, and refuses to
-# modify any release that is not a pre-release.
+# The signed release path is untouched: `.github/workflows/release-windows.yml`
+# still requires Authenticode credentials, still builds with `forceCodeSigning`,
+# and still verifies the real generated installer's signature before it publishes
+# anything. Rebuilding the installer just to publish it unsigned, or relaxing any
+# of those gates, is exactly what must not happen — so these tested bytes are
+# republished unchanged instead, and this workflow refuses to touch any release
+# that is not a pre-release.
+#
+# The pre-release must exist first, created by a maintainer with the reviewed
+# notes file (this is also what documents the SHA-256 and the UNSIGNED status):
+#
+#   gh release create v1.0.7-windows-unsigned-1 \
+#     --title "SoundControl v1.0.7 - Windows installer (UNSIGNED test build)" \
+#     --notes-file docs/releases/v1.0.7-windows-unsigned-1.md \
+#     --prerelease --target dc255d0397e6aeed4f61a01d25bd13cd2cb5b824
 #
 # Trigger: `workflow_dispatch` (available once this file is on the default
 # branch), or a push to an arena/** session branch whose commit message contains
@@ -29,7 +37,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Pre-release tag to create or update'
+        description: 'Existing pre-release tag to attach the installer to'
         required: false
         default: 'v1.0.7-windows-unsigned-1'
         type: string
@@ -42,11 +50,6 @@ on:
         description: 'Windows Build run ID that produced the artifact'
         required: false
         default: '36742600478'
-        type: string
-      target_commit:
-        description: 'Commit the tag points at (the commit the installer was built from)'
-        required: false
-        default: 'dc255d0397e6aeed4f61a01d25bd13cd2cb5b824'
         type: string
       expected_artifact_digest:
         description: 'Expected SHA-256 of the downloaded artifact zip'
@@ -85,7 +88,6 @@ jobs:
       IN_RELEASE_TAG: ${{ inputs.release_tag }}
       IN_ARTIFACT_ID: ${{ inputs.artifact_id }}
       IN_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
-      IN_TARGET_COMMIT: ${{ inputs.target_commit }}
       IN_EXPECTED_ARTIFACT_DIGEST: ${{ inputs.expected_artifact_digest }}
       IN_EXPECTED_INSTALLER_SHA256: ${{ inputs.expected_installer_sha256 }}
       IN_EXPECTED_INSTALLER_SIZE: ${{ inputs.expected_installer_size }}
@@ -103,7 +105,6 @@ jobs:
             RELEASE_TAG               = Resolve-Value $env:IN_RELEASE_TAG 'v1.0.7-windows-unsigned-1'
             ARTIFACT_ID               = Resolve-Value $env:IN_ARTIFACT_ID '11110509686'
             SOURCE_RUN_ID             = Resolve-Value $env:IN_SOURCE_RUN_ID '36742600478'
-            TARGET_COMMIT             = Resolve-Value $env:IN_TARGET_COMMIT 'dc255d0397e6aeed4f61a01d25bd13cd2cb5b824'
             EXPECTED_ARTIFACT_DIGEST  = (Resolve-Value $env:IN_EXPECTED_ARTIFACT_DIGEST '01feb50c15c1fbd2d871aa93f6109ee895c40fc252620596e576556fbdcde6b7').ToLower()
             EXPECTED_INSTALLER_SHA256 = (Resolve-Value $env:IN_EXPECTED_INSTALLER_SHA256 '97e256f630c3ab2afa4f54c5d8a50113f4127268f39e6613c16ddb8c3a90338a').ToLower()
             EXPECTED_INSTALLER_SIZE   = Resolve-Value $env:IN_EXPECTED_INSTALLER_SIZE '121528415'
@@ -112,6 +113,31 @@ jobs:
             Add-Content -Path $env:GITHUB_ENV -Value "$key=$($values[$key])"
           }
           $values.Keys | ForEach-Object { Write-Host "$_=$($values[$_])" }
+      # The destination must already be a pre-release whose notes state the
+      # expected SHA-256 — this workflow can never publish to a stable release and
+      # can never attach a binary the release notes do not describe.
+      - name: Require the destination pre-release (with the matching checksum in its notes)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # gh reports failures on stderr; handle the exit code explicitly instead
+          # of letting PowerShell turn that into an opaque terminating error.
+          $PSNativeCommandUseErrorActionPreference = $false
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" 2>$null | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or -not $release) {
+            Write-Host "::error::pre-release $env:RELEASE_TAG does not exist. Create it first with the reviewed notes file (see this workflow's header); this workflow never creates releases and never touches stable releases."
+            exit 1
+          }
+          if (-not $release.prerelease) {
+            Write-Host "::error::release $env:RELEASE_TAG is not a pre-release - refusing to attach an unsigned test installer to a stable release."
+            exit 1
+          }
+          if ($release.body -notmatch [regex]::Escape($env:EXPECTED_INSTALLER_SHA256)) {
+            Write-Host "::error::the release notes for $env:RELEASE_TAG do not state the SHA-256 $env:EXPECTED_INSTALLER_SHA256 - refusing to attach the installer."
+            exit 1
+          }
+          Write-Host "Destination pre-release OK: $($release.html_url) (prerelease=$($release.prerelease))"
+          Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_URL=$($release.html_url)"
       # Provenance check: the artifact ID must be the tested Windows Build artifact
       # of the expected run — otherwise the job stops before downloading anything.
       - name: Verify artifact provenance (name, run, digest) via the API
@@ -119,6 +145,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $artifact = gh api "repos/$env:GITHUB_REPOSITORY/actions/artifacts/$env:ARTIFACT_ID" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or -not $artifact) { throw "could not read artifact $env:ARTIFACT_ID" }
           Write-Host "Artifact: $($artifact.name) id=$($artifact.id) expired=$($artifact.expired) digest=$($artifact.digest)"
           if ($artifact.name -ne 'SoundControl-Windows-Test-Unsigned') { throw "unexpected artifact name: $($artifact.name)" }
           if ($artifact.expired) { throw "artifact $($artifact.id) has expired" }
@@ -176,36 +203,23 @@ jobs:
           @(
             "### Verified BEFORE publishing",
             "",
-            "- artifact: ``$($env:ARTIFACT_ID)`` from run ``$($env:SOURCE_RUN_ID)``",
+            "- artifact: ``$($env:ARTIFACT_ID)`` from Windows Build run ``$($env:SOURCE_RUN_ID)``",
             "- artifact.zip SHA-256: ``$env:EXPECTED_ARTIFACT_DIGEST`` (matched)",
             "- installer: ``$($exe.Name)``, $($exe.Length) bytes",
             "- installer SHA-256: ``$installerHash`` (matched the tested value)",
-            "- Authenticode: ``$($signature.Status)`` (unsigned, as labelled)",
+            "- Authenticode: ``$($signature.Status)`` (unsigned, as the release notes state)",
             ""
           ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
-      # Refuse to touch a stable release: only pre-releases may be created/updated here.
-      - name: Publish or update the pre-release (never a stable release)
+      - name: Upload the verified installer to the pre-release
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $title = 'SoundControl v1.0.7 - Windows installer (UNSIGNED test build)'
-          $notes = 'docs/releases/v1.0.7-windows-unsigned-1.md'
-          if (-not (Test-Path $notes)) { throw "release notes file not found: $notes" }
-          gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" | Out-Null
-          if ($LASTEXITCODE -eq 0) {
-            $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
-            if (-not $release.prerelease) {
-              throw "release $env:RELEASE_TAG exists and is NOT a pre-release - this workflow never modifies a stable release"
-            }
-            Write-Host "Updating existing pre-release $env:RELEASE_TAG"
-            gh release edit $env:RELEASE_TAG --title $title --notes-file $notes --prerelease
-          } else {
-            Write-Host "Creating pre-release $env:RELEASE_TAG at $env:TARGET_COMMIT"
-            gh release create $env:RELEASE_TAG --title $title --notes-file $notes --prerelease --target $env:TARGET_COMMIT
-          }
-          if ($LASTEXITCODE -ne 0) { throw "release create/edit failed (exit $LASTEXITCODE)" }
+          $PSNativeCommandUseErrorActionPreference = $false
           gh release upload $env:RELEASE_TAG release-assets/SoundControl-Setup.exe --clobber
-          if ($LASTEXITCODE -ne 0) { throw "asset upload failed (exit $LASTEXITCODE)" }
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::uploading SoundControl-Setup.exe to $env:RELEASE_TAG failed (exit $LASTEXITCODE)"
+            exit 1
+          }
       - name: Verify the published asset (name, size, digest)
         shell: pwsh
         run: |
@@ -233,7 +247,7 @@ jobs:
           @(
             "### Published",
             "",
-            "- release: $($release.html_url) (pre-release: $($release.prerelease))",
+            "- release: $env:RELEASE_URL (pre-release)",
             "- asset: ``$($asset.name)``, $($asset.size) bytes, state=$($asset.state)",
             "- asset digest: ``$assetDigest``",
             "- download URL: $($asset.browser_download_url)",
