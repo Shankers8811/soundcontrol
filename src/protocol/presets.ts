@@ -316,6 +316,45 @@ export const TYPE2_PRESETS: EqPreset[] = EQ_PRESETS.map((preset) =>
     : preset,
 );
 
+/**
+ * A3005 / Q11i — its own factory list, read from OpenSCQ30 `a3005.rs`.
+ *
+ * Two facts make this table model-specific rather than a copy of the shared
+ * one: `Bass Booster` is `0x7E7E` (this model defines no `0x02` preset at
+ * all), and its presets are declared with ten band values
+ * (`EqualizerModuleSettings<8, 10, ...>`) rather than eight, so the shared
+ * table's Bass Booster id must never be sent here. The remaining ids and
+ * curves match the standard list.
+ */
+export const A3005_PRESETS: EqPreset[] = [
+  presetFrom('a3005-soundcore-signature', 'Soundcore Signature', 0x0000, [0, 0, 0, 0, 0, 0, 0, 0], {
+    featured: true,
+    blurb: 'Reference curve',
+    swatch: 'linear-gradient(135deg,#4f46e5,#22d3ee)',
+  }),
+  presetFrom('a3005-acoustic', 'Acoustic', 0x0001, [4, 1, 2, 2, 4, 4, 4, 2]),
+  presetFrom('a3005-bass-reducer', 'Bass Reducer', 0x0003, [-4, -3, -1, 0, 0, 0, 0, 0]),
+  presetFrom('a3005-classical', 'Classical', 0x0004, [3, 3, -2, -2, 0, 2, 3, 4]),
+  presetFrom('a3005-podcast', 'Podcast', 0x0005, [-3, 2, 4, 4, 3, 2, 0, -2]),
+  presetFrom('a3005-dance', 'Dance', 0x0006, [2, -3, -1, 1, 2, 2, 1, -3]),
+  presetFrom('a3005-deep', 'Deep', 0x0007, [2, 1, 3, 3, 2, -2, -4, -5]),
+  presetFrom('a3005-electronic', 'Electronic', 0x0008, [3, 2, -2, 2, 1, 2, 3, 3]),
+  presetFrom('a3005-flat', 'Flat', 0x0009, [-2, -2, -1, 0, 0, 0, -2, -2]),
+  presetFrom('a3005-hip-hop', 'Hip-Hop', 0x000a, [2, 3, -1, -1, 2, -1, 2, 3]),
+  presetFrom('a3005-jazz', 'Jazz', 0x000b, [2, 2, -2, -2, 0, 2, 3, 4]),
+  presetFrom('a3005-latin', 'Latin', 0x000c, [0, 0, -2, -2, -2, 0, 3, 5]),
+  presetFrom('a3005-lounge', 'Lounge', 0x000d, [-1, 2, 4, 3, 0, -2, 2, 1]),
+  presetFrom('a3005-piano', 'Piano', 0x000e, [0, 3, 3, 2, 4, 5, 3, 4]),
+  presetFrom('a3005-pop', 'Pop', 0x000f, [-1, 1, 3, 3, 1, -1, -2, -3]),
+  presetFrom('a3005-r-b', 'R&B', 0x0010, [6, 2, -2, -2, 2, 3, 3, 4]),
+  presetFrom('a3005-rock', 'Rock', 0x0011, [3, 2, -1, -1, 1, 3, 4, 5], { featured: true, swatch: 'linear-gradient(135deg,#7f1d1d,#ef4444)' }),
+  presetFrom('a3005-small-speakers', 'Small Speakers', 0x0012, [4, 3, 1, 0, -2, -3, -4, -4]),
+  presetFrom('a3005-spoken-word', 'Spoken Word', 0x0013, [-3, -2, 1, 2, 2, 1, 0, -3]),
+  presetFrom('a3005-treble-booster', 'Treble Booster', 0x0014, [-2, -2, -2, -1, 1, 2, 2, 4]),
+  presetFrom('a3005-treble-reducer', 'Treble Reducer', 0x0015, [0, 0, 0, -2, -3, -4, -4, -6]),
+  presetFrom('a3005-bass-booster', 'Bass Booster', 0x7e7e, [4, 3, 1, 0, 0, 0, 0, 0], { featured: true, swatch: 'linear-gradient(135deg,#7c2d12,#f97316)' }),
+];
+
 /** A3876 / V20i — its own factory list, names and curves (OpenSCQ30 a3876.rs). */
 export const V20I_PRESETS: EqPreset[] = [
   presetFrom('v20i-signature', 'Soundcore Signature', 0x00, [0, 0, 0, 0, 0, 0, 0, 0], { featured: true, swatch: 'linear-gradient(135deg,#6a5cff,#3d7bff)' }),
@@ -364,6 +403,8 @@ export function presetsForProfile(profile: { presetSet?: DeviceProfile['presetSe
       return C50I_PRESETS;
     case 'c30i':
       return C30I_PRESETS;
+    case 'a3005':
+      return A3005_PRESETS;
     default:
       return EQ_PRESETS;
   }
