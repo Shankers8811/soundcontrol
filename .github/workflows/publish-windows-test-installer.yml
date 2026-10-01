@@ -1,0 +1,241 @@
+name: Publish Windows Test Installer (unsigned)
+
+# Publishes the ALREADY-BUILT, ALREADY-TESTED unsigned Windows installer that the
+# Windows Build workflow produced (artifact `SoundControl-Windows-Test-Unsigned`)
+# to a clearly labelled GitHub PRE-RELEASE, so that the tested installer is
+# publicly downloadable from the Releases page.
+#
+# This workflow does not build and does not sign anything, and it does not touch
+# the signed release path: `.github/workflows/release-windows.yml` still requires
+# Authenticode credentials, still builds with `forceCodeSigning`, and still
+# verifies the real generated installer's signature before it publishes an
+# installer. Publishing these unsigned bytes here is deliberate and honest — the
+# release is a pre-release, its notes say UNSIGNED in plain language, and every
+# byte is verified against the SHA-256 of the tested build before it is uploaded.
+#
+# Why not attach the installer through Release Windows instead? That workflow
+# rebuilds from source and hard-fails without signing credentials; disabling any
+# of its gates to publish an unsigned build is exactly what must not happen. This
+# workflow republishes the existing tested bytes unchanged instead, and refuses to
+# modify any release that is not a pre-release.
+#
+# Trigger: `workflow_dispatch` (available once this file is on the default
+# branch), or a push to an arena/** session branch whose commit message contains
+# the [publish-windows-test-installer] marker — the same convention
+# release-windows.yml uses for its [publish-windows] marker. Ordinary pushes
+# never publish.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Pre-release tag to create or update'
+        required: false
+        default: 'v1.0.7-windows-unsigned-1'
+        type: string
+      artifact_id:
+        description: 'Artifact ID of the tested Windows installer (from Windows Build)'
+        required: false
+        default: '11110509686'
+        type: string
+      source_run_id:
+        description: 'Windows Build run ID that produced the artifact'
+        required: false
+        default: '36742600478'
+        type: string
+      target_commit:
+        description: 'Commit the tag points at (the commit the installer was built from)'
+        required: false
+        default: 'dc255d0397e6aeed4f61a01d25bd13cd2cb5b824'
+        type: string
+      expected_artifact_digest:
+        description: 'Expected SHA-256 of the downloaded artifact zip'
+        required: false
+        default: '01feb50c15c1fbd2d871aa93f6109ee895c40fc252620596e576556fbdcde6b7'
+        type: string
+      expected_installer_sha256:
+        description: 'Expected SHA-256 of SoundControl-Setup.exe'
+        required: false
+        default: '97e256f630c3ab2afa4f54c5d8a50113f4127268f39e6613c16ddb8c3a90338a'
+        type: string
+      expected_installer_size:
+        description: 'Expected size of SoundControl-Setup.exe in bytes'
+        required: false
+        default: '121528415'
+        type: string
+  push:
+    branches:
+      - 'arena/**'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-windows-test-installer
+  cancel-in-progress: false
+
+jobs:
+  publish-unsigned-test-installer:
+    if: ${{ github.event_name != 'push' || contains(github.event.head_commit.message, '[publish-windows-test-installer]') }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      IN_RELEASE_TAG: ${{ inputs.release_tag }}
+      IN_ARTIFACT_ID: ${{ inputs.artifact_id }}
+      IN_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+      IN_TARGET_COMMIT: ${{ inputs.target_commit }}
+      IN_EXPECTED_ARTIFACT_DIGEST: ${{ inputs.expected_artifact_digest }}
+      IN_EXPECTED_INSTALLER_SHA256: ${{ inputs.expected_installer_sha256 }}
+      IN_EXPECTED_INSTALLER_SIZE: ${{ inputs.expected_installer_size }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Resolve inputs (defaults for push-triggered runs)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Resolve-Value([string]$Value, [string]$Default) {
+            if ([string]::IsNullOrWhiteSpace($Value)) { return $Default }
+            return $Value.Trim()
+          }
+          $values = [ordered]@{
+            RELEASE_TAG               = Resolve-Value $env:IN_RELEASE_TAG 'v1.0.7-windows-unsigned-1'
+            ARTIFACT_ID               = Resolve-Value $env:IN_ARTIFACT_ID '11110509686'
+            SOURCE_RUN_ID             = Resolve-Value $env:IN_SOURCE_RUN_ID '36742600478'
+            TARGET_COMMIT             = Resolve-Value $env:IN_TARGET_COMMIT 'dc255d0397e6aeed4f61a01d25bd13cd2cb5b824'
+            EXPECTED_ARTIFACT_DIGEST  = (Resolve-Value $env:IN_EXPECTED_ARTIFACT_DIGEST '01feb50c15c1fbd2d871aa93f6109ee895c40fc252620596e576556fbdcde6b7').ToLower()
+            EXPECTED_INSTALLER_SHA256 = (Resolve-Value $env:IN_EXPECTED_INSTALLER_SHA256 '97e256f630c3ab2afa4f54c5d8a50113f4127268f39e6613c16ddb8c3a90338a').ToLower()
+            EXPECTED_INSTALLER_SIZE   = Resolve-Value $env:IN_EXPECTED_INSTALLER_SIZE '121528415'
+          }
+          foreach ($key in $values.Keys) {
+            Add-Content -Path $env:GITHUB_ENV -Value "$key=$($values[$key])"
+          }
+          $values.Keys | ForEach-Object { Write-Host "$_=$($values[$_])" }
+      # Provenance check: the artifact ID must be the tested Windows Build artifact
+      # of the expected run — otherwise the job stops before downloading anything.
+      - name: Verify artifact provenance (name, run, digest) via the API
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $artifact = gh api "repos/$env:GITHUB_REPOSITORY/actions/artifacts/$env:ARTIFACT_ID" | ConvertFrom-Json
+          Write-Host "Artifact: $($artifact.name) id=$($artifact.id) expired=$($artifact.expired) digest=$($artifact.digest)"
+          if ($artifact.name -ne 'SoundControl-Windows-Test-Unsigned') { throw "unexpected artifact name: $($artifact.name)" }
+          if ($artifact.expired) { throw "artifact $($artifact.id) has expired" }
+          if ([long]$artifact.workflow_run.id -ne [long]$env:SOURCE_RUN_ID) {
+            throw "artifact $($artifact.id) belongs to run $($artifact.workflow_run.id), expected $env:SOURCE_RUN_ID"
+          }
+          if ($artifact.digest -ne "sha256:$env:EXPECTED_ARTIFACT_DIGEST") {
+            throw "artifact digest $($artifact.digest) does not match the expected sha256:$env:EXPECTED_ARTIFACT_DIGEST"
+          }
+      - name: Download the tested artifact and verify its digest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          curl.exe -sS -L --retry 3 --retry-all-errors `
+            -H "Authorization: Bearer $env:GH_TOKEN" `
+            -H "Accept: application/vnd.github+json" `
+            -o artifact.zip `
+            "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/artifacts/$env:ARTIFACT_ID/zip"
+          if ($LASTEXITCODE -ne 0) { throw "artifact download failed (exit $LASTEXITCODE)" }
+          $zipHash = (Get-FileHash artifact.zip -Algorithm SHA256).Hash.ToLower()
+          Write-Host "artifact.zip sha256=$zipHash size=$((Get-Item artifact.zip).Length)"
+          if ($zipHash -ne $env:EXPECTED_ARTIFACT_DIGEST) {
+            throw "downloaded artifact zip hash $zipHash does not match $env:EXPECTED_ARTIFACT_DIGEST"
+          }
+      # The binary is published exactly as built: one installer, expected name,
+      # expected size, expected SHA-256, and no Authenticode signature (so the
+      # UNSIGNED wording in the release notes is never wrong).
+      - name: Verify the installer (name, size, SHA-256, unsigned) before publishing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Expand-Archive -Path artifact.zip -DestinationPath artifact -Force
+          $exes = @(Get-ChildItem -Path artifact -Recurse -File -Filter *.exe)
+          if ($exes.Count -ne 1) { throw "expected exactly one .exe in the artifact, found $($exes.Count)" }
+          $exe = $exes[0]
+          if ($exe.Name -ne 'SoundControl-Setup.exe') { throw "unexpected installer name: $($exe.Name)" }
+          if ($exe.Length -ne [long]$env:EXPECTED_INSTALLER_SIZE) {
+            throw "installer size $($exe.Length) does not match expected $env:EXPECTED_INSTALLER_SIZE"
+          }
+          $installerHash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          Write-Host "installer: $($exe.FullName) size=$($exe.Length) sha256=$installerHash"
+          if ($installerHash -ne $env:EXPECTED_INSTALLER_SHA256) {
+            throw "installer SHA-256 $installerHash does not match the tested value $env:EXPECTED_INSTALLER_SHA256"
+          }
+          $signature = Get-AuthenticodeSignature $exe.FullName
+          Write-Host "Authenticode status: $($signature.Status)"
+          if ($signature.Status -ne 'NotSigned') {
+            throw "expected an unsigned installer (NotSigned) but got '$($signature.Status)' - refusing to publish it under an UNSIGNED label"
+          }
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          Copy-Item $exe.FullName release-assets/SoundControl-Setup.exe -Force
+          Add-Content -Path $env:GITHUB_ENV -Value "INSTALLER_SHA256=$installerHash"
+          Add-Content -Path $env:GITHUB_ENV -Value "INSTALLER_SIZE=$($exe.Length)"
+          Add-Content -Path $env:GITHUB_ENV -Value "AUTHENTICODE_STATUS=$($signature.Status)"
+          @(
+            "### Verified BEFORE publishing",
+            "",
+            "- artifact: ``$($env:ARTIFACT_ID)`` from run ``$($env:SOURCE_RUN_ID)``",
+            "- artifact.zip SHA-256: ``$env:EXPECTED_ARTIFACT_DIGEST`` (matched)",
+            "- installer: ``$($exe.Name)``, $($exe.Length) bytes",
+            "- installer SHA-256: ``$installerHash`` (matched the tested value)",
+            "- Authenticode: ``$($signature.Status)`` (unsigned, as labelled)",
+            ""
+          ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+      # Refuse to touch a stable release: only pre-releases may be created/updated here.
+      - name: Publish or update the pre-release (never a stable release)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $title = 'SoundControl v1.0.7 - Windows installer (UNSIGNED test build)'
+          $notes = 'docs/releases/v1.0.7-windows-unsigned-1.md'
+          if (-not (Test-Path $notes)) { throw "release notes file not found: $notes" }
+          gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
+            if (-not $release.prerelease) {
+              throw "release $env:RELEASE_TAG exists and is NOT a pre-release - this workflow never modifies a stable release"
+            }
+            Write-Host "Updating existing pre-release $env:RELEASE_TAG"
+            gh release edit $env:RELEASE_TAG --title $title --notes-file $notes --prerelease
+          } else {
+            Write-Host "Creating pre-release $env:RELEASE_TAG at $env:TARGET_COMMIT"
+            gh release create $env:RELEASE_TAG --title $title --notes-file $notes --prerelease --target $env:TARGET_COMMIT
+          }
+          if ($LASTEXITCODE -ne 0) { throw "release create/edit failed (exit $LASTEXITCODE)" }
+          gh release upload $env:RELEASE_TAG release-assets/SoundControl-Setup.exe --clobber
+          if ($LASTEXITCODE -ne 0) { throw "asset upload failed (exit $LASTEXITCODE)" }
+      - name: Verify the published asset (name, size, digest)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
+          $asset = $release.assets | Where-Object { $_.name -eq 'SoundControl-Setup.exe' }
+          if (-not $asset) { throw "SoundControl-Setup.exe is not attached to $env:RELEASE_TAG" }
+          if ($asset.state -ne 'uploaded') { throw "asset state is '$($asset.state)'" }
+          if ([long]$asset.size -ne [long]$env:EXPECTED_INSTALLER_SIZE) {
+            throw "published asset size $($asset.size) does not match $env:EXPECTED_INSTALLER_SIZE"
+          }
+          $assetDigest = $null
+          for ($attempt = 1; $attempt -le 6; $attempt++) {
+            $assetDigest = (gh api "repos/$env:GITHUB_REPOSITORY/releases/assets/$($asset.id)" | ConvertFrom-Json).digest
+            if ($assetDigest) { break }
+            Start-Sleep -Seconds 10
+          }
+          if ($assetDigest -and $assetDigest -ne "sha256:$env:EXPECTED_INSTALLER_SHA256") {
+            throw "published asset digest $assetDigest does not match sha256:$env:EXPECTED_INSTALLER_SHA256"
+          }
+          if (-not $assetDigest) {
+            Write-Warning "the release-assets API did not report a digest; the installer was hash-verified immediately before upload"
+          }
+          Write-Host "Published asset: $($asset.name) size=$($asset.size) digest=$assetDigest"
+          @(
+            "### Published",
+            "",
+            "- release: $($release.html_url) (pre-release: $($release.prerelease))",
+            "- asset: ``$($asset.name)``, $($asset.size) bytes, state=$($asset.state)",
+            "- asset digest: ``$assetDigest``",
+            "- download URL: $($asset.browser_download_url)",
+            ""
+          ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY

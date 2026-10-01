@@ -71,6 +71,19 @@ The workflow also retains the complete build directory as a workflow artifact
 for maintainers. The installer is only published after all signing and upgrade
 smoke-test gates pass.
 
+### Unsigned test installer (separate from the signed release path)
+
+`.github/workflows/publish-windows-test-installer.yml` republishes the existing
+**already-built, already-tested unsigned CI installer** (the
+`SoundControl-Windows-Test-Unsigned` artifact from a successful Windows Build
+run) to a clearly labelled **pre-release**, so it is publicly downloadable
+without disabling or weakening the signing gates in the section below. It builds nothing, signs nothing,
+verifies the artifact-zip digest and the installer SHA-256 before uploading,
+refuses to modify any release that is not a pre-release, and never replaces the
+stable signed installer asset. The current such pre-release is
+`v1.0.7-windows-unsigned-1` (`SoundControl-Setup.exe`, unsigned, described as
+such in its release notes).
+
 ## Linux release
 
 The workflow `.github/workflows/release-linux.yml` runs on the network-capable
@@ -110,7 +123,10 @@ bundled and do not need to be installed separately.
 
 Releases must be Authenticode-signed — the release workflow fails without
 signing credentials and verifies the real generated EXE before publishing, so
-an unsigned installer cannot be released. Routes to a certificate:
+that workflow cannot publish an unsigned installer. (The one exception is the
+explicitly labelled unsigned CI test installer on its own pre-release, described
+under [Windows release](#windows-release); it is never presented as a signed
+release.) Routes to a certificate:
 
 1. **Free:** [SignPath Foundation](https://signpath.org/) signs qualifying
    open-source projects at no cost.

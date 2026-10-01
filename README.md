@@ -25,7 +25,7 @@ Live status for `main`:
 
 The repository currently requires all three checks to pass before a validated `main` change is considered ready. CI is automated validation; it is not physical Soundcore-device or Windows audio-regression validation.
 
-**Install or download:** Linux AppImage and Debian packages are available below. The latest published release has **no Windows installer asset**; the Windows download remains unavailable until an Authenticode-verified installer is published. The Windows Build badge above shows live GitHub Actions status for `main`, not a signed-release indicator.
+**Install or download:** Linux AppImage and Debian packages are available below, and a Windows installer is available as an **UNSIGNED** test build from the [Windows test-installer pre-release](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.7-windows-unsigned-1). That Windows installer is **not Authenticode-signed**, so Windows will show a SmartScreen / "unknown publisher" warning; it is published for Windows 11 / Windows desktop testing. An official Windows release still requires Authenticode signing. The Windows Build badge above shows live GitHub Actions status for `main`, not a signed-release indicator.
 
 ---
 
@@ -33,13 +33,26 @@ The repository currently requires all three checks to pass before a validated `m
 
 **⬇️ Direct downloads (recommended) — no build required:**
 
-**Latest published release:** [v1.0.7-linux-validation-3](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.7-linux-validation-3) (assets checked 2026-09-30). It contains `SoundControl.AppImage`, `SoundControl-1.0.7.AppImage`, `SoundControl.deb`, and `soundcontrol_1.0.7_amd64.deb` — no Windows installer asset.
+**Latest stable release (Linux):** [v1.0.7-linux-validation-3](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.7-linux-validation-3) (assets checked 2026-09-30). It contains `SoundControl.AppImage`, `SoundControl-1.0.7.AppImage`, `SoundControl.deb`, and `soundcontrol_1.0.7_amd64.deb`.
+
+**Windows test installer (UNSIGNED):** the [v1.0.7-windows-unsigned-1 pre-release](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.7-windows-unsigned-1) publishes the already-tested Windows Build CI installer. It is a pre-release because it is **not Authenticode-signed** — see the Windows section below.
 
 ### 🪟 Windows
 
-**Windows installer: not included in the latest published release.** There is no `SoundControl-Setup.exe` asset, so there is no official Windows download link to provide.
+[**Download `SoundControl-Setup.exe`**](https://github.com/Shankers8811/soundcontrol/releases/download/v1.0.7-windows-unsigned-1/SoundControl-Setup.exe) — **UNSIGNED** Windows installer, 121,528,415 bytes, for **Windows 11 / Windows desktop testing**.
 
-A future official Windows release would attach an Authenticode-signed NSIS installer with Start-menu and desktop shortcuts and a bundled Bluetooth runtime; users would not need Node.js or Python. Publication is gated by a valid Authenticode certificate and the `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` credentials (or their documented aliases). A passing Windows Build workflow, a local `npm run build:win` result, or an unsigned CI artifact is **not** a published signed Windows installer.
+⚠️ **This installer is not Authenticode-signed.** Windows cannot verify a publisher for it, so **Windows may display a SmartScreen / "unknown publisher" security warning** when you download or run it. That warning is expected for an unsigned build; the installer is not signed and is not production-certified. Verify the download first:
+
+```powershell
+Get-FileHash .\SoundControl-Setup.exe -Algorithm SHA256
+# SHA256  97E256F630C3AB2AFA4F54C5D8A50113F4127268F39E6613C16DDB8C3A90338A
+```
+
+(or in cmd: `certutil -hashfile SoundControl-Setup.exe SHA256`)
+
+This is the installer from the artifact `SoundControl-Windows-Test-Unsigned` (artifact ID 11110509686) produced by [Windows Build run 36742600478](https://github.com/Shankers8811/soundcontrol/actions/runs/36742600478), and it is the same installer that passed the [Windows Desktop Smoke Test run 36742600260](https://github.com/Shankers8811/soundcontrol/actions/runs/36742600260) on the same commit. It ships an NSIS installer with Start-menu and desktop shortcuts and a bundled Bluetooth runtime, so it needs no Node.js or Python installation. CI install/smoke checks are **not** physical Soundcore-device hardware validation — the [hardware validation record](HARDWARE-VALIDATION.md) is unchanged and still lists what has and has not been tested on real hardware.
+
+An **official Windows release** remains gated on Authenticode signing: it is published through the Release Windows workflow, which requires a valid code-signing certificate and the `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` credentials (or their documented aliases) and verifies a real signature before publishing. A passing Windows Build workflow, a local `npm run build:win` result, or this unsigned installer is **not** a signed Windows release.
 
 ### 🐧 Linux AppImage
 
@@ -65,7 +78,7 @@ Both published Linux packages bundle Electron and the Python bridge runtime — 
 [**View all releases and release notes**](https://github.com/Shankers8811/soundcontrol/releases)
 
 - Release links are built into the app under **Settings → About**.
-- Windows releases are required to pass Authenticode signing before publication; a CI artifact is not a published release asset.
+- Official Windows releases are required to pass Authenticode signing before publication. The Windows installer published under [v1.0.7-windows-unsigned-1](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.7-windows-unsigned-1) is an explicitly labelled **UNSIGNED** CI test build on a pre-release, not a signed or production release.
 - **Lifecycle is deliberately boring:** SoundControl starts only when you launch it (it never
   registers a Windows startup entry, and a startup entry left by an older version is removed at
   launch), and closing the window exits completely — the Bluetooth helper is terminated, port
@@ -100,7 +113,7 @@ paired with the host computer** through a small local Bluetooth bridge:
    paired devices nor write to them — see [SECURITY.md](.github/SECURITY.md).
 
 The very first launch after installing can take a few extra seconds while the desktop runtime
-initializes — it is not hung. Windows installers must be Authenticode-signed before distribution (see [Code signing & SmartScreen](#-code-signing--smartscreen)).
+initializes — it is not hung. Official Windows releases must be Authenticode-signed before distribution (see [Code signing & SmartScreen](#-code-signing--smartscreen)); the separately published Windows test installer is unsigned and labelled as such.
 
 **Or build/run it yourself from source.** Run directly on Windows or Linux with hardware Bluetooth support:
   ```bash
@@ -353,10 +366,12 @@ git push origin vX.Y.Z
 
 The in-app downloader queries the latest release and shows only assets that exist. Linux stable aliases are attached by the Linux release workflow.
 
+Separately from that signed path, `.github/workflows/publish-windows-test-installer.yml` makes the **already-built, already-tested** unsigned CI installer (artifact `SoundControl-Windows-Test-Unsigned`) publicly downloadable by republishing it unchanged to a clearly labelled pre-release (`v1.0.7-windows-unsigned-1`). It does not build or sign anything, verifies the artifact digest and the installer SHA-256 before uploading, refuses to touch any release that is not a pre-release, and leaves every signing gate in the Release Windows workflow untouched.
+
 ### 🔏 Code signing & SmartScreen
 The Windows signing pipeline is fully implemented and enforced: **release builds are gated on signing** — the release workflow refuses to build without credentials, electron-builder runs with `forceCodeSigning`, and the generated EXE is verified (`Get-AuthenticodeSignature` + `signtool verify /pa`, publisher identity, SHA-256 recorded, every shipped executable signed) before the GitHub Release is published. All details: **[docs/WINDOWS-CODE-SIGNING.md](docs/WINDOWS-CODE-SIGNING.md)**.
 
-The latest published release has no Windows installer. A signed Windows release requires a valid code-signing certificate and the repository secrets below; the CI certificate-validation step is skipped when they are not configured. To enable signing, set two repository secrets (Settings → Secrets and
+The latest stable release contains the Linux packages; the Windows installer on the Releases page ([v1.0.7-windows-unsigned-1](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.7-windows-unsigned-1)) is an unsigned CI test build, not a signed release. A signed Windows release requires a valid code-signing certificate and the repository secrets below; the CI certificate-validation step is skipped when they are not configured. To enable signing, set two repository secrets (Settings → Secrets and
 variables → Actions):
 
 | Secret | Value |
