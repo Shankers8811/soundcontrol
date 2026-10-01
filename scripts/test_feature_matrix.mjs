@@ -413,6 +413,66 @@ for (const profile of M.DEVICES.filter((d) => d.eqCommand !== null)) {
   );
 }
 
+// An equalizer write must be impossible to deform: the source builders always
+// emit the documented number of bands, so a short, long, NaN or absurd band
+// array may change the values but never the frame length, the CAT:TYPE or the
+// checksum position. Anything else would let a UI bug write an unverified
+// shape to the device.
+const EQ_SHAPES = {
+  '02:81': 20,
+  '02:81-dual': 32,
+  '02:83': 32,
+  '02:83-dual': 32,
+  '03:87': 124,
+};
+const HOSTILE_BANDS = [
+  [],
+  [0],
+  [12],
+  Array(8).fill(NaN),
+  Array(8).fill(Infinity),
+  Array(8).fill(-Infinity),
+  [1200, -1200, 0, 1e9, -1e9, 250, -250, 0],
+  Array(64).fill(6),
+];
+for (const [command, expected] of Object.entries(EQ_SHAPES)) {
+  for (const bands of HOSTILE_BANDS) {
+    const frame = M.buildEq(command, 0x0001, bands);
+    const label = `${command} with ${bands.length} band(s) [${
+      bands.some((b) => !Number.isFinite(b)) ? 'non-finite' : 'finite'
+    }]`;
+    check(`${label}: frame length stays ${expected} bytes`, frame.length === expected);
+    check(`${label}: CAT:TYPE stays ${command}`, `${frame[5].toString(16).padStart(2, '0')}:${frame[6].toString(16).padStart(2, '0')}` === command.split('-')[0]);
+    check(`${label}: total_len matches the frame`, frame[7] | (frame[8] << 8) === frame.length);
+    check(
+      `${label}: every payload byte is a byte`,
+      frame.slice(9, -1).every((b) => Number.isInteger(b) && b >= 0 && b <= 0xff),
+    );
+  }
+}
+check(
+  'preset ids are little-endian 16-bit exactly as documented',
+  (() => {
+    const custom = M.buildEq('02:81', M.CUSTOM_EQ_PRESET_ID, Array(8).fill(0));
+    const other = M.buildEq('02:81', 0x1234, Array(8).fill(0));
+    return custom[9] === 0xfe && custom[10] === 0xfe && other[9] === 0x34 && other[10] === 0x12;
+  })(),
+);
+// Wrong-shape writes to a profile that does use EQ must still be refused: the
+// CAT:TYPE bytes are shared, so only the connected profile's documented length
+// may pass.
+const d1101 = bySku.get('D1101');
+if (d1101 && d1101.eqCommand === '02:81-dual') {
+  check('D1101: its 32-byte 02:81-dual frame is allowed', gateEq(d1101, M.buildEq('02:81-dual', 0x0001, Array(8).fill(0))));
+  check('D1101: the 20-byte classic 02:81 frame is refused', !gateEq(d1101, M.buildEq('02:81', 0x0001, Array(8).fill(0))));
+}
+const d1202Eq = bySku.get('D1202');
+if (d1202Eq) {
+  check('D1202: its 124-byte 03:87 frame is allowed', gateEq(d1202Eq, M.buildEq('03:87', 0x0001, Array(8).fill(0))));
+  check('D1202: a 32-byte 02:83 frame is refused', !gateEq(d1202Eq, M.buildEq('02:83', 0x0001, Array(8).fill(0))));
+  check('D1202: a fabricated HearID frame is refused', !gateEq(d1202Eq, M.buildEq('03:87', 0x0001, Array(8).fill(0)).slice(0, 60)));
+}
+
 /* --------------------------------------------------- unsupported claims */
 
 console.log('\n[claims] nothing beyond the evidence');
