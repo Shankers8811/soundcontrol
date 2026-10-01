@@ -84,6 +84,13 @@ stable signed installer asset. The current such pre-release is
 `v1.0.7-windows-unsigned-1` (`SoundControl-Setup.exe`, unsigned, described as
 such in its release notes).
 
+Because the pre-release uses a `v*` tag, creating it also triggers the tag-based
+release workflows. **Release Windows** stops at its signing-credentials gate (by
+design — it signs and publishes nothing), and **Release Linux** fails in its
+publish step because GitHub refuses to mark a pre-release as "latest", so no
+Linux assets are attached to the pre-release. The stable Linux release and its
+assets are unaffected.
+
 ## Linux release
 
 The workflow `.github/workflows/release-linux.yml` runs on the network-capable
