@@ -477,6 +477,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return;
         }
         sawBatteryFrame = true;
+        // Hardware-validation evidence (docs/R50I-NC-HARDWARE-VALIDATION.md):
+        // log the identified model once per connection together with the exact
+        // state payload size, so a bug report proves which profile the app
+        // parsed and whether the device sent the documented frame length.
+        if (!confirmedLayoutRef.current) {
+          pushLog(
+            'sys',
+            '',
+            `MODEL: ${profileRef.current.sku} · NAME: ${profileRef.current.name} · profile ${profileRef.current.id} · sound modes ${profileRef.current.ancLayout} · EQ ${profileRef.current.eqCommand ?? 'none'} · state payload ${payload.length} bytes`,
+          );
+        }
         confirmedLayoutRef.current = true;
         manualMismatchRef.current = false;
         setConfirmedLayout(true);
