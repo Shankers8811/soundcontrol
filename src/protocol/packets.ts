@@ -2,6 +2,7 @@ import type {
   AncLayout,
   AncMode,
   AncScene,
+  AncSubMode,
   DeviceProfile,
   EqCommand,
 } from '../types';
@@ -79,8 +80,21 @@ const CLASSIC_MODE: Record<Exclude<AncMode, 'adaptive'>, number> = {
 
 export interface AncIntent {
   mode: AncMode;
-  /** Manual ANC strength 1..5 (only meaningful when `mode === 'anc'`). */
+  /** Manual ANC strength 1..5 (the high nibble on nibble-carrying layouts). */
   level: number;
+  /** ANC sub-mode; defaults to `adaptive` for `mode === 'adaptive'`, else `manual`. */
+  subMode?: AncSubMode;
+  /**
+   * Device-reported adaptive strength (low nibble). OpenSCQ30 exposes
+   * `AdaptiveNoiseCanceling` as read-only — the firmware decides it — so the
+   * app preserves the reported value instead of inventing one.
+   */
+  adaptiveLevel?: number;
+  /**
+   * Device-reported adaptive sensitivity (0..10; 0xFF = none reported).
+   * Also read-only upstream, so the reported value is echoed back.
+   */
+  adaptiveSensitivity?: number;
   scene: AncScene;
   /** Transparency sub-mode: `true` = vocal/talk mode. */
   transVocal: boolean;
@@ -189,33 +203,66 @@ function adaptiveDirectLevel(level: number): number {
  * P30i / R50i NC (A3959) — `a3959/structures/sound_modes.rs`, 7 bytes:
  *
  *   0 ambient sound mode      00 NC · 01 Transparency · 02 Normal
- *   1 (manual << 4) | adaptive
+ *   1 (manual << 4) | adaptive    manual 1..5, adaptive 1..5
  *   2 ambient sound mode again
  *   3 ANC automation          00 Manual · 01 Adaptive · 02 Multi-scene
  *   4 wind noise              bit0 suppression · bit1 "wind detected" (read-only)
- *   5 adaptive sensitivity
+ *   5 adaptive sensitivity    0..10; 0xFF = none reported by the device
  *   6 multi-scene ANC scene   00 Transport · 01 Outdoor · 02 Indoor
+ *
+ * Byte 3 is the A3959-specific Manual/Adaptive/Multi-scene selector. The
+ * correct values are **Manual = 0x00, Adaptive = 0x01, Multi-scene = 0x02** —
+ * OpenSCQ30 commit `9b6e42a7` ("a3959 incorrect noise canceling mode ids")
+ * fixed exactly this enum, whose previous `Adaptive = 0, Manual = 1` mapping
+ * is the historical "manual and automatic noise cancelling were mixed up"
+ * bug. Its `set_manual_noise_canceling` test then expects the frame
+ * `06:81 00 25 00 00 01 FF 01` for manual level 2: manual nibble 2, the
+ * device's stored adaptive nibble 5, automation 0x00 (Manual), wind 0x01,
+ * sensitivity 0xFF, scene 0x01 (Outdoor).
+ *
+ * A manual level is only honoured by the firmware while byte 3 says Manual
+ * (0x00); sending 0x02 (Multi-scene) for a level change makes the device
+ * ignore the level entirely, which is why the previous builder produced no
+ * audible change on real R50i NC hardware.
+ *
+ * `AdaptiveNoiseCanceling` and `AdaptiveNoiseCancelingSensitivityLevel` are
+ * read-only in OpenSCQ30 (the firmware owns them), so this builder echoes the
+ * values the device reported (falling back to the 5 / 0xFF values seen in
+ * every capture) rather than fabricating a strength.
  *
  * This model has **no transparency sub-mode byte** — OpenSCQ30's changelog
  * records "Soundcore R50i NC should not have transparency modes".
  */
 export function buildP30iAnc(intent: AncIntent): Uint8Array {
-  const ambient = intent.mode === 'anc' || intent.mode === 'adaptive' ? 0x00 : intent.mode === 'transparency' ? 0x01 : 0x02;
-  const adaptive = intent.mode === 'adaptive';
-  // Android's A3959 frames use an adaptive sub-level of 1 and a manual
-  // sub-level of 5. Mode changes also retain the Android app's level-5
-  // baseline; manual level buttons then replace only the high nibble.
-  const nibble = adaptive
-    ? manualAdaptiveByte(5, 1)
-    : manualAdaptiveByte(intent.mode === 'anc' ? intent.level : 5, intent.mode === 'anc' ? 5 : 1);
-  const automation = adaptive ? 0x01 : intent.mode === 'anc' ? 0x02 : 0x00;
+  const ambient =
+    intent.mode === 'anc' || intent.mode === 'adaptive'
+      ? 0x00
+      : intent.mode === 'transparency'
+        ? 0x01
+        : 0x02;
+  const subMode: AncSubMode =
+    intent.subMode ?? (intent.mode === 'adaptive' ? 'adaptive' : 'manual');
+  const automation =
+    subMode === 'adaptive' ? 0x01 : subMode === 'multiscene' ? 0x02 : 0x00;
+  // The manual nibble follows the user's level in every sub-mode; the adaptive
+  // nibble always mirrors the device (read-only), never the UI.
+  const manual = clampLevel(intent.level);
+  const adaptive = Number.isFinite(intent.adaptiveLevel)
+    ? Math.max(0, Math.min(5, Math.round(intent.adaptiveLevel as number)))
+    : 5;
+  const sensitivity =
+    Number.isInteger(intent.adaptiveSensitivity) &&
+    (intent.adaptiveSensitivity as number) >= 0 &&
+    (intent.adaptiveSensitivity as number) <= 10
+      ? (intent.adaptiveSensitivity as number)
+      : 0xff;
   return frame(0x06, 0x81, [
     ambient,
-    nibble,
+    ((manual << 4) | adaptive) & 0xff,
     ambient,
     automation,
     intent.wind ? 0x01 : 0x00,
-    0x00,
+    sensitivity,
     CLASSIC_SCENE[intent.scene],
   ]);
 }

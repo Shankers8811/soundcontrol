@@ -81,7 +81,7 @@ substitute for reading the unit's model code.
 | Exact SKU | Candidate profile | Reason to prioritize (not an expected outcome) |
 | --- | --- | --- |
 | A3949 | P20i / P25i / R50i | Factory EQ and Game Mode; ANC/custom EQ must remain gated. Follow [R50i procedure](docs/R50I-R50I-NC-HARDWARE-TEST.md). |
-| A3959 | P30i / R50i NC | ANC, transparency, EQ and firmware-dependent Game Mode; same targeted procedure. |
+| A3959 | P30i / R50i NC | ANC levels/adaptive/scenes, EQ presets and the custom curve are **PHYSICAL VALIDATION PENDING** after the 2026-10-01 "no audible change" report; the corrected `06:81`/`02:83` writes are tracked in [R50i NC hardware validation](docs/R50I-NC-HARDWARE-VALIDATION.md). Transparency is **not offered** (upstream: "R50i NC should not have transparency modes"); Game Mode is firmware-dependent (>= 01.60). |
 | A3947 | Liberty 4 NC | Case telemetry plus ANC/other model-specific controls. |
 | A3040 | Space Q45 | Over-ear battery, noise modes, LDAC/dual connection; double-press BassUp assignment is **read-only**. |
 | A3035 | Space One | **Physical validation: PENDING.** Existing OpenSCQ30 A3035 protocol evidence; simulator and automated model/protocol test coverage (not hardware confirmation). Single over-ear battery is read-only/testable. ANC manual/adaptive, wind, LDAC and Dual Connection are hardware-pending. EQ/HearID `03:87` writes: **NOT SUPPORTED / withheld**; firmware flashing: **NOT SUPPORTED**; factory reset: **NOT TESTED / withheld**. Find My Device/acoustic locator is outside desktop scope. Do not claim a write PASS without a validated response, fresh state readback and reconnect confirmation. |
