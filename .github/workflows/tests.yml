@@ -50,6 +50,8 @@ jobs:
         run: npm run test:models
       - name: Model feature / ANC frame matrix (per-SKU features, invalid values, routing)
         run: npm run test:matrix
+      - name: Model capability matrix (per-model capability record, selector transitions, transparency/EQ gates, cross-layout isolation)
+        run: npm run test:capability
       - name: Startup/lifecycle e2e (emulated helper, fake RFCOMM)
         run: npm run test:e2e
       - name: Main-process lifecycle (real helper kill/restart races, stubbed Electron)
