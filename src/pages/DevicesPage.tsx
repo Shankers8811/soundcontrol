@@ -525,7 +525,7 @@ function MarketCoverageCard({ onOpen }: { onOpen: () => void }) {
   return (
     <Card
       title="Market compatibility"
-      subtitle={`${MARKET_CATALOG.length} deduplicated US/EU catalog identities · snapshot 2026-09-29`}
+      subtitle={`${MARKET_CATALOG.length} deduplicated US/EU catalog identities · storefront snapshot 2026-09-29, legacy rows 2026-10-01`}
       actions={<Button size="sm" onClick={onOpen}>View status</Button>}
     >
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
