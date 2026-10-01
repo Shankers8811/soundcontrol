@@ -8,6 +8,18 @@ Soundcore R50i NC · **A3959** · protocol profile `p30i` · sound modes `06:81`
 > valid, routed to the right profile and match the documented A3959 byte map —
 > they are **PROTOCOL VERIFIED**, never *physical hardware verified*.
 
+## The four log lines that decide the test
+
+| Console line | What it proves |
+| --- | --- |
+| `MODEL: A3959 · NAME: P30i / R50i NC · profile p30i · sound modes tws-p30i · EQ 02:83 · state payload 90 bytes` | The app identified the R50i NC and accepted a full `01:01` state frame. **No model-specific write is attempted until this appears.** |
+| `STATE sound modes @64 [00 55 00 00 01 FF 01] — mode=… sub=… manualL=… adaptiveL=… scene=… wind=… sens=…` | The device's own report of its sound modes. This is the BEFORE/AFTER evidence. |
+| `TX … 08 EE …` | The exact frame that went on the wire, with the decoded fields and checksum state. |
+| `Earbud-only boundary: frame NOT sent — …` | **The frame never reached the device.** Capture this line instead of a pass/fail; test nothing further until it is gone. |
+
+`npm run trace:r50i-nc` prints the same frames offline, without a device, so the
+expected bytes can be compared before any hardware is connected.
+
 ## Evidence levels
 
 | Level | Meaning | How it is earned |
@@ -37,6 +49,13 @@ adaptive ANC or EQ presets. The cause found in the source:
 - This build now sends `Manual = 0x00` for a level tap, `Adaptive = 0x01` for the
   adaptive toggle, `MultiScene = 0x02` for a scene tap, echoes the adaptive nibble
   the device reported, and sends sensitivity `0xFF` until the device reports one.
+
+- If the console shows **no `TX` line** for an action (only
+  `Earbud-only boundary: frame NOT sent — …`), the write was blocked before the
+  wire: SoundControl refuses every model-specific frame until a valid `01:01`
+  state frame confirms the layout, so an unidentified/partially-received state
+  would make *every* control look dead. That is a different bug from a rejected
+  frame, and the log distinguishes them.
 
 This is the hypothesis to confirm on hardware, not a proven fix.
 
@@ -83,6 +102,22 @@ EQ (`02:83`, 32-byte frame) = preset id `u16 LE` + 8 band bytes + 2 trailing byt
 08 EE 00 00 00 02 83 20 00 FE FE F0 00 F0 00 F0 00 F0 00 78 00 92 51 A2 4D A3 4E A1 5B 78 00 06
 ```
 
+### Open questions in the EQ bytes (resolve with these captures)
+
+* **Rock (id `0x11`)** — SoundControl ships the three-source consensus
+  `96 8C 6E 6E 82 96 96 96` (bands 7–8 = +3/+3 dB), while OpenSCQ30's current
+  per-device table for the P30i / R50i NC (`common_settings_type_2`) carries
+  `96 8C 6E 6E 82 96 A0 AA` (+4/+5 dB, the P20i HCI divergence already noted in
+  `PROTOCOL.md`). The other 21 curves agree byte for byte. If Rock sounds wrong
+  next to the official app, this one preset is the first thing to change.
+* **Custom curve, invisible band 10** — SoundControl writes `0x00` (−12 dB, the
+  value every factory preset carries in that slot); OpenSCQ30's custom-curve
+  path fills the invisible bands with `0x78` (0 dB). The DRC channel is
+  identical either way, so this only matters if the firmware reads channel 1.
+
+Both are byte-level questions about frames the app *does* send; neither is a
+reason to skip the tests below.
+
 ## Checklist — fill in by hand
 
 Statuses: `PASS` · `FAIL` · `NOT TESTED` · `NOT SUPPORTED` · `OBSERVED ONLY`.
@@ -110,10 +145,22 @@ line before and after, and the audible result.
 | 14 | EQ — Bass Booster | Audible bass boost; preset recorded | | | | NOT TESTED |
 | 15 | EQ — Bass Reducer | Audible bass cut; preset recorded | | | | NOT TESTED |
 | 16 | Extreme custom EQ | Audible alternation; preset `0xFEFE`, bands `F0 00 F0 00 F0 00 F0 00` | | | | NOT TESTED |
+| 18 | EQ — Rock (open question) | Compare with the official app; note whether our `96 96` tail or OpenSCQ30's `A0 AA` tail matches | | | | NOT TESTED |
 | 17 | Transparency | Not offered: the A3959 profile ships `transparency: false` (OpenSCQ30 changelog: "R50i NC should not have transparency modes"), so the UI cannot send it. The builder still encodes `p1/p3 = 01` for round-trip tests only. | — | — | — | NOT TESTED |
 
 If a row cannot be tested because the control is not offered or the device has no
 such function, write `NOT SUPPORTED` **with the reason**, or delete the row.
+
+## The test build
+
+Use a build that contains this fix:
+
+* **From CI:** GitHub → *Actions* → **Windows Build** → the run for this branch
+  (commit `82fc1e0` or newer) → *Artifacts* → **`SoundControl-Windows-Test-Unsigned`**.
+* **Locally:** `npm ci && npm run build:win` (or `npm run dev` for the dev server).
+
+The unsigned installer attached to the `v1.0.7-windows-unsigned-1` pre-release
+predates this fix and must not be used for these tests.
 
 ## How to capture the evidence
 
