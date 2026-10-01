@@ -1,5 +1,5 @@
 import { useApp } from '../state/store';
-import { EQ_PRESETS } from '../protocol/presets';
+import { presetsForProfile } from '../protocol/presets';
 import { CapabilityGate, Card } from './ui';
 
 /**
@@ -23,6 +23,9 @@ export function QuickActions() {
   const app = useApp();
   const caps = app.capabilities;
   const disabled = !app.connected || app.busy === 'eq';
+  // Model-scoped: a shortcut is only offered when THIS model defines that
+  // preset id (D1101 has no Bass Reducer, A3330 only Signature, …).
+  const presets = presetsForProfile(app.profile);
 
   return (
     <Card title="Quick Actions" subtitle="One-tap factory curves, sent as real EQ preset frames">
@@ -49,7 +52,7 @@ export function QuickActions() {
       >
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {QUICK_PRESET_IDS.map((id) => {
-            const preset = EQ_PRESETS.find((p) => p.id === id);
+            const preset = presets.find((p) => p.id === id);
             if (!preset) return null;
             const active = app.eqId === preset.id;
             return (

@@ -197,6 +197,30 @@ is availability, not a zero-percent reading.
 
 ## Sound modes — `06:81`
 
+### Capability gating: MODEL → PROFILE → FEATURE → COMMAND → LAYOUT
+
+A feature is never derived from the existence of a command byte. Each control
+follows the chain **identified SKU → device profile → documented capability →
+that profile's command → that profile's layout**, and every step is enforced in
+`src/protocol/modelRegistry.ts` before a frame reaches the transport:
+
+| Step | Enforced by |
+| --- | --- |
+| Identified model | `matchDevice()`; unknown names resolve to no profile and no write is possible. |
+| Profile capability | `deriveCapabilities()` — the UI renders only what the profile documents. |
+| Frame length | The layout's documented payload length (4 / 6 / 7 / 8 bytes) — never interchangeable. |
+| Mode values | Per-layout `AncSubMode` maps; a value the layout does not document yields no frame. |
+| Manual levels | Integer 1..5 in the layout's own level field (Liberty 4 Pro uses an inverted 5..1 slider). |
+| Transparency | `ambientTransparency` — `0x01` refused for every profile that does not document it. |
+| EQ command | The profile's own `eqCommand` (`02:81` / `02:81-dual` / `02:83` / `02:83-single` / `02:83-dual` / `03:87`). |
+| EQ preset id | The model's own factory table (`presetSet`), custom `0xFEFE` only where the model defines it. |
+| Surround / gaming / LDAC / dual | The profile's own flags. |
+
+The resulting per-model table, with frame lengths, level ranges, scene values and
+preset counts, is generated into [`docs/MODEL-CAPABILITY-MATRIX.md`](docs/MODEL-CAPABILITY-MATRIX.md)
+and pinned byte-for-byte by `npm run test:capability` (per-layout payload pins,
+selector values per action, transition matrix, gate accept/refuse per model).
+
 Multiple model-specific payload layouts share this one command; sending the
 wrong length or byte meaning silently sets the wrong state, so SoundControl
 keys the layout by SKU.
@@ -257,8 +281,20 @@ echoes what the device reported (falling back to `5`, the value in the A3959
 state vector) instead of hardcoding the app's `1`; the sensitivity byte is
 `0xFF` until the device reports one, matching the upstream write above.
 
-This model has **no transparency sub-mode byte** (OpenSCQ30 changelog:
-"R50i NC should not have transparency modes"), so the app hides that option.
+Byte 4 is the wind-suppression bit the device reports in its state packet. The
+builder never hardcodes it: every sound-mode write re-sends the device-reported
+value, so a level tap on a unit with wind suppression enabled produces exactly
+the upstream manual vector `… 00 25 00 00 01 FF 01`, and a unit that reports
+wind off produces `… 00 25 00 00 00 FF 01`. `npm run trace:r50i-nc` prints the
+byte with the rest of the frame.
+
+This model has **no transparency mode** (OpenSCQ30 changelog: "R50i NC should
+not have transparency modes"). It is the only ANC-capable profile in the
+catalog with `ambientTransparency: false`, and that flag does two things: the
+Transparency control is not rendered for A3959, and the model gate refuses any
+`06:81` frame whose ambient byte is `0x01` for this profile — a caller that
+bypasses the UI still cannot send the frame. Verified models keep the mode
+(`test_capability_matrix.mjs` asserts both directions).
 
 ### `tws-l4nc` — Liberty 4 NC (A3947) (7 bytes)
 

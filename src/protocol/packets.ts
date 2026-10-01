@@ -227,8 +227,15 @@ function adaptiveDirectLevel(level: number): number {
  *
  * `AdaptiveNoiseCanceling` and `AdaptiveNoiseCancelingSensitivityLevel` are
  * read-only in OpenSCQ30 (the firmware owns them), so this builder echoes the
- * values the device reported (falling back to the 5 / 0xFF values seen in
- * every capture) rather than fabricating a strength.
+ * adaptive level the device reported (falling back to 5, the value in the
+ * A3959 state vector) rather than fabricating a strength.
+ *
+ * The sensitivity byte is always 0xFF unless a caller passes an explicit
+ * 0..10 value: 0xFF is what the device's own `01:01` vector carries and what
+ * OpenSCQ30's `set_manual_noise_canceling` test transmits, and there is no UI
+ * control for it. Mirroring back a value this app previously wrote would keep
+ * re-writing a number the firmware never asked for (the old builder sent
+ * 0x00, which the device then reported back as its own state).
  *
  * This model has **no transparency sub-mode byte** — OpenSCQ30's changelog
  * records "Soundcore R50i NC should not have transparency modes".
@@ -349,11 +356,27 @@ export function buildLiberty4ProAnc(intent: AncIntent): Uint8Array {
   return frame(0x06, 0x81, [ambient, slider, 0x00, intent.wind ? 0x01 : 0x00]);
 }
 
-/** P40i (A3955) — seven-byte multi-scene ANC layout. */
+/**
+ * P40i (A3955) — seven-byte multi-scene ANC layout from
+ * `a3955/structures/sound_modes.rs`:
+ *
+ *   0 ambient · 1 (manual<<4)|adaptive · 2 transparency
+ *   3 NoiseCancelingMode — the model's own enum is
+ *     **Manual = 0, Adaptive = 1, MultiScene = 2** (verified in the same file)
+ *   4 wind · 5 adaptive sensitivity · 6 multi-scene scene
+ *
+ * Byte 3 is the same explicit selector A3959 documents, so a level tap states
+ * Manual, the adaptive toggle states Adaptive and a scene states MultiScene.
+ * The previous builder hard-coded MultiScene (0x02) for every plain-ANC write,
+ * which leaves the manual nibble inert — the identical defect class fixed for
+ * A3959, applied here only because P40i's own enum is documented as such.
+ */
 export function buildP40iAnc(intent: AncIntent): Uint8Array {
   const ambient = intent.mode === 'anc' || intent.mode === 'adaptive' ? 0x00 : intent.mode === 'transparency' ? 0x01 : 0x02;
   const adaptive = intent.mode === 'adaptive';
-  const automation = adaptive ? 0x01 : intent.mode === 'anc' ? 0x02 : 0x00;
+  const subMode: AncSubMode =
+    intent.subMode ?? (adaptive ? 'adaptive' : 'manual');
+  const automation = subMode === 'adaptive' ? 0x01 : subMode === 'multiscene' ? 0x02 : 0x00;
   return frame(0x06, 0x81, [
     ambient,
     manualAdaptiveByte(intent.level, adaptive ? adaptiveFromLevel(intent.level) : 0),
@@ -408,11 +431,17 @@ export function buildSportX20Anc(intent: AncIntent): Uint8Array {
 export function buildD1202Anc(intent: AncIntent): Uint8Array {
   const ambient = intent.mode === 'anc' || intent.mode === 'adaptive' ? 0x00 : intent.mode === 'transparency' ? 0x01 : 0x02;
   const adaptive = intent.mode === 'adaptive';
+  // The D1202 `NoiseCancelingMode` enum is Manual = 0 / Adaptive = 1 /
+  // MultiScene = 2 (verified in d1202/structures.rs), so a level tap states
+  // Manual and a scene tap states MultiScene instead of leaving the previous
+  // selector in place.
+  const subMode: AncSubMode = intent.subMode ?? (adaptive ? 'adaptive' : 'manual');
+  const automation = subMode === 'adaptive' ? 0x01 : subMode === 'multiscene' ? 0x02 : 0x00;
   return frame(0x06, 0x81, [
     ambient,
     manualAdaptiveByte(intent.mode === 'anc' ? intent.level : 5, adaptive ? adaptiveNamedLevel(intent.level) : 0),
     intent.transVocal ? 0x01 : 0x00,
-    adaptive ? 0x01 : 0x00,
+    automation,
     intent.wind ? 0x01 : 0x00,
     0x00,
     CLASSIC_SCENE[intent.scene],

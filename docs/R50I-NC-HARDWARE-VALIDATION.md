@@ -8,6 +8,35 @@ Soundcore R50i NC · **A3959** · protocol profile `p30i` · sound modes `06:81`
 > valid, routed to the right profile and match the documented A3959 byte map —
 > they are **PROTOCOL VERIFIED**, never *physical hardware verified*.
 
+## What the fixed build must show on the wire (before touching the device)
+
+`npm run trace:r50i-nc` prints every action below without a device attached, so the
+owner can diff the console against it. Level changes must move the manual nibble
+in byte 1 *and* keep byte 3 at `00`; a scene tap must set byte 3 to `02` and the
+scene byte; the adaptive toggle must set byte 3 to `01`.
+
+| Action | Expected payload (after `00 00 06 81 …`) |
+| --- | --- |
+| Manual level 1 | `00 15 00 00 01 FF 01` |
+| Manual level 3 | `00 35 00 00 01 FF 01` |
+| Manual level 5 | `00 55 00 00 01 FF 01` |
+| Adaptive (toggle) | `00 35 00 01 01 FF 01` (nibble echoes the device's report) |
+| Scene Transport | `00 35 00 02 01 FF 00` |
+| Scene Outdoor | `00 35 00 02 01 FF 01` |
+| Scene Indoor | `00 35 00 02 01 FF 02` |
+| Normal | `02 35 02 00 01 FF 01` |
+
+Wind suppression on = byte 4 `01`, off = `00` — the app mirrors the device, so a
+`00` there means the unit itself reported wind suppression off.
+
+### EQ physical-test set
+
+The EQ sheet below must be exercised with **four factory presets and one extreme
+custom curve**: Soundcore Signature, Flat, Bass Booster, Acoustic, then a custom
+curve pushed to the ends of the range (for example -12 / +12 / -12 / +12 / …).
+The custom curve is an 8-band dB write; the console prints the frame, the preset
+id and the model with every one of them.
+
 ## The four log lines that decide the test
 
 | Console line | What it proves |
@@ -49,6 +78,14 @@ adaptive ANC or EQ presets. The cause found in the source:
 - This build now sends `Manual = 0x00` for a level tap, `Adaptive = 0x01` for the
   adaptive toggle, `MultiScene = 0x02` for a scene tap, echoes the adaptive nibble
   the device reported, and sends sensitivity `0xFF` until the device reports one.
+- Byte 4 of every sound-mode frame is the wind-suppression bit the device itself
+  reports, so the app never silently turns wind suppression off when it writes a
+  level. On this unit the expected manual level 2 frame is the upstream vector
+  `08 EE 00 00 00 06 81 11 00 00 25 00 00 01 FF 01 B4`.
+- Transparency is not offered for A3959 (`ambientTransparency: false`): the icon is
+  not rendered and the model gate refuses any ambient `0x01` frame for this
+  profile. There is nothing to test here — the correct evidence is **that no frame
+  is emitted**, which `npm run trace:r50i-nc` shows as `REFUSED … (expected)`.
 
 - If the console shows **no `TX` line** for an action (only
   `Earbud-only boundary: frame NOT sent — …`), the write was blocked before the
