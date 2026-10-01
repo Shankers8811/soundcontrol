@@ -35,6 +35,7 @@ try {
         export * from './src/protocol/packets.ts';
         export * from './src/protocol/presets.ts';
         export * from './src/protocol/diagnostics.ts';
+        export * from './src/state/derive.ts';
         export { toHex } from './src/protocol/codec.ts';
       `,
       resolveDir: ROOT,
@@ -58,12 +59,14 @@ if (!profile) {
   console.error('A3959 profile not found');
   process.exit(1);
 }
+const capabilities = M.deriveCapabilities(profile);
 
 const hex = (frame) => M.toHex(frame);
 const payload = (frame) => Array.from(frame.slice(9, frame.length - 1));
 const frameOf = (intent) => M.buildAnc(profile.ancLayout, intent);
 const gate = (frame) => M.gateCommandForProfile('sound-modes.set', frame, profile);
 
+/** The physical R50i NC reports wind suppression ON, adaptive 5, scene Outdoor. */
 const INTENT = {
   mode: 'anc',
   level: 3,
@@ -71,12 +74,22 @@ const INTENT = {
   adaptiveLevel: 5,
   scene: 'outdoor',
   transVocal: false,
-  wind: false,
+  wind: true,
 };
 
-function report(label, intent, extraNote = '') {
+function report(label, intent, extraNote = '', expectAllowed) {
   const frame = frameOf(intent);
   const decision = frame ? gate(frame) : { ok: false, reason: 'builder returned null' };
+  const verdict =
+    expectAllowed === undefined
+      ? decision.ok
+        ? 'ALLOWED for A3959'
+        : `REFUSED — ${decision.reason}`
+      : expectAllowed === decision.ok
+        ? expectAllowed
+          ? 'ALLOWED for A3959 (expected)'
+          : `REFUSED for this model (expected) — ${decision.reason}`
+        : `UNEXPECTED: ${decision.ok ? 'allowed' : `refused — ${decision.reason}`}`;
   console.log(`\n${label}`);
   console.log(`  intent   : ${JSON.stringify(intent)}`);
   console.log(`  TX frame : ${frame ? hex(frame) : '(none — builder refused the intent)'}`);
@@ -85,7 +98,10 @@ function report(label, intent, extraNote = '') {
     console.log(`  checksum : 0x${frame[frame.length - 1].toString(16).padStart(2, '0')}`);
     console.log(`  decoded  : ${M.describeFrame(profile, frame)}`);
   }
-  console.log(`  gate     : ${decision.ok ? 'ALLOWED for A3959' : `REFUSED — ${decision.reason}`}${extraNote ? ` ${extraNote}` : ''}`);
+  console.log(`  gate     : ${verdict}${extraNote ? ` ${extraNote}` : ''}`);
+  if (typeof expectAllowed === 'boolean') {
+    console.log(`  expected : ${expectAllowed ? 'allowed' : 'refused'} — ${expectAllowed === decision.ok ? 'MATCHES' : 'MISMATCH (investigate)'}`);
+  }
   return frame;
 }
 
@@ -98,6 +114,9 @@ console.log(`EQ command     : ${profile.eqCommand} · custom EQ ${profile.custom
 console.log(`automation byte: 0x00 = Manual · 0x01 = Adaptive · 0x02 = Multi-scene (OpenSCQ30 9b6e42a7)`);
 console.log(`nibble byte    : high = manual 1..5 · low = firmware-owned adaptive 1..5`);
 console.log(`sensitivity    : byte 5, 0..10, 0xFF when the device reports none`);
+console.log(`transparency   : ${capabilities.supportsTransparencyMode ? 'offered' : 'NOT offered — the model gate refuses the ambient 0x01 frame'}`);
+console.log(`surround (02:86): ${profile.surround ? 'offered (documented for this model)' : 'not offered'}`);
+console.log(`preset table   : ${profile.presetSet ?? 'standard'}`);
 console.log(`source         : ${profile.source}`);
 
 /* ------------------------------------------------ 1. ANC write path */
@@ -118,7 +137,12 @@ report('Transport scene (multi-scene sub-mode)', { ...INTENT, subMode: 'multisce
 report('Outdoor scene (multi-scene sub-mode)', { ...INTENT, subMode: 'multiscene', scene: 'outdoor' });
 report('Indoor scene (multi-scene sub-mode)', { ...INTENT, subMode: 'multiscene', scene: 'indoor' });
 report('Wind-noise suppression ON', { ...INTENT, wind: true });
-report('Transparency (byte-map only — the profile ships transparency:false, so the UI never sends this)', { ...INTENT, mode: 'transparency' });
+report(
+  'Transparency — refused for this model (no documented transparency mode)',
+  { ...INTENT, mode: 'transparency' },
+  '',
+  capabilities.supportsTransparencyMode,
+);
 report('Normal', { ...INTENT, mode: 'normal' });
 report('Sensitivity echoed from a device report of 7', { ...INTENT, adaptiveSensitivity: 7 });
 
@@ -144,14 +168,18 @@ console.log(`  byte 1 high nibble = manual level; all other payload bytes are id
 console.log('\n----------------------------------------------------------------');
 console.log('3. Equalizer — every factory preset and the extreme custom curve');
 console.log('----------------------------------------------------------------');
-for (const preset of M.EQ_PRESETS ?? []) {
+const PHYSICAL_TEST_PRESETS = ['Soundcore Signature', 'Flat', 'Bass Booster', 'Acoustic'];
+const presets = M.presetsForProfile(profile);
+console.log(`\n  (preset table: ${profile.presetSet ?? 'standard'} — ${presets.length} factory curves)`);
+for (const preset of presets) {
+  const physical = PHYSICAL_TEST_PRESETS.includes(preset.name) ? '  ← physical test' : '';
   const frame = M.buildEq(profile.eqCommand, preset.index, preset.bands);
   const decision = M.gateCommandForProfile(
     profile.eqCommand === '02:83' ? 'equalizer.set-drc' : 'equalizer.set',
     frame,
     profile,
   );
-  console.log(`\n  ${preset.name} (id 0x${preset.index.toString(16).padStart(4, '0')})`);
+  console.log(`\n  ${preset.name} (id 0x${preset.index.toString(16).padStart(4, '0')})${physical}`);
   console.log(`    TX  : ${hex(frame)}`);
   console.log(`    len : ${frame.length} bytes · ${M.describeEqPayload(payload(frame))}`);
   console.log(`    gate: ${decision.ok ? 'ALLOWED for A3959' : `REFUSED — ${decision.reason}`}`);

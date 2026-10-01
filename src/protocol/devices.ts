@@ -464,6 +464,7 @@ export const DEVICES: DeviceProfile[] = [
     names: ['C30i', 'A3330', 'soundcore C30i'],
     ancLayout: 'none',
     eqCommand: '02:83-single',
+    presetSet: 'c30i',
     customEq: true,
     caseBatteryMax: 5,
     state: C30I_STATE,
@@ -492,6 +493,7 @@ export const DEVICES: DeviceProfile[] = [
     names: ['AeroClip', 'A3388', 'soundcore AeroClip'],
     ancLayout: 'none',
     eqCommand: '02:83-dual',
+    presetSet: 'type2',
     customEq: true,
     caseBatteryMax: 10,
     caseBatteryOffset: 1,
@@ -518,6 +520,7 @@ export const DEVICES: DeviceProfile[] = [
     names: ['V20i', 'A3876', 'soundcore V20i'],
     ancLayout: 'none',
     eqCommand: '02:83-single',
+    presetSet: 'v20i',
     customEq: true,
     state: V20I_STATE,
     source: `${OPENSCQ30} (a3876): dual_battery_level_custom(max 10, offset 1), one-channel 02:83 DRC EQ applied to both buds, gaming, dual_connections`,
@@ -540,6 +543,7 @@ export const DEVICES: DeviceProfile[] = [
     batteryMax: 5,
     names: ['Sport X20', 'A3968', 'soundcore Sport X20'],
     ancLayout: 'tws-a3968',
+    ambientTransparency: true,
     eqCommand: null,
     customEq: false,
     caseBatteryMax: 5,
@@ -566,6 +570,7 @@ export const DEVICES: DeviceProfile[] = [
     names: ['C50i', 'D1101', 'soundcore C50i'],
     ancLayout: 'none',
     eqCommand: '02:81-dual',
+    presetSet: 'c50i',
     customEq: true,
     state: C50I_STATE,
     source: `${OPENSCQ30} (d1101): dual_battery_level_custom(max 10, offset 1), two-channel 02:81 EQ, dual_connections and LDAC`,
@@ -589,10 +594,12 @@ export const DEVICES: DeviceProfile[] = [
     batteryOffset: 1,
     names: ['P31i', 'R60i NC', 'D1202', 'D1202C', 'soundcore P31i', 'soundcore R60i NC'],
     ancLayout: 'tws-d1202',
+    ambientTransparency: true,
     // D1202 uses the source-backed 03:87 HearID/DSP transaction. SoundControl
     // emits only the documented disabled-HearID factory-preset form; custom
     // personalised HearID curves remain intentionally unavailable.
     eqCommand: '03:87',
+    presetSet: 'type2',
     customEq: false,
     caseBatteryMax: 10,
     caseBatteryOffset: 1,
@@ -641,7 +648,13 @@ export const DEVICES: DeviceProfile[] = [
     batteryMax: 10,
     names: ['P30i', 'R50i NC', 'A3959', 'soundcore P30i', 'soundcore R50i NC'],
     ancLayout: 'tws-p30i',
+
+    // Documented: OpenSCQ30 changelog "Soundcore R50i NC should not have
+    // transparency modes" — the model gate refuses the ambient 0x01 write
+    // (PENDING CAPTURE: no physical transparency observation exists).
+    ambientTransparency: false,
     eqCommand: '02:83',
+    presetSet: 'type2',
     customEq: true,
     state: P30I_STATE,
     source: `${OPENSCQ30} (a3959): dual_battery(10), a3959_sound_modes (NC=0/Transparency=1/Normal=2, manual+adaptive, wind), equalizer_with_drc_tws with custom preset 0xFEFE, gaming_mode (state byte 77, firmware >= 01.60), dual_connections (73), surround_sound (74)`,
@@ -667,6 +680,7 @@ export const DEVICES: DeviceProfile[] = [
     names: ['P20i', 'P25i', 'R50i', 'A3949', 'soundcore P20i', 'soundcore P25i', 'soundcore R50i'],
     ancLayout: 'none',
     eqCommand: '02:83',
+    presetSet: 'type2',
     // OpenSCQ30 a3949.rs: equalizer_with_drc_tws with custom_preset_id: None
     // — "device doesn't support custom presets". None of the 22 live P20i
     // captures uses the FEFE custom id either (all factory presets 00..16),
@@ -694,6 +708,7 @@ export const DEVICES: DeviceProfile[] = [
     names: ['A20i', 'A3948', 'soundcore A20i'],
     ancLayout: 'none',
     eqCommand: '02:83',
+    presetSet: 'type2',
     customEq: true,
     state: P20I_STATE,
     source: `${OPENSCQ30} (a3948): equalizer_with_drc_tws (common_settings_type_2, custom preset 0xFEFE), dual_battery(5), no gaming mode`,
@@ -716,6 +731,7 @@ export const DEVICES: DeviceProfile[] = [
     batteryMax: 5,
     names: ['Liberty 4 NC', 'A3947', 'soundcore Liberty 4 NC'],
     ancLayout: 'tws-l4nc',
+    ambientTransparency: true,
     // A3947 writes EQ only via the model-specific 03:87 HearID frame.
     eqCommand: null,
     customEq: false,
@@ -741,6 +757,7 @@ export const DEVICES: DeviceProfile[] = [
     batteryMax: 5,
     names: ['Liberty 3 Pro', 'A3952', 'soundcore Liberty 3 Pro'],
     ancLayout: 'tws-l3pro',
+    ambientTransparency: true,
     eqCommand: null,
     customEq: false,
     caseBatteryMax: 5,
@@ -765,6 +782,7 @@ export const DEVICES: DeviceProfile[] = [
     batteryMax: 5,
     names: ['Space A40', 'A3936', 'soundcore Space A40'],
     ancLayout: 'tws-a3936',
+    ambientTransparency: true,
     eqCommand: null,
     customEq: false,
     caseBatteryMax: 10,
@@ -789,6 +807,7 @@ export const DEVICES: DeviceProfile[] = [
     batteryMax: 100,
     names: ['Liberty 4 Pro', 'A3954', 'soundcore Liberty 4 Pro'],
     ancLayout: 'tws-l4pro',
+    ambientTransparency: true,
     eqCommand: null,
     customEq: false,
     caseBatteryMax: 10,
@@ -814,6 +833,7 @@ export const DEVICES: DeviceProfile[] = [
     batteryMax: 5,
     names: ['P40i', 'A3955', 'soundcore P40i'],
     ancLayout: 'tws-p40i',
+    ambientTransparency: true,
     eqCommand: null,
     customEq: false,
     caseBatteryMax: 5,
@@ -839,6 +859,7 @@ export const DEVICES: DeviceProfile[] = [
     batteryOffset: 1,
     names: ['Liberty 5', 'A3957', 'soundcore Liberty 5'],
     ancLayout: 'tws-l5',
+    ambientTransparency: true,
     eqCommand: null,
     customEq: false,
     caseBatteryMax: 10,
@@ -865,6 +886,7 @@ export const DEVICES: DeviceProfile[] = [
     batteryOffset: 1,
     names: ['Space One Pro', 'A3062', 'soundcore Space One Pro'],
     ancLayout: 'tws-a3062',
+    ambientTransparency: true,
     eqCommand: null,
     customEq: false,
     state: SPACE_ONE_PRO_STATE,
@@ -892,6 +914,7 @@ export const DEVICES: DeviceProfile[] = [
     // an unknown model.
     names: ['Q20i', 'A3004', 'soundcore Q20i', 'Q21i NC', 'soundcore Q21i NC'],
     ancLayout: 'classic',
+    ambientTransparency: true,
     eqCommand: '02:83',
     customEq: true,
     state: Q20I_STATE,
@@ -963,6 +986,7 @@ export const DEVICES: DeviceProfile[] = [
     batteryMax: 5,
     names: ['Space One', 'A3035', 'soundcore Space One'],
     ancLayout: 'classic-a3035',
+    ambientTransparency: true,
     eqCommand: null,
     customEq: false,
     state: overEarState(),
@@ -986,6 +1010,7 @@ export const DEVICES: DeviceProfile[] = [
     batteryMax: 5,
     names: ['Q45', 'Space Q45', 'A3040', 'soundcore Space Q45'],
     ancLayout: 'classic-a3040',
+    ambientTransparency: true,
     eqCommand: null,
     customEq: false,
     state: overEarState(),
@@ -1009,6 +1034,7 @@ export const DEVICES: DeviceProfile[] = [
     batteryMax: 5,
     names: ['Q35', 'Life Q35', 'A3027', 'soundcore Life Q35'],
     ancLayout: 'classic',
+    ambientTransparency: true,
     eqCommand: '02:81',
     // FEFE custom curves documented for the 02:81 command (OpenSCQ30
     // set_equalizer custom test vector, SoundcoreDesktop EQGain()).
@@ -1034,6 +1060,7 @@ export const DEVICES: DeviceProfile[] = [
     batteryMax: 5,
     names: ['Q30', 'Life Q30', 'A3028', 'Soundcore Life Q30'],
     ancLayout: 'classic',
+    ambientTransparency: true,
     eqCommand: '02:81',
     // FEFE custom curves documented for the 02:81 command (OpenSCQ30
     // set_equalizer custom test vector, SoundcoreDesktop EQGain()).
@@ -1060,6 +1087,7 @@ export const DEVICES: DeviceProfile[] = [
     // The official serial-number guide lists A3029 as "Life Tune/Life Tune XR".
     names: ['Life Tune', 'Life Tune XR', 'A3029', 'soundcore Life Tune', 'soundcore Life Tune XR'],
     ancLayout: 'classic',
+    ambientTransparency: true,
     eqCommand: '02:81',
     // FEFE custom curves documented for the 02:81 command (OpenSCQ30
     // set_equalizer custom test vector, SoundcoreDesktop EQGain()).
@@ -1086,6 +1114,7 @@ export const DEVICES: DeviceProfile[] = [
     batteryMax: 5,
     names: ['Life Tune Pro', 'A3030', 'soundcore Life Tune Pro'],
     ancLayout: 'classic',
+    ambientTransparency: true,
     eqCommand: '02:81',
     // FEFE custom curves documented for the 02:81 command (same family as the
     // A3027 row this SKU is routed through).

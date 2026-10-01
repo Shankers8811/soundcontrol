@@ -405,7 +405,8 @@ check('A3035 short and invalid 06:01 mirrors cannot confirm a mode',
 const GATE_CASES = [
   // [label, frame, profile, expectedOk]
   ['A3949 + ANC frame 06:81 → DENIED (no ANC on R50i)', frameOf(0x06, 0x81, [0x00, 0x51, 0x00, 0x00, 0x00, 0x00, 0x01]), A3949, false],
-  ['A3959 + ANC frame 06:81 → allowed', frameOf(0x06, 0x81, [0x01, 0x51, 0x01, 0x00, 0x00, 0x00, 0x01]), A3959, true],
+  ['A3959 + ANC frame 06:81 → allowed', frameOf(0x06, 0x81, [0x00, 0x51, 0x00, 0x00, 0x00, 0xff, 0x01]), A3959, true],
+  ['A3959 + transparency 06:81 → DENIED (no transparency mode on this model)', frameOf(0x06, 0x81, [0x01, 0x51, 0x01, 0x00, 0x00, 0x00, 0x01]), A3959, false],
   ['A3949 + EQ factory preset → allowed', M.buildEq('02:83', 0x0001, [0, 0, 0, 0, 0, 0, 0, 0]), A3949, true],
   ['A3959 + EQ factory preset → allowed', M.buildEq('02:83', 0x0002, [1, 2, 0, 0, 0, 0, 0, 0]), A3959, true],
   ['A3949 + EQ CUSTOM 0xFEFE → DENIED (no custom presets)', frameOf(0x02, 0x83, [...FE(M.CUSTOM_EQ_PRESET_ID), 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x00, -120 & 0xff, ...Array(10).fill(0x78)]), A3949, false],
@@ -478,10 +479,22 @@ console.log('\nTransport boundary (withDeviceBoundary)');
   check('A3949 session: custom FE FE EQ write throws at the boundary', feThrew && written.length === 0);
   await t.write(M.buildEq('02:83', 0x0001, [0, 0, 0, 0, 0, 0, 0, 0]));
   check('A3949 session: factory preset passes the boundary', written.length === 1);
-  // Now swap the connected model to A3959: the same ANC frame becomes legal.
-  const t2 = M.withDeviceBoundary(fake, () => A3959, () => {});
-  await t2.write(frameOf(0x06, 0x81, [0x01, 0x51, 0x01, 0x00, 0x00, 0x00, 0x01]));
-  check('A3959 session: ANC write passes the boundary', written.length === 2);
+  // Now swap the connected model to A3959: a 17-byte sound-mode frame becomes
+  // legal, but only for the modes this model documents.
+  const t2 = M.withDeviceBoundary(fake, () => A3959, (r) => blocked.push(r));
+  await t2.write(frameOf(0x06, 0x81, [0x00, 0x51, 0x00, 0x00, 0x00, 0x00, 0x01]));
+  check('A3959 session: manual ANC write passes the boundary', written.length === 2);
+  let transThrew = false;
+  try {
+    await t2.write(frameOf(0x06, 0x81, [0x01, 0x51, 0x01, 0x00, 0x00, 0x00, 0x01]));
+  } catch { transThrew = true; }
+  check(
+    'A3959 session: transparency (ambient 0x01) throws at the boundary — no documented transparency mode',
+    transThrew && written.length === 2 && blocked.some((r) => /transparency mode/.test(r)),
+  );
+  // The scene byte alone (multi-scene automation, ambient still 0x00) stays legal.
+  await t2.write(frameOf(0x06, 0x81, [0x00, 0x55, 0x00, 0x02, 0x00, 0xff, 0x02]));
+  check('A3959 session: multi-scene write passes the boundary', written.length === 3);
 }
 
 /* ------------------------------------ expanded state-layout regressions */
