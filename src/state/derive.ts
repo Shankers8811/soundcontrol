@@ -482,11 +482,17 @@ export function parseSoundModes(
   ) {
     report.mode = 'adaptive';
   }
-  if (layout === 'tws-p30i' && payload.length >= 7) {
-    // A3959 (`a3959/structures/sound_modes.rs`): byte 3 is the
-    // Manual(0)/Adaptive(1)/Multi-scene(2) selector — the enum OpenSCQ30
-    // commit 9b6e42a7 corrected. Byte 1's low nibble is the adaptive strength
-    // and byte 5 the adaptive sensitivity, both firmware-owned.
+  if (
+    (layout === 'tws-p30i' || layout === 'tws-p40i' || layout === 'tws-d1202') &&
+    payload.length >= 5
+  ) {
+    // Byte 3 is each model's own Manual(0)/Adaptive(1)/Multi-scene(2) selector:
+    // A3959 (`a3959/structures/sound_modes.rs`, corrected by OpenSCQ30 commit
+    // 9b6e42a7), P40i (`a3955/.../sound_modes.rs`) and D1202
+    // (`d1202/structures.rs`) declare the identical enum. Reading it back is
+    // what lets the UI mirror the sub-mode the device is really in instead of
+    // holding on to whatever was selected last. Liberty 4 NC / Liberty 5 use
+    // value 2 for *Transportation*, so they are deliberately not read here.
     const automation = payload[3];
     report.subMode =
       automation === 0x00
@@ -497,6 +503,10 @@ export function parseSoundModes(
             ? 'multiscene'
             : undefined;
     if (b0 === 0x00 && report.subMode === 'adaptive') report.mode = 'adaptive';
+  }
+  if (layout === 'tws-p30i' && payload.length >= 7) {
+    // Byte 1's low nibble is the adaptive strength and byte 5 the adaptive
+    // sensitivity, both firmware-owned on A3959.
     const adaptiveNibble = payload[1] & 0x0f;
     if (adaptiveNibble >= 1 && adaptiveNibble <= 5) report.adaptiveLevel = adaptiveNibble;
     const sensitivity = payload[5];
