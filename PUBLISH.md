@@ -81,15 +81,18 @@ without disabling or weakening the signing gates in the section below. It builds
 verifies the artifact-zip digest and the installer SHA-256 before uploading,
 refuses to modify any release that is not a pre-release, and never replaces the
 stable signed installer asset. The current such pre-release is
-`v1.0.7-windows-unsigned-1` (`SoundControl-Setup.exe`, unsigned, described as
+`v1.0.7-windows-unsigned-1`, titled **"SoundControl v1.0.7 — Windows Installer
+(Testing)"** (`SoundControl-Setup.exe`, not Authenticode-signed, described as
 such in its release notes).
 
 Because the pre-release uses a `v*` tag, creating it also triggers the tag-based
 release workflows. **Release Windows** stops at its signing-credentials gate (by
-design — it signs and publishes nothing), and **Release Linux** fails in its
-publish step because GitHub refuses to mark a pre-release as "latest", so no
-Linux assets are attached to the pre-release. The stable Linux release and its
-assets are unaffected.
+design — it signs and publishes nothing). **Release Linux** now detects that the
+destination is a pre-release and skips Linux asset publication with a visible
+`::notice::` (GitHub refuses to mark a pre-release as "latest", and a Windows
+testing pre-release is not the Linux release channel), so the step no longer
+fails and no Linux assets are attached to the pre-release. The stable Linux
+release (`v1.0.7-linux-validation-3`) and its assets are unaffected.
 
 ## Linux release
 

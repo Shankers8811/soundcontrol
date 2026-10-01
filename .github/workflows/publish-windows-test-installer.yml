@@ -23,7 +23,7 @@ name: Publish Windows Test Installer (unsigned)
 # notes file (this is also what documents the SHA-256 and the UNSIGNED status):
 #
 #   gh release create v1.0.7-windows-unsigned-1 \
-#     --title "SoundControl v1.0.7 - Windows installer (UNSIGNED test build)" \
+#     --title "SoundControl v1.0.7 — Windows Installer (Testing)" \
 #     --notes-file docs/releases/v1.0.7-windows-unsigned-1.md \
 #     --prerelease --target dc255d0397e6aeed4f61a01d25bd13cd2cb5b824
 #

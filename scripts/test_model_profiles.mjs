@@ -238,7 +238,7 @@ check('D1402 sound-mode writes remain blocked until the unlock handshake exists'
 
 console.log('\nMarket catalog — identity/evidence/coverage are separate');
 const catalog = M.MARKET_CATALOG;
-check('market catalog has 49 deduplicated current/regional/legacy rows', catalog.length === 49, `${catalog.length}`);
+check('market catalog has 51 deduplicated current/regional/legacy rows', catalog.length === 51, `${catalog.length}`);
 check('market catalog SKUs are unique', new Set(catalog.map((entry) => entry.sku)).size === catalog.length);
 for (const entry of catalog) {
   const profile = M.DEVICES.find((d) => d.id === entry.profileId);
@@ -558,6 +558,8 @@ const NEW_CATALOG_ONLY_HEADSETS = [
   ['A3045', 'life-q20-plus', 'Life Q20+'],
   ['A3031', 'vortex', 'Soundcore Vortex'],
   ['A3033', 'life-2-neo', 'Life 2 Neo'],
+  ['A3021', 'space-nc', 'Space NC'],
+  ['A3024', 'life-2-nc', 'Life 2 NC'],
 ];
 const classicAncFrame = M.buildAnc('classic', { mode: 'anc', level: 3, scene: 'outdoor', transVocal: false, wind: false });
 for (const [sku, id, name] of NEW_CATALOG_ONLY_HEADSETS) {

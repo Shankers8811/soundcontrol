@@ -309,8 +309,18 @@ export const MARKET_CATALOG: readonly MarketCatalogEntry[] = [
   },
   {
     sku: 'A3033', name: 'Life 2 Neo', category: 'headphones', marketStatus: 'legacy', regions: ['GLOBAL'],
-    aliases: ['A3033', 'Life 2 Neo', 'soundcore Life 2 Neo'], profileId: 'life-2-neo',
-    protocolStatus: 'unknown', protocolEvidence: 'Official serial-number guide confirms identity. OpenSCQ30 documents an a3033 implementation (EQ, wearing detection, single_battery(5)) but it is not ported into SoundControl, so only protocol-universal reads are enabled.', simulatorCoverage: 'not-covered', unitTestCoverage: 'not-covered', physicalValidation: 'pending',
+    aliases: ['A3033', 'Life 2 Neo', 'soundcore Life 2 Neo', 'Q10i', 'soundcore Q10i', 'Life Q10i'], profileId: 'life-2-neo',
+    protocolStatus: 'unknown', protocolEvidence: 'Official serial-number guide confirms A3033 (registration A3033C) as Life 2 Neo; retail A3033Y11 listings market the same hardware as Soundcore Q10i, which is handled as a regional alias, not a second device. OpenSCQ30 documents an a3033 implementation (EQ, wearing detection, single_battery(5)) but it is not ported into SoundControl, so only protocol-universal reads are enabled.', simulatorCoverage: 'not-covered', unitTestCoverage: 'not-covered', physicalValidation: 'pending',
+  },
+  {
+    sku: 'A3021', name: 'Space NC', category: 'headphones', marketStatus: 'legacy', regions: ['GLOBAL'],
+    aliases: ['A3021', 'Space NC', 'soundcore Space NC'], profileId: 'space-nc',
+    protocolStatus: 'unknown', protocolEvidence: 'FCC ID 2AOKB-A3021 (Anker Innovations user manual, 2018) confirms A3021 = Soundcore Space NC; no public packet layout is available in the sources used here.', simulatorCoverage: 'not-covered', unitTestCoverage: 'not-covered', physicalValidation: 'pending',
+  },
+  {
+    sku: 'A3024', name: 'Life 2 NC', category: 'headphones', marketStatus: 'legacy', regions: ['GLOBAL'],
+    aliases: ['A3024', 'Life 2 NC', 'soundcore Life 2 NC'], profileId: 'life-2-nc',
+    protocolStatus: 'unknown', protocolEvidence: 'FCC ID 2AOKB-A3024 (Anker Innovations user manual, 2019) confirms A3024 = Soundcore Life 2 NC; no public packet layout is available in the sources used here.', simulatorCoverage: 'not-covered', unitTestCoverage: 'not-covered', physicalValidation: 'pending',
   },
   {
     sku: 'A3023', name: 'Life 2', category: 'headphones', marketStatus: 'legacy', regions: ['GLOBAL'],

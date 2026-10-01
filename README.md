@@ -25,7 +25,7 @@ Live status for `main`:
 
 The repository currently requires all three checks to pass before a validated `main` change is considered ready. CI is automated validation; it is not physical Soundcore-device or Windows audio-regression validation.
 
-**Install or download:** Linux AppImage and Debian packages are available below, and a Windows installer is available as an **UNSIGNED** test build from the [Windows test-installer pre-release](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.7-windows-unsigned-1). That Windows installer is **not Authenticode-signed**, so Windows will show a SmartScreen / "unknown publisher" warning; it is published for Windows 11 / Windows desktop testing. An official Windows release still requires Authenticode signing. The Windows Build badge above shows live GitHub Actions status for `main`, not a signed-release indicator.
+**Install or download:** Linux AppImage and Debian packages are available below, and a **Windows testing installer** is available from the [Windows test-installer pre-release](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.7-windows-unsigned-1). That build is **not Authenticode-signed** (Windows may show a SmartScreen / "unknown publisher" prompt); it is published for Windows 11 / Windows desktop testing. Official signed Windows publication still requires Authenticode signing. The Windows Build badge above shows live GitHub Actions status for `main`, not a signed-release indicator.
 
 ---
 
@@ -35,13 +35,13 @@ The repository currently requires all three checks to pass before a validated `m
 
 **Latest stable release (Linux):** [v1.0.7-linux-validation-3](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.7-linux-validation-3) (assets checked 2026-09-30). It contains `SoundControl.AppImage`, `SoundControl-1.0.7.AppImage`, `SoundControl.deb`, and `soundcontrol_1.0.7_amd64.deb`.
 
-**Windows test installer (UNSIGNED):** the [v1.0.7-windows-unsigned-1 pre-release](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.7-windows-unsigned-1) publishes the already-tested Windows Build CI installer. It is a pre-release because it is **not Authenticode-signed** — see the Windows section below.
+**Windows testing installer:** the [v1.0.7-windows-unsigned-1 pre-release](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.7-windows-unsigned-1) publishes the already-tested Windows Build CI installer. It is a pre-release and is **not Authenticode-signed** — see the Windows section below.
 
 ### 🪟 Windows
 
-[**Download `SoundControl-Setup.exe`**](https://github.com/Shankers8811/soundcontrol/releases/download/v1.0.7-windows-unsigned-1/SoundControl-Setup.exe) — **UNSIGNED** Windows installer, 121,528,415 bytes, for **Windows 11 / Windows desktop testing**.
+[**Download `SoundControl-Setup.exe`**](https://github.com/Shankers8811/soundcontrol/releases/download/v1.0.7-windows-unsigned-1/SoundControl-Setup.exe) — Windows testing installer (not Authenticode-signed), 121,528,415 bytes, for **Windows 11 / Windows desktop testing**.
 
-⚠️ **This installer is not Authenticode-signed.** Windows cannot verify a publisher for it, so **Windows may display a SmartScreen / "unknown publisher" security warning** when you download or run it. That warning is expected for an unsigned build; the installer is not signed and is not production-certified. Verify the download first:
+**Testing build:** this installer is not Authenticode-signed, so Windows may display a SmartScreen / "unknown publisher" prompt when you download or run it — expected for a testing build. Verify the download first:
 
 ```powershell
 Get-FileHash .\SoundControl-Setup.exe -Algorithm SHA256
@@ -78,7 +78,7 @@ Both published Linux packages bundle Electron and the Python bridge runtime — 
 [**View all releases and release notes**](https://github.com/Shankers8811/soundcontrol/releases)
 
 - Release links are built into the app under **Settings → About**.
-- Official Windows releases are required to pass Authenticode signing before publication. The Windows installer published under [v1.0.7-windows-unsigned-1](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.7-windows-unsigned-1) is an explicitly labelled **UNSIGNED** CI test build on a pre-release, not a signed or production release.
+- Official Windows releases are required to pass Authenticode signing before publication. The Windows installer published under [v1.0.7-windows-unsigned-1](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.7-windows-unsigned-1) is a CI test build on a pre-release, not a signed or production release; it is not Authenticode-signed.
 - **Lifecycle is deliberately boring:** SoundControl starts only when you launch it (it never
   registers a Windows startup entry, and a startup entry left by an older version is removed at
   launch), and closing the window exits completely — the Bluetooth helper is terminated, port
@@ -145,7 +145,7 @@ C50i, Life Note 3S (A3945, read-only), P31i/R60i NC, Sleep A30, Liberty 4 NC, Li
 Liberty 4 Pro, P40i, Liberty 5, Q20i (also sold as Q21i NC on the same A3004
 SKU), Space One, Space Q45, Life Q35, Life Q30, Life Tune / Life Tune XR,
 Life Tune Pro (A3030, routed to the documented Q35 layout by the upstream
-device table), Space One Pro and Q11i, plus the read-only Space 2 profile and catalog-only Life U2, Life U2i/R500 and Life NC neckband identities. Profiles carry their aliases, battery scale/offset, state offsets,
+device table), Space One Pro and Q11i, plus the read-only Space 2 profile, the catalog-only over-ear identities (including Space NC A3021, Life 2 NC A3024, Life 2 Neo/Q10i A3033 and the legacy Life/Q/Vortex rows) and the catalog-only Life U2, Life U2i/R500 and Life NC neckband identities. Profiles carry their aliases, battery scale/offset, state offsets,
 `06:81` layout, EQ command and toggle capabilities together; the transport
 gate refuses a command that does not belong to the connected profile.
 
@@ -157,15 +157,20 @@ names remain read-only universal telemetry rather than borrowing a sibling's
 protocol.
 
 The layouts and evidence matrix are pinned by `npm run verify:protocol`,
-`npm run test:models`, `npm run test:simulator`, and `npm run test:ui`; see the
+`npm run test:models`, `npm run test:simulator`, `npm run test:ui`, and the
+automated per-model feature/ANC frame matrix (`npm run test:matrix`); see the
 state-offset table in [PROTOCOL.md](PROTOCOL.md) for the exact offsets and
 source projects. The current-market inventory, regional aliases, catalog-only
 rows, and simulator/unit-test status are tracked in
 [`docs/MARKET-COMPATIBILITY.md`](docs/MARKET-COMPATIBILITY.md); the
 headset-side coverage matrix — including the legacy Life/Q/Vortex identities
-added on 2026-10-01 that stay catalog-only because their packet layout is not
+and the FCC-confirmed Space NC (A3021) / Life 2 NC (A3024) identities added on
+2026-10-01 that stay catalog-only because their packet layout is not
 public — is in
-[`docs/HEADSET-MODEL-COVERAGE.md`](docs/HEADSET-MODEL-COVERAGE.md). The separate
+[`docs/HEADSET-MODEL-COVERAGE.md`](docs/HEADSET-MODEL-COVERAGE.md). The explicit
+per-model `06:81` ANC layout / mode / level / validation matrix — including the
+invalid values the model gate rejects — is in
+[`docs/ANC-SOUND-MODE-MATRIX.md`](docs/ANC-SOUND-MODE-MATRIX.md). The separate
 [Windows hardware validation record](HARDWARE-VALIDATION.md) tracks the
 unperformed physical-device test plan. Catalog-only models are identified
 exactly but do not get guessed device controls.

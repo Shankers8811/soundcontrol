@@ -96,12 +96,14 @@ accessory, not a separately identified Bluetooth neckband device.
 | A3004 | Q20i / Q21i NC | US/EU | implemented; shared A3004 SKU | yes | yes |
 | A3005 / A3005Z21 / A3005ZA1 | Q11i | US | implemented | yes | yes |
 | A3012 | H30i | EU | unknown | — | — |
+| A3021 | Space NC | GLOBAL (legacy) | unknown | — | — |
+| A3024 | Life 2 NC | GLOBAL (legacy) | unknown | — | — |
 | A3025 | Life Q20 | EU | unknown | — | — |
 | A3027 | Life Q35 | GLOBAL (legacy) | implemented | yes | yes |
 | A3029 | Life Tune / Life Tune XR | GLOBAL (legacy) | implemented | yes | yes |
 | A3030 | Life Tune Pro | GLOBAL (legacy) | implemented (upstream A3027 routing) | yes | yes |
 | A3031 | Soundcore Vortex | GLOBAL (legacy) | unknown — upstream layout not ported | — | — |
-| A3033 | Life 2 Neo | GLOBAL (legacy) | unknown — upstream layout not ported | — | — |
+| A3033 | Life 2 Neo / Q10i (retail A3033Y11) | GLOBAL (legacy) | unknown — upstream layout not ported | — | — |
 | A3023 | Life 2 | GLOBAL (legacy) | unknown | — | — |
 | A3032 | Life Q10 | GLOBAL (legacy) | unknown | — | — |
 | A3045 | Life Q20+ | GLOBAL (legacy) | unknown | — | — |

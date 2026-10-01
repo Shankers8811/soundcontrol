@@ -48,6 +48,8 @@ jobs:
         run: npm run test:targets
       - name: Model profiles - R50i A3949 / R50i NC A3959 / unknown (matrix, gating, mirrors, sessions)
         run: npm run test:models
+      - name: Model feature / ANC frame matrix (per-SKU features, invalid values, routing)
+        run: npm run test:matrix
       - name: Startup/lifecycle e2e (emulated helper, fake RFCOMM)
         run: npm run test:e2e
       - name: Main-process lifecycle (real helper kill/restart races, stubbed Electron)
