@@ -8,10 +8,18 @@
  * uses a catalog-only profile that permits identity/universal reads only.
  *
  * Snapshot date: 2026-09-29 (US and EU soundcore storefronts/support pages).
+ * Legacy rows confirmed by official support pages were added 2026-10-01.
  */
 
 export type MarketCategory = 'tws' | 'sleep' | 'open-ear' | 'neckband' | 'headphones';
-export type MarketStatus = 'current' | 'regional-current';
+/**
+ * Market presence at the storefront snapshot date:
+ *  - `current` / `regional-current`: listed on the US/EU snapshot.
+ *  - `legacy`: exact identity confirmed by official soundcore support pages,
+ *    but the SKU is no longer in the current storefront snapshot. A legacy
+ *    row still maps to an exact profile, identification and universal reads.
+ */
+export type MarketStatus = 'current' | 'regional-current' | 'legacy';
 export type ProtocolStatus = 'implemented' | 'read-only' | 'unknown';
 export type CoverageStatus = 'covered' | 'not-covered';
 export type PhysicalValidationStatus = 'pending' | 'verified';
@@ -23,7 +31,13 @@ export interface MarketCatalogEntry {
   name: string;
   category: MarketCategory;
   marketStatus: MarketStatus;
-  regions: readonly ('US' | 'EU')[];
+  /**
+   * Storefront region for current rows. `GLOBAL` means the exact identity is
+   * confirmed only by official soundcore global support documentation (the
+   * serial-number guide and service pages), so no storefront-availability
+   * claim is made for that legacy row.
+   */
+  regions: readonly ('US' | 'EU' | 'GLOBAL')[];
   /** Regional spelling, AI-feature, and product-page aliases. */
   aliases: readonly string[];
   /** Exact SoundControl profile, when one has been implemented. */
@@ -250,8 +264,8 @@ export const MARKET_CATALOG: readonly MarketCatalogEntry[] = [
   },
   {
     sku: 'A3004', name: 'Q20i', category: 'headphones', marketStatus: 'current', regions: ['US', 'EU'],
-    aliases: ['A3004', 'Q20i', 'soundcore Q20i'], profileId: 'q20i',
-    protocolStatus: 'implemented', protocolEvidence: `${OPENSCQ30}: A3004 classic state layout and 02:83 DRC EQ.`, simulatorCoverage: 'covered', unitTestCoverage: 'covered', physicalValidation: 'pending',
+    aliases: ['A3004', 'Q20i', 'Q21i NC', 'soundcore Q20i', 'soundcore Q21i NC'], profileId: 'q20i',
+    protocolStatus: 'implemented', protocolEvidence: `${OPENSCQ30}: A3004 classic state layout and 02:83 DRC EQ; the Anker EU/UK Declaration of Conformity covers Q20i and Q21i NC on the same A3004 SKU.`, simulatorCoverage: 'covered', unitTestCoverage: 'covered', physicalValidation: 'pending',
   },
   {
     sku: 'A3005', name: 'Q11i', category: 'headphones', marketStatus: 'current', regions: ['US'],
@@ -267,6 +281,51 @@ export const MARKET_CATALOG: readonly MarketCatalogEntry[] = [
     sku: 'A3025', name: 'Life Q20', category: 'headphones', marketStatus: 'regional-current', regions: ['EU'],
     aliases: ['A3025', 'Life Q20', 'soundcore Life Q20'], profileId: 'life-q20',
     protocolStatus: 'unknown', protocolEvidence: GENERIC, simulatorCoverage: 'not-covered', unitTestCoverage: 'not-covered', physicalValidation: 'pending',
+  },
+  // Legacy/regional over-ear rows whose identity is confirmed by the official
+  // soundcore serial-number guide and service pages (reviewed 2026-10-01).
+  // "legacy" only describes storefront presence — it never upgrades protocol
+  // evidence: a row stays `unknown` until its packet layout is implemented and
+  // tested, and an `implemented` row cites the same evidence as its profile.
+  {
+    sku: 'A3027', name: 'Life Q35', category: 'headphones', marketStatus: 'legacy', regions: ['GLOBAL'],
+    aliases: ['A3027', 'Q35', 'Life Q35', 'soundcore Life Q35'], profileId: 'q35',
+    protocolStatus: 'implemented', protocolEvidence: `${OPENSCQ30}: A3027 classic 4-byte sound modes, 02:81 EQ and single_battery(5); identity confirmed by the official serial-number guide.`, simulatorCoverage: 'covered', unitTestCoverage: 'covered', physicalValidation: 'pending',
+  },
+  {
+    sku: 'A3029', name: 'Life Tune / Life Tune XR', category: 'headphones', marketStatus: 'legacy', regions: ['GLOBAL'],
+    aliases: ['A3029', 'Life Tune', 'Life Tune XR', 'soundcore Life Tune', 'soundcore Life Tune XR'], profileId: 'life-tune',
+    protocolStatus: 'implemented', protocolEvidence: 'Official serial-number guide (A3029 = Life Tune/Life Tune XR) plus the existing profile routed from the OpenSCQ30 A3028 (Life Q30) layout.', simulatorCoverage: 'covered', unitTestCoverage: 'covered', physicalValidation: 'pending',
+  },
+  {
+    sku: 'A3030', name: 'Life Tune Pro', category: 'headphones', marketStatus: 'legacy', regions: ['GLOBAL'],
+    aliases: ['A3030', 'Life Tune Pro', 'soundcore Life Tune Pro'], profileId: 'life-tune-pro',
+    protocolStatus: 'implemented', protocolEvidence: `${OPENSCQ30}: device_model.rs routes A3030 through the A3027 (Life Q35) implementation; identity confirmed by the official serial-number guide.`, simulatorCoverage: 'covered', unitTestCoverage: 'covered', physicalValidation: 'pending',
+  },
+  {
+    sku: 'A3031', name: 'Soundcore Vortex', category: 'headphones', marketStatus: 'legacy', regions: ['GLOBAL'],
+    aliases: ['A3031', 'Vortex', 'Soundcore Vortex'], profileId: 'vortex',
+    protocolStatus: 'unknown', protocolEvidence: 'Official serial-number guide confirms identity. OpenSCQ30 publishes a dedicated a3031 layout, but it is not ported into SoundControl and no packet has been validated here, so only protocol-universal reads are enabled.', simulatorCoverage: 'not-covered', unitTestCoverage: 'not-covered', physicalValidation: 'pending',
+  },
+  {
+    sku: 'A3033', name: 'Life 2 Neo', category: 'headphones', marketStatus: 'legacy', regions: ['GLOBAL'],
+    aliases: ['A3033', 'Life 2 Neo', 'soundcore Life 2 Neo'], profileId: 'life-2-neo',
+    protocolStatus: 'unknown', protocolEvidence: 'Official serial-number guide confirms identity. OpenSCQ30 documents an a3033 implementation (EQ, wearing detection, single_battery(5)) but it is not ported into SoundControl, so only protocol-universal reads are enabled.', simulatorCoverage: 'not-covered', unitTestCoverage: 'not-covered', physicalValidation: 'pending',
+  },
+  {
+    sku: 'A3023', name: 'Life 2', category: 'headphones', marketStatus: 'legacy', regions: ['GLOBAL'],
+    aliases: ['A3023', 'Life 2', 'soundcore Life 2'], profileId: 'life-2',
+    protocolStatus: 'unknown', protocolEvidence: GENERIC, simulatorCoverage: 'not-covered', unitTestCoverage: 'not-covered', physicalValidation: 'pending',
+  },
+  {
+    sku: 'A3032', name: 'Life Q10', category: 'headphones', marketStatus: 'legacy', regions: ['GLOBAL'],
+    aliases: ['A3032', 'Life Q10', 'soundcore Life Q10'], profileId: 'life-q10',
+    protocolStatus: 'unknown', protocolEvidence: 'Official soundcore serial-number guide and product page confirm A3032 = Life Q10; no public packet layout is available in the sources used here.', simulatorCoverage: 'not-covered', unitTestCoverage: 'not-covered', physicalValidation: 'pending',
+  },
+  {
+    sku: 'A3045', name: 'Life Q20+', category: 'headphones', marketStatus: 'legacy', regions: ['GLOBAL'],
+    aliases: ['A3045', 'Life Q20+', 'Q20+', 'soundcore Life Q20+'], profileId: 'life-q20-plus',
+    protocolStatus: 'unknown', protocolEvidence: 'Official soundcore service pages confirm A3045 = Life Q20+; no public packet layout is available in the sources used here.', simulatorCoverage: 'not-covered', unitTestCoverage: 'not-covered', physicalValidation: 'pending',
   },
 ];
 
