@@ -20,7 +20,8 @@
  * `set_equalizer` unit test.
  */
 
-import { byteToAdjustment } from './drc';
+import { adjustmentToByte, byteToAdjustment } from './drc';
+import type { DeviceProfile } from '../types';
 
 export interface EqPreset {
   id: string;
@@ -253,4 +254,130 @@ export const CUSTOM_EQ_PRESET_ID = 0xfefe;
 
 export function presetById(index: number): EqPreset | undefined {
   return EQ_PRESETS.find((p) => p.index === index);
+}
+
+/* ------------------------------------------------------------------ */
+/* Per-model preset tables (PART 11 of the capability audit)           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The equalizer *command* is shared by several models, but the set of
+ * factory presets — and in one case the curve behind a shared id — is a
+ * property of the model's own firmware description, not of the command.
+ * Sending an id the model does not define, or a different curve under an id
+ * it does define, would be exactly the "one generic implementation for
+ * different protocol families" mistake.
+ *
+ * Sources (OpenSCQ30 master, per-device equalizer modules):
+ * - `common_settings()`    → `STANDARD` (22 presets, Rock tail +3/+3 dB)
+ * - `common_settings_type_2()` → same 22 ids, Rock re-tuned to +4/+5 dB
+ *   (A3948/A3949/A3959/A3388/D1202 use this table)
+ * - A3876 (V20i)  → its own 22-entry list (id 1 is "Balanced", id 5 is
+ *   "Spoken Word" and id 19 "Podcast" — the reverse of the standard table —
+ *   and id 20 has different bands; id 30 is "Volume Booster")
+ * - D1101 (C50i)  → six presets: 0, 2, 4, 5, 20, 30
+ * - A3330 (C30i)  → one preset: 0 (Soundcore Signature)
+ * Every other profile keeps the standard 22-preset table.
+ */
+
+/** Build a preset from dB values, so `bands` and the wire bytes can't drift. */
+function presetFrom(
+  id: string,
+  name: string,
+  index: number,
+  bands: number[],
+  extra: Partial<Pick<EqPreset, 'blurb' | 'featured' | 'swatch'>> = {},
+): EqPreset {
+  const padded = [...bands, 0, -12];
+  const wire = padded.map((db) => adjustmentToByte(Math.round(db * 10)));
+  return {
+    id,
+    name,
+    blurb: extra.blurb ?? 'Factory curve',
+    index,
+    wire,
+    bands: wire.slice(0, 8).map((b) => Math.round(byteToAdjustment(b)) / 10),
+    featured: extra.featured,
+    swatch: extra.swatch ?? 'linear-gradient(135deg,#334155,#94a3b8)',
+  };
+}
+
+/** Rock as the `common_settings_type_2` family defines it (+4/+5 dB tail). */
+const TYPE2_ROCK_BANDS = [3, 2, -1, -1, 1, 3, 4, 5];
+
+/** `common_settings_type_2`: the standard ids with the re-tuned Rock curve. */
+export const TYPE2_PRESETS: EqPreset[] = EQ_PRESETS.map((preset) =>
+  preset.index === 0x11
+    ? presetFrom('rock', 'Rock', 0x11, TYPE2_ROCK_BANDS, {
+        blurb: preset.blurb,
+        featured: preset.featured,
+        swatch: preset.swatch,
+      })
+    : preset,
+);
+
+/** A3876 / V20i — its own factory list, names and curves (OpenSCQ30 a3876.rs). */
+export const V20I_PRESETS: EqPreset[] = [
+  presetFrom('v20i-signature', 'Soundcore Signature', 0x00, [0, 0, 0, 0, 0, 0, 0, 0], { featured: true, swatch: 'linear-gradient(135deg,#6a5cff,#3d7bff)' }),
+  presetFrom('v20i-balanced', 'Balanced', 0x01, [5.3, -2.1, -0.9, -1.6, 1.2, -3.9, -3.2, 0.2]),
+  presetFrom('v20i-bass-booster', 'Bass Booster', 0x02, [4, 3, 1, 0, 0, 0, 0, 0], { featured: true, swatch: 'linear-gradient(135deg,#7c2d12,#f97316)' }),
+  presetFrom('v20i-classical', 'Classical', 0x04, [3, 3, -2, -2, 0, 2, 3, 4]),
+  presetFrom('v20i-spoken-word', 'Spoken Word', 0x05, [-3, 2, 4, 4, 3, 2, 0, -2]),
+  presetFrom('v20i-dance', 'Dance', 0x06, [2, -3, -1, 1, 2, 2, 1, -3]),
+  presetFrom('v20i-deep', 'Deep', 0x07, [2, 1, 3, 3, 2, -2, -4, -5]),
+  presetFrom('v20i-electronic', 'Electronic', 0x08, [3, 2, -2, 2, 1, 2, 3, 3]),
+  presetFrom('v20i-flat', 'Flat', 0x09, [-2, -2, -1, 0, 0, 0, -2, -2]),
+  presetFrom('v20i-hip-hop', 'Hip-Hop', 0x0a, [2, 3, -1, -1, 2, -1, 2, 3]),
+  presetFrom('v20i-jazz', 'Jazz', 0x0b, [2, 2, -2, -2, 0, 2, 3, 4]),
+  presetFrom('v20i-latin', 'Latin', 0x0c, [0, 0, -2, -2, -2, 0, 3, 5]),
+  presetFrom('v20i-lounge', 'Lounge', 0x0d, [-1, 2, 4, 3, 0, -2, 2, 1]),
+  presetFrom('v20i-piano', 'Piano', 0x0e, [0, 3, 3, 2, 4, 5, 3, 4]),
+  presetFrom('v20i-pop', 'Pop', 0x0f, [-1, 1, 3, 3, 1, -1, -2, -3]),
+  presetFrom('v20i-rnb', 'R&B', 0x10, [6, 2, -2, -2, 2, 3, 3, 4]),
+  presetFrom('v20i-rock', 'Rock', 0x11, [3, 2, -1, -1, 1, 3, 4, 5], { featured: true, swatch: 'linear-gradient(135deg,#7f1d1d,#ef4444)' }),
+  presetFrom('v20i-small-speakers', 'Small Speakers', 0x12, [4, 3, 1, 0, -2, -3, -4, -4]),
+  presetFrom('v20i-podcast', 'Podcast', 0x13, [-3, -2, 1, 2, 2, 1, 0, -3]),
+  presetFrom('v20i-treble-booster', 'Treble Booster', 0x14, [0, 0, -2, 0, -1, -5, 5, 1]),
+  presetFrom('v20i-treble-reducer', 'Treble Reducer', 0x15, [0, 0, 0, -2, -3, -4, -4, -6]),
+  presetFrom('v20i-volume-booster', 'Volume Booster', 0x1e, [2, 3, 4, 5, 6, 6, 5, 4]),
+];
+
+/** D1101 / C50i — six documented presets. */
+export const C50I_PRESETS: EqPreset[] = [0x00, 0x02, 0x04, 0x05, 0x14, 0x1e]
+  .map((index) => EQ_PRESETS.find((p) => p.index === index))
+  .filter((p): p is EqPreset => Boolean(p))
+  .concat([presetFrom('c50i-volume-booster', 'Volume Booster', 0x1e, [2, 3, 4, 5, 6, 6, 5, 4])]);
+
+/** A3330 / C30i — one documented factory preset. */
+export const C30I_PRESETS: EqPreset[] = [
+  presetFrom('c30i-signature', 'Soundcore Signature', 0x00, [0, 0, 0, 0, 0, 0, 0, 0], { featured: true, swatch: 'linear-gradient(135deg,#6a5cff,#3d7bff)' }),
+];
+
+/** The factory presets this exact model's firmware defines. */
+export function presetsForProfile(profile: { presetSet?: DeviceProfile['presetSet'] }): EqPreset[] {
+  switch (profile.presetSet) {
+    case 'type2':
+      return TYPE2_PRESETS;
+    case 'v20i':
+      return V20I_PRESETS;
+    case 'c50i':
+      return C50I_PRESETS;
+    case 'c30i':
+      return C30I_PRESETS;
+    default:
+      return EQ_PRESETS;
+  }
+}
+
+/** Wire preset ids this model's firmware defines (custom 0xFEFE excluded). */
+export function presetIdsForProfile(profile: { presetSet?: DeviceProfile['presetSet'] }): number[] {
+  return presetsForProfile(profile).map((p) => p.index);
+}
+
+/** Look a preset up inside one model's own table. */
+export function presetForProfile(
+  profile: { presetSet?: DeviceProfile['presetSet'] },
+  index: number,
+): EqPreset | undefined {
+  return presetsForProfile(profile).find((p) => p.index === index);
 }

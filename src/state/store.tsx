@@ -27,7 +27,7 @@ import {
   describePacket,
   type AncIntent,
 } from '../protocol/packets';
-import { presetById, type EqPreset } from '../protocol/presets';
+import { presetForProfile, presetsForProfile, type EqPreset } from '../protocol/presets';
 import { requiredStateLength, validStatePayloadLength, withDeviceBoundary } from '../protocol/modelRegistry';
 import { EMPTY_OBSERVED, parseObservedFeatures, type ObservedFeatures } from '../protocol/observedFeatures';
 import { createSessionGuard, isCurrentTransportSession, parseCaseBatteryStateFrame, parseDeviceToggles } from '../protocol/responses';
@@ -142,6 +142,8 @@ interface AppState {
   ancScene: AncScene;
   /** A3959 `06:81` automation sub-mode as last reported by the device. */
   ancSubMode: AncSubMode;
+  /** Adaptive sensitivity byte (0..10) as last reported by the device; undefined when it reports 0xFF. */
+  ancSensitivity?: number;
   transVocal: boolean;
   windNoise: boolean;
   gaming: boolean;
@@ -428,7 +430,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const bandStart = typ === 0x81 ? 2 : 2;
         const raw = payload.slice(bandStart, bandStart + count);
         if (raw.length === count) {
-          const hit = presetById(id);
+          const hit = presetForProfile(profileRef.current, id);
           setEqId(hit ? hit.id : 'custom');
           setBands(Array.from(raw.slice(0, 8), (b) => Math.round(b - 120) / 10));
         }
@@ -1109,12 +1111,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // multi-scene selection is the one the firmware applies.
       subMode: over.subMode ?? ancSubMode,
       adaptiveLevel: over.adaptiveLevel ?? ancAdaptiveLevel,
-      adaptiveSensitivity: over.adaptiveSensitivity ?? ancSensitivity,
+      // Adaptive sensitivity has no UI control, and the value the device
+      // reports may itself be a residue of an earlier bad write. Only an
+      // explicit caller value is sent; otherwise the builder uses 0xFF, the
+      // value in the A3959 state vector / upstream write test.
+      adaptiveSensitivity: over.adaptiveSensitivity,
       scene: over.scene ?? ancScene,
       transVocal: over.transVocal ?? transVocal,
       wind: over.wind ?? windNoise,
     }),
-    [ancAdaptiveLevel, ancLevel, ancMode, ancScene, ancSensitivity, ancSubMode, transVocal, windNoise],
+    [ancAdaptiveLevel, ancLevel, ancMode, ancScene, ancSubMode, transVocal, windNoise],
   );
 
   const prepareAnc = useCallback(
@@ -1141,6 +1147,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setAnc = useCallback(
     async (mode: AncMode, level?: number, scene?: AncScene) => {
+      // Per-model capability, checked before a frame is even built: hiding the
+      // button is presentation, this is the control path. The model gate
+      // refuses the same frame again at the transport boundary.
+      if (mode === 'transparency' && !capabilities.supportsTransparencyMode) {
+        pushLog(
+          'sys',
+          '',
+          `${profile.name} (${profile.sku}) has no documented transparency mode — nothing was sent.`,
+        );
+        return;
+      }
       const appliedLevel = level ?? ancLevel;
       const appliedScene = scene ?? ancScene;
       // Which sub-mode the user just chose. An explicit scene pick means
@@ -1181,7 +1198,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       if (prompts) await beep('mode');
     },
-    [ancIntent, ancLevel, ancMode, ancScene, ancSubMode, prepareAnc, profile.scenes, prompts, sendAnc],
+    [
+      ancIntent,
+      ancLevel,
+      ancMode,
+      ancScene,
+      ancSubMode,
+      capabilities.supportsTransparencyMode,
+      prepareAnc,
+      profile.name,
+      profile.scenes,
+      profile.sku,
+      prompts,
+      pushLog,
+      sendAnc,
+    ],
   );
 
   const setTransVocal = useCallback(
@@ -1296,6 +1327,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const applyPreset = useCallback(
     async (preset: EqPreset) => {
+      // The preset must come from THIS model's documented table: the shared
+      // EQ command does not imply a shared preset list (A3330 defines one
+      // preset, D1101 six, A3876 its own names/curves).
+      const ownTable = presetsForProfile(profile);
+      if (!ownTable.some((p) => p.index === preset.index)) {
+        pushLog(
+          'sys',
+          '',
+          `${profile.name} (${profile.sku}) defines ${ownTable.length} factory preset(s) and id 0x${preset.index
+            .toString(16)
+            .padStart(4, '0')} is not one of them — nothing was sent.`,
+        );
+        return;
+      }
       const pkt = buildEqPreset(profile, preset);
       if (!pkt) {
         pushLog(
@@ -1312,7 +1357,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBands([...preset.bands]);
       setBusy('eq');
       try {
-        await write(pkt, `EQ ${preset.name}`);
+        await write(
+          pkt,
+          `EQ ${preset.name} (id 0x${preset.index.toString(16).padStart(4, '0')}) on ${profile.sku}`,
+        );
       } catch (err) {
         setEqId(prev.eqId);
         setBands(prev.bands);
@@ -1350,7 +1398,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     setBusy('eq');
     try {
-      await write(pkt, 'EQ custom');
+      await write(
+        pkt,
+        `EQ custom 0xFEFE on ${profile.sku} — bands [${bands.map((b) => b.toFixed(1)).join(', ')}]`,
+      );
     } finally {
       setBusy(null);
     }
@@ -1375,7 +1426,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBands(next);
       setBusy('eq');
       try {
-        await write(pkt, 'EQ custom');
+        await write(
+          pkt,
+          `EQ custom 0xFEFE on ${profile.sku} — bands [${next.map((b) => b.toFixed(1)).join(', ')}]`,
+        );
       } catch (err) {
         setEqId(prev.eqId);
         setBands(prev.bands);
@@ -1530,6 +1584,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ancLevel,
       ancScene,
       ancSubMode,
+      ancSensitivity,
       transVocal,
       windNoise,
       gaming,
@@ -1605,6 +1660,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ancLevel,
       ancScene,
       ancSubMode,
+      ancSensitivity,
       transVocal,
       windNoise,
       gaming,

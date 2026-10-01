@@ -133,6 +133,10 @@ export function NoiseControl() {
 
   const changeMode = (mode: 'anc' | 'normal' | 'transparency') => {
     if (disabled || MODES.find((m) => m.id === mode)?.matches(app.ancMode)) return;
+    // Hidden is not enough: the control path and the model gate both refuse
+    // the ambient 0x01 write for a model whose evidence says it has no
+    // transparency mode (store guard + gateCommandForProfile).
+    if (mode === 'transparency' && !caps.supportsTransparencyMode) return;
     // Duplicate-command guard: ignore clicks while a mode change is in flight.
     void app.setAnc(mode).catch(() => {
       /* rolled back in the store; the error banner explains what happened */
@@ -200,7 +204,9 @@ export function NoiseControl() {
         }
       >
         <div className="flex items-start justify-center gap-8 py-2 sm:gap-12">
-          {MODES.map((m) => (
+          {MODES.filter(
+            (m) => m.id !== 'transparency' || caps.supportsTransparencyMode,
+          ).map((m) => (
             <ModeIcon
               key={m.id}
               active={m.matches(app.ancMode)}
@@ -212,6 +218,14 @@ export function NoiseControl() {
             />
           ))}
         </div>
+
+        {!caps.supportsTransparencyMode && (
+          <p className="mt-3 text-center text-[11px] text-faint">
+            Transparency is not offered for {app.profile.name} ({app.profile.sku}) — its documented
+            sound-mode set has no ambient <span className="font-mono">0x01</span> mode, and the
+            model gate refuses that frame if it ever reached the transport.
+          </p>
+        )}
 
         {!app.connected && (
           <p className="mt-3 text-center text-xs text-faint">
@@ -307,7 +321,18 @@ export function NoiseControl() {
                 </div>
                 <div className="flex items-center gap-1" role="group" aria-label="Noise cancellation scene">
                   {SCENES.map((sc) => {
-                    const on = app.ancScene === sc.id;
+                    // A scene is only "active" while the device is actually in
+                    // the multi-scene sub-mode: on a selector layout (A3959,
+                    // P40i, D1202) a manual level or the adaptive toggle
+                    // replaces the sub-mode, so highlighting a scene there
+                    // would show a selection the firmware is not using.
+                    const on =
+                      app.ancScene === sc.id &&
+                      (app.profile.ancLayout !== 'tws-p30i' &&
+                      app.profile.ancLayout !== 'tws-p40i' &&
+                      app.profile.ancLayout !== 'tws-d1202'
+                        ? true
+                        : app.ancSubMode === 'multiscene');
                     return (
                       <button
                         key={sc.id}

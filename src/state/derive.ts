@@ -97,6 +97,13 @@ export const NO_ANC_SUB: AncSubFeatures = {
  */
 export interface Capabilities {
   supportsNoiseControl: boolean;
+  /**
+   * The model exposes the ambient **Transparency** mode (`06:81` ambient byte
+   * `0x01`). Derived from the profile's own `ambientTransparency` evidence —
+   * never from "the layout has a byte for it". A3959/R50i NC is false, and the
+   * model gate refuses the frame as well as hiding the button.
+   */
+  supportsTransparencyMode: boolean;
   supportsEqualizer: boolean;
   /**
    * Custom EQ curves (preset id 0xFEFE). False for A3949 (R50i / P20i /
@@ -122,6 +129,7 @@ export function deriveCapabilities(profile: DeviceProfile): Capabilities {
   const tws = (profile.kind === 'earbuds' || profile.kind === 'open-ear') && profile.state.batteryRight !== null;
   return {
     supportsNoiseControl: profile.ancLayout !== 'none',
+    supportsTransparencyMode: profile.ancLayout !== 'none' && profile.ambientTransparency === true,
     supportsEqualizer: profile.eqCommand !== null,
     supportsCustomEq: profile.eqCommand !== null && profile.customEq,
     supportsVolume: false,

@@ -195,6 +195,26 @@ export interface DeviceProfile {
   dual: boolean;
   /** Model has a transparency sub-mode (fully transparent vs vocal). */
   transparency: boolean;
+  /**
+   * Model exposes the ambient **Transparency** mode itself (`06:81` ambient
+   * byte `0x01`), independently of whether it has a vocal/Talk sub-mode.
+   *
+   * REQUIRED for every profile with a sound-mode layout (`ancLayout !==
+   * 'none'`) and asserted by `scripts/test_capability_matrix.mjs`: a silent
+   * default would let one model's frame reach another model whose evidence
+   * says the mode does not exist.
+   *
+   * Evidence:
+   * - `true`  — the model's own sound-mode structure/state lists Transparency
+   *             as an `AmbientSoundMode` value (OpenSCQ30 per-model module;
+   *             e.g. A3004 registers `[Normal, Transparency, NoiseCanceling]`,
+   *             A3954's own enum carries `Transparency = 1`).
+   * - `false` — documented as absent for this exact model. Today that is only
+   *             **A3959 / R50i NC**: OpenSCQ30 changelog "Soundcore R50i NC
+   *             should not have transparency modes" and PROTOCOL.md. The
+   *             frame is refused by the model gate, not merely hidden.
+   */
+  ambientTransparency?: boolean;
   /** Model has a documented wind-noise suppression field in its mode layout. */
   wind: boolean;
   /** Model has the `02:86` 3D surround toggle. */
@@ -214,6 +234,15 @@ export interface DeviceProfile {
   names: string[];
   ancLayout: AncLayout;
   eqCommand: EqCommand | null;
+  /**
+   * Which factory-preset table this model's firmware defines. The equalizer
+   * *command* can be identical across models while the preset ids/curves are
+   * not: OpenSCQ30's per-device modules define different lists (A3330 has one
+   * preset, D1101 six, A3876 twenty-two with its own names and bands, while
+   * the "type 2" family shares the standard list with a different Rock
+   * curve). Absent ⇒ the standard 22-preset table.
+   */
+  presetSet?: 'standard' | 'type2' | 'v20i' | 'c50i' | 'c30i';
   state: StateOffsets;
   /**
    * True only when the model accepts a CUSTOM equalizer curve (preset id

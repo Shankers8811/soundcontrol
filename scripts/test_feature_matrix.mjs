@@ -547,8 +547,12 @@ check(
 // may pass.
 const d1101 = bySku.get('D1101');
 if (d1101 && d1101.eqCommand === '02:81-dual') {
-  check('D1101: its 32-byte 02:81-dual frame is allowed', gateEq(d1101, M.buildEq('02:81-dual', 0x0001, Array(8).fill(0))));
-  check('D1101: the 20-byte classic 02:81 frame is refused', !gateEq(d1101, M.buildEq('02:81', 0x0001, Array(8).fill(0))));
+  // D1101/C50i defines six presets (0, 2, 4, 5, 20, 30) — 0x0002 is one of
+  // them, 0x0001 is not, so the frame stays a legal shape either way but only
+  // a defined preset may go on the wire.
+  check('D1101: its 32-byte 02:81-dual frame with preset 0x0002 is allowed', gateEq(d1101, M.buildEq('02:81-dual', 0x0002, Array(8).fill(0))));
+  check('D1101: preset 0x0001 is refused (its table has six presets)', !gateEq(d1101, M.buildEq('02:81-dual', 0x0001, Array(8).fill(0))));
+  check('D1101: the 20-byte classic 02:81 frame is refused', !gateEq(d1101, M.buildEq('02:81', 0x0002, Array(8).fill(0))));
 }
 const d1202Eq = bySku.get('D1202');
 if (d1202Eq) {

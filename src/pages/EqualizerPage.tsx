@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useApp } from '../state/store';
-import { EQ_PRESETS } from '../protocol/presets';
+import { presetsForProfile } from '../protocol/presets';
 import { EQ_HZ } from '../types';
 import { EqCurve } from '../components/EqCurve';
 import { DeviceSettingsHeader } from '../components/DeviceSettingsHeader';
@@ -28,7 +28,11 @@ export function EqualizerPage() {
   const app = useApp();
   const caps = app.capabilities;
   const disabled = !app.connected || app.busy === 'eq';
-  const activePreset = EQ_PRESETS.find((p) => p.id === app.eqId);
+  // The factory list belongs to the connected model's firmware description,
+  // not to the shared command: A3330 defines one preset, D1101 six, A3876 its
+  // own names/curves, and the "type 2" family a re-tuned Rock.
+  const presets = presetsForProfile(app.profile);
+  const activePreset = presets.find((p) => p.id === app.eqId);
 
   return (
     <div>
@@ -100,7 +104,7 @@ export function EqualizerPage() {
           <div className="xl:col-span-5">
             <Card
               title="Soundcore presets"
-              subtitle={`${EQ_PRESETS.length} factory curves — captured wire bytes, verified against three independent sources`}
+              subtitle={`${presets.length} factory curve${presets.length === 1 ? '' : 's'} defined for ${app.profile.sku} — ${app.profile.eqCommand ?? 'no EQ command'}`}
             >
               {!app.connected && (
                 <p className="mb-3 rounded-lg border border-edge bg-sunken px-3 py-2 text-[11px] text-mute">
@@ -108,7 +112,7 @@ export function EqualizerPage() {
                 </p>
               )}
               <div className="grid max-h-[560px] grid-cols-2 gap-2 overflow-y-auto pr-1">
-                {EQ_PRESETS.map((p) => {
+                {presets.map((p) => {
                   const active = app.eqId === p.id;
                   return (
                     <button
@@ -161,6 +165,7 @@ function CustomFaders() {
   const app = useApp();
   const timer = useRef<number | null>(null);
   const disabled = !app.connected || app.busy === 'eq';
+  const presets = presetsForProfile(app.profile);
 
   useEffect(
     () => () => {
@@ -183,7 +188,7 @@ function CustomFaders() {
   };
 
   const resetSignature = () => {
-    const p = EQ_PRESETS.find((x) => x.id === 'signature');
+    const p = presets.find((x) => x.index === 0) ?? presets[0];
     if (p) void app.applyPreset(p).catch(() => {});
   };
 

@@ -1,5 +1,5 @@
 import type { AncLayout, DeviceProfile, StateOffsets } from '../types';
-import { CUSTOM_EQ_PRESET_ID } from './presets';
+import { CUSTOM_EQ_PRESET_ID, presetIdsForProfile } from './presets';
 import { commandForFrameKey, validateOutboundFrame, withEarbudOnlyBoundary } from './targets';
 import type { EarbudCommandSpec, OutboundFrameCheck } from './targets';
 
@@ -332,6 +332,16 @@ export function gateCommandForProfile(
           `${profile.name} (${profile.sku}) sends ${profile.ancLayout} sound-mode frames of ${expected} bytes, not ${frame.length}`,
         );
       }
+      // Ambient Transparency (`06:81` payload byte 0 = 0x01) is a per-model
+      // capability, not a property of the shared frame. Hiding the button is
+      // not a gate: a transparency frame that still reaches this function for
+      // a model whose evidence says it has no transparency mode (today only
+      // A3959 / R50i NC) is refused here, on the wire path.
+      if (frame[9] === 0x01 && profile.ambientTransparency !== true) {
+        return deny(
+          `${profile.name} (${profile.sku}) has no documented transparency mode — the 06:81 ambient byte 0x01 is not sent to this model`,
+        );
+      }
       return { ok: true, command: spec };
     }
     case 'equalizer.set':
@@ -369,6 +379,20 @@ export function gateCommandForProfile(
         return deny(
           `Custom EQ curves (preset 0xFEFE) are not supported by ${profile.name} (${profile.sku}) — factory presets only (OpenSCQ30: custom_preset_id None)`,
         );
+      }
+      // Factory preset ids are model-specific even when CAT:TYPE is shared:
+      // A3330 defines one preset, D1101 six, A3876 has its own names/curves.
+      // An id this model's firmware never defined is refused rather than sent
+      // (a "successful" write of an undefined id is meaningless).
+      if (presetId !== CUSTOM_EQ_PRESET_ID) {
+        const allowed = presetIdsForProfile(profile);
+        if (!allowed.includes(presetId)) {
+          return deny(
+            `${profile.name} (${profile.sku}) defines ${allowed.length} factory preset(s) (${allowed
+              .map((id) => `0x${id.toString(16).padStart(2, '0')}`)
+              .join(', ')}) — preset 0x${presetId.toString(16).padStart(4, '0')} is not one of them`,
+          );
+        }
       }
       return { ok: true, command: spec };
     }
