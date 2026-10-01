@@ -55,7 +55,7 @@ try {
   const profiles = M.DEVICES;
   const simulatedProfiles = profiles.filter((profile) => profile.verified);
   const unverifiedProfiles = profiles.filter((profile) => !profile.verified);
-  check('registered profile count is stable', profiles.length === 54, `${profiles.length}`);
+  check('registered profile count is stable', profiles.length === 56, `${profiles.length}`);
   check('documented profiles have simulator fixtures', simulatedProfiles.length > 0);
   check('fixture SKUs are unique', new Set(simulatedProfiles.map((p) => p.sku)).size === simulatedProfiles.length);
   for (const profile of unverifiedProfiles) {

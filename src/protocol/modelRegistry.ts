@@ -1,4 +1,4 @@
-import type { DeviceProfile, StateOffsets } from '../types';
+import type { AncLayout, DeviceProfile, StateOffsets } from '../types';
 import { CUSTOM_EQ_PRESET_ID } from './presets';
 import { commandForFrameKey, validateOutboundFrame, withEarbudOnlyBoundary } from './targets';
 import type { EarbudCommandSpec, OutboundFrameCheck } from './targets';
@@ -301,12 +301,39 @@ export function gateCommandForProfile(
   // the general rule for the expanded table (they are consistent by test — see
   // scripts/test_model_profiles.mjs — so both paths agree).
   switch (commandId) {
-    case 'sound-modes.set':
-      return profile.ancLayout === 'none'
-        ? deny(
-            `${profile.name} (${profile.sku}) has no sound-mode control — ANC/transparency frames are not sent to this model`,
-          )
-        : { ok: true, command: spec };
+    case 'sound-modes.set': {
+      if (profile.ancLayout === 'none') {
+        return deny(
+          `${profile.name} (${profile.sku}) has no sound-mode control — ANC/transparency frames are not sent to this model`,
+        );
+      }
+      // Every `06:81` layout has a documented frame length. A frame of the
+      // wrong length cannot have been produced by this model's builder, so it
+      // is refused: a classic 4-field frame must never reach a model whose
+      // layout expects six or eight fields, and vice versa.
+      const expectedSoundModeLength: Record<Exclude<AncLayout, 'none'>, number> = {
+        classic: 14,
+        'classic-a3035': 16,
+        'classic-a3040': 16,
+        'tws-p30i': 17,
+        'tws-l4nc': 17,
+        'tws-l3pro': 16,
+        'tws-a3062': 16,
+        'tws-a3936': 16,
+        'tws-l4pro': 14,
+        'tws-p40i': 17,
+        'tws-l5': 17,
+        'tws-a3968': 16,
+        'tws-d1202': 18,
+      };
+      const expected = expectedSoundModeLength[profile.ancLayout];
+      if (frame.length !== expected) {
+        return deny(
+          `${profile.name} (${profile.sku}) sends ${profile.ancLayout} sound-mode frames of ${expected} bytes, not ${frame.length}`,
+        );
+      }
+      return { ok: true, command: spec };
+    }
     case 'equalizer.set':
     case 'equalizer.set-drc':
     case 'equalizer.set-hearid': {

@@ -145,30 +145,44 @@ export function buildSpaceQ45Anc(intent: AncIntent): Uint8Array {
   ]);
 }
 
+/**
+ * Manual/adaptive strengths are documented as the integers 1..5 on every
+ * layout that carries them. A non-finite value (corrupted persisted state or
+ * a parser bug upstream) must never be encoded as the invalid level 0, so it
+ * falls back to the app baseline 5 here — `buildAnc` additionally refuses
+ * such an intent outright so the frame is never sent at all.
+ */
+function clampLevel(level: number): number {
+  if (!Number.isFinite(level)) return 5;
+  return Math.max(1, Math.min(5, Math.round(level)));
+}
+
 /** `(manual << 4) | adaptive`, the shared nibble byte on every TWS layout. */
 function manualAdaptiveByte(manual: number, adaptive: number): number {
-  const m = Math.max(1, Math.min(5, Math.round(manual)));
-  const a = Math.max(0, Math.min(5, Math.round(adaptive)));
+  const m = clampLevel(manual);
+  const a = Number.isFinite(adaptive) ? Math.max(0, Math.min(5, Math.round(adaptive))) : 0;
   return ((m << 4) | a) & 0xff;
 }
 
 /** Adaptive strength enum used by layouts whose valid values are 1, 2, 3. */
 function adaptiveFromLevel(level: number): number {
-  if (level <= 2) return 1;
-  if (level <= 4) return 2;
+  const l = clampLevel(level);
+  if (l <= 2) return 1;
+  if (l <= 4) return 2;
   return 3;
 }
 
 /** Adaptive strength enum used by A3936/A3952/A3957: low, medium, high = 0, 1, 2. */
 function adaptiveNamedLevel(level: number): number {
-  if (level <= 2) return 0;
-  if (level <= 4) return 1;
+  const l = clampLevel(level);
+  if (l <= 2) return 0;
+  if (l <= 4) return 1;
   return 2;
 }
 
 /** Direct five-step adaptive fields used by the A3035/A3040/A3062 structures. */
 function adaptiveDirectLevel(level: number): number {
-  return Math.max(1, Math.min(5, Math.round(level)));
+  return clampLevel(level);
 }
 
 /**
@@ -284,7 +298,7 @@ export function buildSpaceA40Anc(intent: AncIntent): Uint8Array {
 export function buildLiberty4ProAnc(intent: AncIntent): Uint8Array {
   const mode = intent.mode === 'adaptive' ? 'anc' : intent.mode;
   const ambient = CLASSIC_MODE[mode];
-  const slider = mode === 'anc' ? 6 - Math.max(1, Math.min(5, Math.round(intent.level))) : mode === 'transparency' ? 6 + Math.max(1, Math.min(5, Math.round(intent.level))) : 6;
+  const slider = mode === 'anc' ? 6 - clampLevel(intent.level) : mode === 'transparency' ? 6 + clampLevel(intent.level) : 6;
   return frame(0x06, 0x81, [ambient, slider, 0x00, intent.wind ? 0x01 : 0x00]);
 }
 
@@ -360,6 +374,20 @@ export function buildD1202Anc(intent: AncIntent): Uint8Array {
 }
 
 export function buildAnc(layout: AncLayout, intent: AncIntent): Uint8Array | null {
+  // Refuse malformed intents outright. A frame is only ever built for a
+  // documented mode/scene, and on level-carrying layouts only for an integer
+  // strength 1..5 — an out-of-range number is never rounded into a strength
+  // the device may not have accepted. (`classic` carries no level byte, so a
+  // stale level value can never block a discrete-mode change.)
+  if (intent.mode !== 'anc' && intent.mode !== 'adaptive' && intent.mode !== 'normal' && intent.mode !== 'transparency') {
+    return null;
+  }
+  if (intent.scene !== 'transport' && intent.scene !== 'outdoor' && intent.scene !== 'indoor') {
+    return null;
+  }
+  if (layout !== 'none' && layout !== 'classic' && !(Number.isInteger(intent.level) && intent.level >= 1 && intent.level <= 5)) {
+    return null;
+  }
   switch (layout) {
     case 'classic':
       return buildClassicAnc(intent);

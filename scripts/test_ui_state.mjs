@@ -109,7 +109,7 @@ const byId = (id) => DEVICES.find((d) => d.id === id);
 
 console.log('\n[1] capability derivation (protocol truth per model)');
 
-check('model table has the 54 documented profiles', DEVICES.length === 54, `got ${DEVICES.length}`);
+check('model table has the 56 documented profiles', DEVICES.length === 56, `got ${DEVICES.length}`);
 
 for (const d of DEVICES) {
   const c = deriveCapabilities(d);

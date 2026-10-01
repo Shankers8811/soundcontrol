@@ -90,6 +90,13 @@ substitute for reading the unit's model code.
 | D1301 | Sleep A30 | Sleep/after-sleep observation is **read-only**; do not send timer/alarm/mixer commands. |
 | D1202 / D1202C | P31i / R60i NC | Exact identity/alias and read-only safe-volume/spatial fields; only supported EQ controls. |
 
+Additional implemented over-ear profiles are also candidates under the same
+rules — A3004 (Q20i / Q21i NC), A3005 (Q11i), A3027 (Life Q35), A3028 (Life
+Q30), A3029 (Life Tune / Life Tune XR), A3030 (Life Tune Pro) and A3062
+(Space One Pro). None has been physically validated; each one's write/read
+status is pinned in [docs/HEADSET-MODEL-COVERAGE.md](docs/HEADSET-MODEL-COVERAGE.md)
+and in `npm run test:matrix`.
+
 The **11** profiles with case-battery layout evidence are A3945, A3330,
 A3388, A3968, D1202, A3947, A3952, A3936, A3954, A3955 and A3957.
 This means an implemented parser/eligible read, **not** measured accuracy on
