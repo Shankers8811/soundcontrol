@@ -378,18 +378,38 @@ console.log('  10 EQ shape checks');
 /* ------------------------------------------------------------ TWS shapes */
 
 // P30i: 7-byte payload, ambient repeated at byte 2, automation at byte 3.
+// OpenSCQ30 9b6e42a7 fixed the NoiseCancelingMode enum to Manual = 0,
+// Adaptive = 1, MultiScene = 2. A manual level change must therefore carry
+// automation 0x00 — sending 0x02 (Multi-scene) made the firmware ignore the
+// level on real R50i NC hardware.
 const p30iMax = buildP30iAnc({ mode: 'anc', level: 5, scene: 'outdoor', transVocal: false, wind: false });
 ok('P30i ANC payload is 7 bytes', p30iMax.length === 17, `${p30iMax.length}`);
 ok('P30i byte0 == byte2 (ambient repeated)', p30iMax[9] === p30iMax[11]);
 ok('P30i manual level in the high nibble', (p30iMax[10] >> 4) === 5, `0x${p30iMax[10].toString(16)}`);
-ok('P30i manual sub-level matches Android (5)', (p30iMax[10] & 0x0f) === 5, `0x${p30iMax[10].toString(16)}`);
-ok('P30i outdoor scene selects multi-scene automation', p30iMax[12] === 0x02);
+ok('P30i keeps the device adaptive nibble (5) next to the manual level', p30iMax[10] === 0x55);
+ok('P30i manual level selects automation 0x00 (Manual), never Multi-scene', p30iMax[12] === 0x00);
+ok('P30i sensitivity is 0xFF while the device reports none', p30iMax[14] === 0xff);
+const p30iScene = buildP30iAnc({ mode: 'anc', level: 5, scene: 'outdoor', transVocal: false, wind: false, subMode: 'multiscene' });
+ok('P30i multi-scene selects automation 0x02', p30iScene[12] === 0x02);
+ok('P30i multi-scene Outdoor scene byte', p30iScene[15] === 0x01);
+ok(
+  'P30i multi-scene Transport / Indoor scene bytes',
+  buildP30iAnc({ mode: 'anc', level: 5, scene: 'transport', transVocal: false, wind: false, subMode: 'multiscene' })[15] === 0x00 &&
+    buildP30iAnc({ mode: 'anc', level: 5, scene: 'indoor', transVocal: false, wind: false, subMode: 'multiscene' })[15] === 0x02,
+);
 const p30iAdaptive = buildP30iAnc({ mode: 'adaptive', level: 3, scene: 'outdoor', transVocal: false, wind: false });
-ok('P30i automation = adaptive', p30iAdaptive[12] === 0x01);
-ok('P30i adaptive vector matches Android (0x51)', p30iAdaptive[10] === 0x51);
-ok('P30i adaptive sensitivity matches Android (0)', p30iAdaptive[14] === 0x00);
-const p30iWind = buildP30iAnc({ mode: 'anc', level: 2, scene: 'outdoor', transVocal: false, wind: true });
+ok('P30i automation = adaptive (0x01)', p30iAdaptive[12] === 0x01);
+ok('P30i adaptive keeps the user manual nibble and the device adaptive nibble', p30iAdaptive[10] === 0x35);
+ok('P30i adaptive sensitivity is 0xFF while the device reports none', p30iAdaptive[14] === 0xff);
+const p30iEcho = buildP30iAnc({ mode: 'adaptive', level: 3, scene: 'outdoor', transVocal: false, wind: false, adaptiveLevel: 2, adaptiveSensitivity: 8 });
+ok('P30i echoes the adaptive level and sensitivity the device reported', p30iEcho[10] === 0x32 && p30iEcho[14] === 8);
+const p30iWind = buildP30iAnc({ mode: 'anc', level: 2, scene: 'outdoor', transVocal: false, wind: true, adaptiveLevel: 5 });
 ok('P30i wind bit', (p30iWind[13] & 0x01) === 1);
+ok(
+  'P30i manual level 2 reproduces the upstream A3959 vector (06:81 00 25 00 00 01 FF 01)',
+  hex(p30iWind.slice(9, 16)).toLowerCase() === '00 25 00 00 01 ff 01',
+  hex(p30iWind.slice(9, 16)),
+);
 
 // Liberty 4 NC: transparency at byte 2, transportation at byte 6.
 const l4nc = buildLiberty4NcAnc({ mode: 'transparency', level: 3, scene: 'transport', transVocal: true, wind: true });

@@ -69,6 +69,8 @@ try {
         export * from './src/protocol/presets.ts';
         export * from './src/protocol/marketCatalog.ts';
         export * from './src/state/derive.ts';
+        export { adjustmentToByte } from './src/protocol/drc.ts';
+        export * from './src/protocol/diagnostics.ts';
       `,
       resolveDir: ROOT,
       loader: 'ts',
@@ -360,6 +362,88 @@ check(
     Array.from(M.buildAnc('classic', intent({ mode: 'transparency', level: 5 }))).join(','),
 );
 
+/* --------------------------------- A3959 R50i NC sound-mode correctness */
+
+console.log('\n[a3959] R50i NC / P30i automation byte, nibbles and scenes');
+
+const a3959 = M.DEVICES.find((d) => d.sku === 'A3959');
+const a3949 = M.DEVICES.find((d) => d.sku === 'A3949');
+const payloadOf30 = (frame) => Array.from(frame.slice(9, -1));
+const p30iFrame = (over = {}) =>
+  M.buildAnc('tws-p30i', {
+    mode: 'anc',
+    level: 3,
+    scene: 'outdoor',
+    transVocal: false,
+    wind: false,
+    ...over,
+  });
+
+// OpenSCQ30 9b6e42a7 ("a3959 incorrect noise canceling mode ids") fixed the
+// enum to Manual = 0, Adaptive = 1, MultiScene = 2. Its set_manual_noise_canceling
+// test expects `06:81 00 25 00 00 01 FF 01` for manual level 2 with the
+// device's stored adaptive nibble 5, wind on, sensitivity 0xFF, scene Outdoor.
+check('A3959 has a protocol profile (tws-p30i), never the A3949 protocol', a3959?.ancLayout === 'tws-p30i' && a3949?.ancLayout === 'none');
+check(
+  'A3959 manual level 2 reproduces the upstream A3959 test vector byte for byte',
+  payloadOf30(p30iFrame({ level: 2, wind: true, adaptiveLevel: 5 })).join(',') === '0,37,0,0,1,255,1',
+  payloadOf30(p30iFrame({ level: 2, wind: true, adaptiveLevel: 5 })).join(','),
+);
+check(
+  'A3959 manual levels 1..5 change only the manual nibble (and checksum)',
+  [1, 2, 3, 4, 5].every((level) => {
+    const p = payloadOf30(p30iFrame({ level }));
+    return p[3] === 0x00 && ((p[1] >> 4) & 0x0f) === level && p[1] === (level << 4) | 5;
+  }),
+);
+check(
+  'A3959 levels 1..5 produce five distinct complete frames',
+  new Set([1, 2, 3, 4, 5].map((level) => Array.from(p30iFrame({ level })).join(','))).size === 5,
+);
+check(
+  'A3959 adaptive sub-mode sets automation 0x01 and never rewrites the firmware-owned nibble',
+  payloadOf30(p30iFrame({ mode: 'adaptive', level: 3, adaptiveLevel: 3 }))[3] === 0x01 &&
+    payloadOf30(p30iFrame({ mode: 'adaptive', level: 3, adaptiveLevel: 3 }))[1] === 0x33,
+);
+check(
+  'A3959 multi-scene sub-mode sets automation 0x02 with the scene in byte 6',
+  ['transport', 'outdoor', 'indoor'].every((scene) => {
+    const p = payloadOf30(p30iFrame({ subMode: 'multiscene', scene }));
+    return p[3] === 0x02 && p[6] === (scene === 'transport' ? 0 : scene === 'outdoor' ? 1 : 2);
+  }),
+);
+check(
+  'A3959 scenes are only distinct frames while the sub-mode is multi-scene',
+  new Set(['transport', 'outdoor', 'indoor'].map((scene) => Array.from(p30iFrame({ subMode: 'multiscene', scene })).join(','))).size === 3,
+);
+check(
+  'A3959 sensitivity is echoed when the device reports 0..10 and 0xFF when it reports none',
+  payloadOf30(p30iFrame({ adaptiveSensitivity: 7 }))[5] === 7 &&
+    payloadOf30(p30iFrame({ adaptiveLevel: 5 }))[5] === 0xff &&
+    payloadOf30(p30iFrame({ adaptiveSensitivity: 255 }))[5] === 0xff,
+);
+check(
+  'A3959 frames are deterministic (same intent, same bytes)',
+  Array.from(p30iFrame()).join(',') === Array.from(p30iFrame()).join(','),
+);
+check(
+  'A3959 identification: R50i NC / P30i / A3959 resolve to p30i, plain R50i to p20i',
+  M.matchDevice('R50i NC').id === 'p30i' &&
+    M.matchDevice('P30i').id === 'p30i' &&
+    M.matchDevice('A3959').id === 'p30i' &&
+    M.matchDevice('R50i').id === 'p20i' &&
+    M.matchDevice('soundcore R50i').id === 'p20i',
+);
+check(
+  'A3959 own 17-byte frame passes the model gate',
+  M.gateCommandForProfile('sound-modes.set', p30iFrame(), a3959).ok,
+);
+check(
+  'A3959 never accepts the A3949-free classic 14-byte frame (and A3949 accepts no sound-mode frame at all)',
+  !M.gateCommandForProfile('sound-modes.set', M.buildAnc('classic', intent()), a3959).ok &&
+    !M.gateCommandForProfile('sound-modes.set', p30iFrame(), a3949).ok,
+);
+
 /* --------------------------------------------- per-model routing + gate */
 
 console.log('\n[routing] own frame allowed, wrong-length frame refused');
@@ -472,6 +556,70 @@ if (d1202Eq) {
   check('D1202: a 32-byte 02:83 frame is refused', !gateEq(d1202Eq, M.buildEq('02:83', 0x0001, Array(8).fill(0))));
   check('D1202: a fabricated HearID frame is refused', !gateEq(d1202Eq, M.buildEq('03:87', 0x0001, Array(8).fill(0)).slice(0, 60)));
 }
+
+/* ------------------------------------------- A3959 equalizer correctness */
+
+console.log('\n[a3959-eq] 02:83 preset ids, band range, DRC and the custom curve');
+
+// The twelve presets the R50i NC UI exposes first, in the order the Soundcore
+// app lists them.
+const A3959_PRESET_NAMES = [
+  'Soundcore Signature', 'Acoustic', 'Bass Booster', 'Bass Reducer', 'Classical',
+  'Podcast', 'Dance', 'Deep', 'Electronic', 'Flat', 'Hip-Hop', 'Jazz',
+];
+const eq83 = (presetId, bands) => M.buildEq('02:83', presetId, bands);
+const eq83Payload = (frame) => Array.from(frame.slice(9, -1));
+
+check('A3959 EQ command is 02:83', a3959.eqCommand === '02:83');
+check('A3959 allows the custom 0xFEFE curve', a3959.customEq === true);
+for (const name of A3959_PRESET_NAMES) {
+  const preset = M.EQ_PRESETS.find((p) => p.name === name);
+  check(`A3959: preset "${name}" exists with 8 UI bands`, !!preset && preset.bands.length === 8);
+  if (!preset) continue;
+  const frame = eq83(preset.index, preset.bands);
+  const payload = eq83Payload(frame);
+  const expectedRaw = [...preset.bands.map((db) => M.adjustmentToByte(Math.round(db * 10))), 0x78, 0x00];
+  check(
+    `A3959 EQ "${name}": preset id \u00b1 10 raw band bytes match the preset table`,
+    payload.slice(0, 2).join(',') === [preset.index & 0xff, (preset.index >> 8) & 0xff].join(',') &&
+      payload.slice(2, 12).join(',') === expectedRaw.join(','),
+    payload.slice(0, 12).join(','),
+  );
+  check(
+    `A3959 EQ "${name}": frame is 32 bytes, CAT:TYPE 02:83, checksum valid`,
+    frame.length === 32 &&
+      frame[5] === 0x02 &&
+      frame[6] === 0x83 &&
+      M.describeFrame(a3959, frame).includes('checksum ok'),
+  );
+  check(
+    `A3959 EQ "${name}": 10 DRC bytes follow the 10 raw bytes`,
+    payload.length === 22 && payload.slice(12).every((b) => Number.isInteger(b) && b >= 0 && b <= 0xf0),
+  );
+}
+
+const A3959_EXTREME = [12, -12, 12, -12, 12, -12, 12, -12];
+const extremeFrame = eq83(M.CUSTOM_EQ_PRESET_ID, A3959_EXTREME);
+const extremePayload = eq83Payload(extremeFrame);
+check(
+  'A3959 extreme curve: preset 0xFEFE + the +/-12 dB band bytes',
+  extremePayload.slice(0, 12).join(',') === '254,254,240,0,240,0,240,0,240,0,120,0',
+  extremePayload.slice(0, 12).join(','),
+);
+check(
+  'A3959 extreme curve: band 9 stays neutral and band 10 stays the -12 dB default',
+  extremePayload[10] === 0x78 && extremePayload[11] === 0x00,
+);
+check(
+  'A3959 extreme curve: the DRC region is computed, never a copy of the raw bands',
+  extremePayload.slice(12).join(',') !== extremePayload.slice(2, 12).join(',') &&
+    extremePayload[21] === 0x00,
+  extremePayload.slice(12).join(','),
+);
+check(
+  'A3959 extreme curve: guarded as allowed for A3959 and non-empty',
+  M.gateCommandForProfile('equalizer.set-drc', extremeFrame, a3959).ok === true && extremeFrame.length === 32,
+);
 
 /* --------------------------------------------------- unsupported claims */
 

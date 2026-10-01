@@ -4,6 +4,13 @@ export type AncMode = 'anc' | 'adaptive' | 'transparency' | 'normal';
 
 export type AncScene = 'transport' | 'outdoor' | 'indoor';
 
+/**
+ * The A3959 `06:81` automation byte (`Manual=0, Adaptive=1, MultiScene=2`)
+ * selects exactly one ANC sub-mode; manual level, adaptive mode and
+ * multi-scene selection are mutually exclusive on the wire.
+ */
+export type AncSubMode = 'manual' | 'adaptive' | 'multiscene';
+
 export type DeviceFamily = 'classic' | 'tws';
 
 /** Physical presentation used by the detail views; protocol family stays separate. */

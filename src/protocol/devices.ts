@@ -30,6 +30,7 @@ const P30I_STATE: StateOffsets = {
   eqPresetId: 32,
   eqBands: { at: 34, count: 10 },
   soundModes: 64,
+  soundModeLength: 7,
   // Trailing block (OpenSCQ30 a3959 state_update.rs, Phase 18): buttons(8)
   // at 55…62, ambient_cycle 63, sound_modes 64…70, unknown 71, touch_tone
   // 72, dual_connections_enabled 73, surround_sound 74, auto_power_off 75,

@@ -237,13 +237,25 @@ From OpenSCQ30 `a3959/structures/sound_modes.rs`:
 6  multi-scene scene            00 Transport · 01 Outdoor · 02 Indoor
 ```
 
-Android Soundcore RFCOMM captures for A3959 use `0x5` as the manual
-sub-level and `0x1` as the adaptive sub-level. Mode changes retain a
-level-5 baseline, so the observed Adaptive vector is `00 51 00 01 01 00
-[scene]`. When the app selects a scene, the manual vector uses the device's
-MultiScene automation value: manual level 5 is `00 55 00 02 01 00 [scene]`.
-The desktop packet builder follows these documented values rather than the
-older inferred level-dependent adaptive mapping.
+Android Soundcore RFCOMM captures for A3959 show `0x5` as the manual
+sub-level and `0x1` as the adaptive sub-level in the official app's frames, so
+its observed Adaptive write is `00 51 00 01 01 00 [scene]` and its Multi-scene
+write is `00 55 00 02 01 00 [scene]`.
+
+Byte 3 decides whether a manual level is honoured at all. OpenSCQ30 commit
+`9b6e42a7` ("a3959 incorrect noise canceling mode ids") fixed the enum to
+**`00` Manual · `01` Adaptive · `02` Multi-scene**; its `set_manual_noise_canceling`
+test expects `06:81 00 25 00 00 01 FF 01` for manual level 2. Sending `02`
+(Multi-scene) for a manual level change — which the earlier desktop builder did
+for every ANC write — makes the firmware ignore the level, the bug reported on
+real R50i NC hardware on 2026-10-01. SoundControl now sends `00` for a level
+tap, `01` for the adaptive toggle and `02` for a scene tap, and reproduces the
+upstream manual vector above.
+
+`AdaptiveNoiseCanceling` is read-only in OpenSCQ30, so the low nibble always
+echoes what the device reported (falling back to `5`, the value in the A3959
+state vector) instead of hardcoding the app's `1`; the sensitivity byte is
+`0xFF` until the device reports one, matching the upstream write above.
 
 This model has **no transparency sub-mode byte** (OpenSCQ30 changelog:
 "R50i NC should not have transparency modes"), so the app hides that option.

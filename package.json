@@ -27,7 +27,8 @@
     "test:targets": "node scripts/test_command_targets.mjs",
     "test:models": "node scripts/test_model_profiles.mjs",
     "test:matrix": "node scripts/test_feature_matrix.mjs",
-    "test:simulator": "node scripts/test_simulator.mjs"
+    "test:simulator": "node scripts/test_simulator.mjs",
+    "trace:r50i-nc": "node scripts/trace-r50i-nc.mjs"
   },
   "build": {
     "appId": "com.soundcontrol.desktop",
