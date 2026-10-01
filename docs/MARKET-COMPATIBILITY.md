@@ -1,6 +1,8 @@
 # Soundcore market and compatibility matrix
 
-Snapshot: **2026-09-29**. The inventory is reconciled from the official
+Snapshot: **2026-09-29**; legacy/regional headset rows confirmed from the
+official serial-number guide and service pages were added **2026-10-01**.
+The inventory is reconciled from the official
 [soundcore US true-wireless collection](https://www.soundcore.com/collections/true-wireless-earbuds),
 [US open-ear collection](https://www.soundcore.com/collections/open-ear-headphones),
 [US headphone collection](https://www.soundcore.com/collections/headphones), and the
@@ -15,7 +17,8 @@ The canonical SKU/profile table is [`src/protocol/devices.ts`](../src/protocol/d
 
 | Column | Meaning |
 | --- | --- |
-| Market | `US`/`EU` catalog presence in this snapshot; regional rows are not separate hardware by themselves. |
+| Market | `US`/`EU` catalog presence in this snapshot; `GLOBAL` means the exact identity is confirmed only by official global support documentation (legacy rows), so no storefront-availability claim is made. Regional rows are not separate hardware by themselves. |
+| Legacy | A `legacy` row is no longer in the current storefront snapshot but still maps to an exact SKU profile with identification and universal reads. Legacy never upgrades protocol evidence. |
 | Protocol | `implemented` means an exact packet/state layout is in the app; `read-only` means exact reads exist but one or more writes are intentionally withheld; `unknown` means catalog identity only. |
 | Simulator | Local simulator/offset path available, not physical hardware. It is not evidence that a packet works on a real unit. |
 | Unit tests | Protocol/capability assertions exist for the profile. |
@@ -90,10 +93,23 @@ accessory, not a separately identified Bluetooth neckband device.
 | D1404 | Q31i | US/EU | unknown | — | — |
 | A3040 | Space Q45 | EU | implemented; EQ/HearID read-only | yes | yes |
 | A3028 | Life Q30 | US/EU | implemented | yes | yes |
-| A3004 | Q20i | US/EU | implemented | yes | yes |
+| A3004 | Q20i / Q21i NC | US/EU | implemented; shared A3004 SKU | yes | yes |
 | A3005 / A3005Z21 / A3005ZA1 | Q11i | US | implemented | yes | yes |
 | A3012 | H30i | EU | unknown | — | — |
 | A3025 | Life Q20 | EU | unknown | — | — |
+| A3027 | Life Q35 | GLOBAL (legacy) | implemented | yes | yes |
+| A3029 | Life Tune / Life Tune XR | GLOBAL (legacy) | implemented | yes | yes |
+| A3030 | Life Tune Pro | GLOBAL (legacy) | implemented (upstream A3027 routing) | yes | yes |
+| A3031 | Soundcore Vortex | GLOBAL (legacy) | unknown — upstream layout not ported | — | — |
+| A3033 | Life 2 Neo | GLOBAL (legacy) | unknown — upstream layout not ported | — | — |
+| A3023 | Life 2 | GLOBAL (legacy) | unknown | — | — |
+| A3032 | Life Q10 | GLOBAL (legacy) | unknown | — | — |
+| A3045 | Life Q20+ | GLOBAL (legacy) | unknown | — | — |
+
+The headset-side evidence, per-model detail, protocol-family boundaries and the
+list of deliberately unimplemented models are in
+[`docs/HEADSET-MODEL-COVERAGE.md`](HEADSET-MODEL-COVERAGE.md). Gaming headsets
+are documented there as NOT APPLICABLE (wired-only, no Bluetooth packet path).
 
 ## What “unknown” does safely
 

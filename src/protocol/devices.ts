@@ -885,7 +885,11 @@ export const DEVICES: DeviceProfile[] = [
     wind: false,
     transparency: false,
     batteryMax: 5,
-    names: ['Q20i', 'A3004', 'soundcore Q20i'],
+    // Q21i NC is a regional marketing name for the same A3004 hardware: the
+    // Anker EU/UK Declaration of Conformity covers "Q20i and Q21i NC" on
+    // A3004, so the shared name resolves to this exact SKU profile instead of
+    // an unknown model.
+    names: ['Q20i', 'A3004', 'soundcore Q20i', 'Q21i NC', 'soundcore Q21i NC'],
     ancLayout: 'classic',
     eqCommand: '02:83',
     customEq: true,
@@ -1052,7 +1056,8 @@ export const DEVICES: DeviceProfile[] = [
     wind: false,
     transparency: false,
     batteryMax: 5,
-    names: ['Life Tune', 'A3029', 'soundcore Life Tune'],
+    // The official serial-number guide lists A3029 as "Life Tune/Life Tune XR".
+    names: ['Life Tune', 'Life Tune XR', 'A3029', 'soundcore Life Tune', 'soundcore Life Tune XR'],
     ancLayout: 'classic',
     eqCommand: '02:81',
     // FEFE custom curves documented for the 02:81 command (OpenSCQ30
@@ -1061,6 +1066,32 @@ export const DEVICES: DeviceProfile[] = [
     state: LIFE_Q_STATE,
     source:
       'OpenSCQ30 routes A3029 through the A3028 (Life Q30) implementation: classic 4-byte modes at state offset 35 and battery at offset 0; name from its own i18n entry',
+    verified: true,
+  },
+  {
+    id: 'life-tune-pro',
+    name: 'Life Tune Pro',
+    sku: 'A3030',
+    kind: 'overear',
+    family: 'classic',
+    gaming: false,
+    ancLevels: false,
+    scenes: true,
+    ldac: false,
+    dual: false,
+    surround: false,
+    wind: false,
+    transparency: false,
+    batteryMax: 5,
+    names: ['Life Tune Pro', 'A3030', 'soundcore Life Tune Pro'],
+    ancLayout: 'classic',
+    eqCommand: '02:81',
+    // FEFE custom curves documented for the 02:81 command (same family as the
+    // A3027 row this SKU is routed through).
+    customEq: true,
+    state: LIFE_Q_STATE,
+    source:
+      'OpenSCQ30 device_model.rs routes A3030 (Life Tune Pro) through the A3027 (Life Q35) implementation: classic 4-byte sound modes at state offset 35, single_battery(5) at offset 0 and 02:81 equalizer. Identity from the official soundcore serial-number guide (A3030 = Life Tune Pro).',
     verified: true,
   },
 
@@ -1087,6 +1118,11 @@ export const DEVICES: DeviceProfile[] = [
   catalogOnly('q31i', 'Q31i', 'D1404', 'overear', ['Q31i', 'D1404', 'soundcore Q31i'], 'Official soundcore US/EU product/support identity; exact D1404 packet layout is not published in the sources used here.'),
   catalogOnly('h30i', 'H30i', 'A3012', 'overear', ['H30i', 'A3012', 'soundcore H30i'], 'Official soundcore EU product/support identity; exact A3012 packet layout is not published in the sources used here.'),
   catalogOnly('life-q20', 'Life Q20', 'A3025', 'overear', ['Life Q20', 'A3025', 'soundcore Life Q20'], 'Official soundcore EU product/support identity; exact A3025 packet layout is not published in the sources used here.'),
+  catalogOnly('life-2', 'Life 2', 'A3023', 'overear', ['Life 2', 'A3023', 'soundcore Life 2'], 'Official soundcore serial-number guide identifies A3023 as Life 2; no OpenSCQ30 implementation or other public packet layout exists in the sources used here, so only protocol-universal reads are enabled.'),
+  catalogOnly('life-q10', 'Life Q10', 'A3032', 'overear', ['Life Q10', 'A3032', 'soundcore Life Q10'], 'Official soundcore serial-number guide and product page (A3032 = Life Q10); no public packet layout exists in the sources used here.'),
+  catalogOnly('life-q20-plus', 'Life Q20+', 'A3045', 'overear', ['Life Q20+', 'Q20+', 'A3045', 'soundcore Life Q20+'], 'Official soundcore service pages (A3045 Life Q20+ user manual, quick-start guide and DoC); no public packet layout exists in the sources used here.'),
+  catalogOnly('vortex', 'Soundcore Vortex', 'A3031', 'overear', ['Soundcore Vortex', 'Vortex', 'A3031'], 'Official soundcore serial-number guide identifies A3031 as Soundcore Vortex. OpenSCQ30 publishes a dedicated a3031 implementation (sound modes with NC levels, dual battery, EQ<2,8>, button status, auto power-off, touch tone), but that packet layout has not been ported or validated in SoundControl, so only protocol-universal reads are enabled.'),
+  catalogOnly('life-2-neo', 'Life 2 Neo', 'A3033', 'overear', ['Life 2 Neo', 'A3033', 'soundcore Life 2 Neo'], 'Official soundcore serial-number guide identifies A3033 as Life 2 Neo. OpenSCQ30 documents an a3033 implementation (equalizer, wearing detection and single_battery(5), no sound modes), but that packet layout has not been ported or validated in SoundControl, so only protocol-universal reads are enabled.'),
   catalogOnly('life-u2i', 'R500 / Life U2i', 'A3213', 'neckband', ['R500', 'Life U2i', 'A3213', 'soundcore R500', 'soundcore Life U2i'], 'Official soundcore product and serial-number pages identify A3213 as R500/Life U2i; exact packet layout is not published in the sources used here.'),
   catalogOnly('life-u2', 'Life U2', 'A3212', 'neckband', ['Life U2', 'A3212', 'soundcore Life U2'], 'Official soundcore product and serial-number pages identify A3212 as Life U2; exact packet layout is not published in the sources used here.'),
   catalogOnly('life-nc', 'Life NC', 'A3201', 'neckband', ['Life NC', 'A3201', 'soundcore Life NC'], 'Official soundcore serial-number page identifies A3201 as Life NC; exact packet layout is not published in the sources used here.'),
@@ -1228,10 +1264,24 @@ interface AliasMatch {
   end: number;
 }
 
+/**
+ * Token boundary for alias matching. Equivalent to `\b` for aliases made of
+ * word characters, but it also works when an alias ENDS in punctuation such
+ * as the official "Life Q20+" name: `\b` cannot terminate after "+" (a
+ * non-word character followed by end-of-string is not a word boundary).
+ * [A-Za-z0-9_] is the token alphabet, so "R50iNC" and "XR50i" still never
+ * match "R50i".
+ */
+const TOKEN_CHAR = '[a-z0-9_]';
+const tokenRegex = (alias: string): RegExp =>
+  new RegExp(
+    `(?<!${TOKEN_CHAR})${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?!${TOKEN_CHAR})`,
+  );
+
 /** Whole-token alias matches with their spans (Phase 18 identification). */
 function aliasMatches(n: string): AliasMatch[] {
   return RANKED_ALIASES.flatMap((a) => {
-    const m = new RegExp(`\\b${a.alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).exec(n);
+    const m = tokenRegex(a.alias).exec(n);
     return m ? [{ id: a.id, alias: a.alias, start: m.index, end: m.index + a.alias.length }] : [];
   });
 }
@@ -1277,8 +1327,7 @@ export function matchDevice(name: string | undefined | null): DeviceProfile {
 export function matchNote(name: string | undefined | null): string | null {
   if (!name) return null;
   const n = name.toLowerCase();
-  const tokenMatch = (alias: string) =>
-    new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(n);
+  const tokenMatch = (alias: string) => tokenRegex(alias).test(n);
   const matches = aliasMatches(n);
   if (matches.length > 0) {
     if (resolveAliasMatches(matches)) return null;

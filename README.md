@@ -142,8 +142,10 @@ SoundControl keeps a separate profile for each verified SKU instead of
 assuming that a shared marketing name implies a shared packet layout. The
 current table includes R50i/P20i/A20i, C30i, AeroClip, V20i, Sport X20,
 C50i, Life Note 3S (A3945, read-only), P31i/R60i NC, Sleep A30, Liberty 4 NC, Liberty 3 Pro, Space A40,
-Liberty 4 Pro, P40i, Liberty 5, Q20i, Space One, Space Q45, Life Q35, Life
-Q30, Life Tune, Space One Pro and Q11i, plus the read-only Space 2 profile and catalog-only Life U2, Life U2i/R500 and Life NC neckband identities. Profiles carry their aliases, battery scale/offset, state offsets,
+Liberty 4 Pro, P40i, Liberty 5, Q20i (also sold as Q21i NC on the same A3004
+SKU), Space One, Space Q45, Life Q35, Life Q30, Life Tune / Life Tune XR,
+Life Tune Pro (A3030, routed to the documented Q35 layout by the upstream
+device table), Space One Pro and Q11i, plus the read-only Space 2 profile and catalog-only Life U2, Life U2i/R500 and Life NC neckband identities. Profiles carry their aliases, battery scale/offset, state offsets,
 `06:81` layout, EQ command and toggle capabilities together; the transport
 gate refuses a command that does not belong to the connected profile.
 
@@ -159,7 +161,11 @@ The layouts and evidence matrix are pinned by `npm run verify:protocol`,
 state-offset table in [PROTOCOL.md](PROTOCOL.md) for the exact offsets and
 source projects. The current-market inventory, regional aliases, catalog-only
 rows, and simulator/unit-test status are tracked in
-[`docs/MARKET-COMPATIBILITY.md`](docs/MARKET-COMPATIBILITY.md). The separate
+[`docs/MARKET-COMPATIBILITY.md`](docs/MARKET-COMPATIBILITY.md); the
+headset-side coverage matrix — including the legacy Life/Q/Vortex identities
+added on 2026-10-01 that stay catalog-only because their packet layout is not
+public — is in
+[`docs/HEADSET-MODEL-COVERAGE.md`](docs/HEADSET-MODEL-COVERAGE.md). The separate
 [Windows hardware validation record](HARDWARE-VALIDATION.md) tracks the
 unperformed physical-device test plan. Catalog-only models are identified
 exactly but do not get guessed device controls.

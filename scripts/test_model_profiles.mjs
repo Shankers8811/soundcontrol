@@ -238,7 +238,7 @@ check('D1402 sound-mode writes remain blocked until the unlock handshake exists'
 
 console.log('\nMarket catalog — identity/evidence/coverage are separate');
 const catalog = M.MARKET_CATALOG;
-check('market catalog has 41 deduplicated current/regional rows', catalog.length === 41, `${catalog.length}`);
+check('market catalog has 49 deduplicated current/regional/legacy rows', catalog.length === 49, `${catalog.length}`);
 check('market catalog SKUs are unique', new Set(catalog.map((entry) => entry.sku)).size === catalog.length);
 for (const entry of catalog) {
   const profile = M.DEVICES.find((d) => d.id === entry.profileId);
@@ -304,6 +304,18 @@ const ID_CASES = [
   ['AeroFit 2 AI Assistant', 'A3874'],
   ['Space 2 Pro', 'D1406'],
   ['Liberty Buds 2', 'D1206'],
+  ['soundcore Q21i NC', 'A3004'],
+  ['Q21i NC', 'A3004'],
+  ['soundcore Life Tune', 'A3029'],
+  ['Life Tune XR', 'A3029'],
+  ['soundcore Life Tune Pro', 'A3030'],
+  ['A3030', 'A3030'],
+  ['soundcore Vortex', 'A3031'],
+  ['Vortex', 'A3031'],
+  ['soundcore Life 2', 'A3023'],
+  ['soundcore Life Q10', 'A3032'],
+  ['soundcore Life Q20+', 'A3045'],
+  ['soundcore Life 2 Neo', 'A3033'],
 ];
 for (const [name, sku] of ID_CASES) {
   check(`matchDevice("${name}") → ${sku}`, M.matchDevice(name).sku === sku, `got ${M.matchDevice(name).sku}`);
@@ -334,6 +346,23 @@ check(
   'R50i NC is never mistaken for R50i (longest token wins)',
   M.matchDevice('soundcore R50i NC').ancLayout === 'tws-p30i' &&
     M.matchDevice('soundcore R50i NC').ancLayout !== M.matchDevice('soundcore R50i').ancLayout,
+);
+// The legacy/regional headset names introduced on 2026-10-01 include three
+// prefix families. The whole-token, longest-match rule must keep each exact
+// name on its own SKU instead of letting the shorter name win.
+check(
+  'Life 2 Neo resolves to A3033 while bare Life 2 resolves to A3023',
+  M.matchDevice('soundcore Life 2 Neo').sku === 'A3033' && M.matchDevice('soundcore Life 2').sku === 'A3023',
+);
+check(
+  'Life Q20+ resolves to A3045 while Life Q20 stays on A3025',
+  M.matchDevice('soundcore Life Q20+').sku === 'A3045' && M.matchDevice('soundcore Life Q20').sku === 'A3025',
+);
+check(
+  'Life Tune Pro resolves to A3030 while Life Tune and Life Tune XR stay on A3029',
+  M.matchDevice('soundcore Life Tune Pro').sku === 'A3030' &&
+    M.matchDevice('soundcore Life Tune').sku === 'A3029' &&
+    M.matchDevice('soundcore Life Tune XR').sku === 'A3029',
 );
 
 /* --------------------------------------- 4. command gating (Tasks 3/4/11) */
@@ -489,6 +518,66 @@ check(
   D1101.state.dualConnections === 53 && M.requiredStateLength(D1101.state) === 54,
   JSON.stringify(D1101.state),
 );
+
+/* --------------------- 2026-10-01 headset coverage additions */
+
+console.log('\nLegacy/regional headset additions (2026-10-01)');
+
+const A3030 = M.DEVICES.find((d) => d.sku === 'A3030');
+check(
+  'A3030/Life Tune Pro reuses the documented A3027 classic layout',
+  A3030?.verified === true && A3030.kind === 'overear' && A3030.family === 'classic' &&
+    A3030.ancLayout === 'classic' && A3030.eqCommand === '02:81' &&
+    A3030.batteryMax === 5 && A3030.state.soundModes === 35 && A3030.state.eqBands?.count === 8,
+  JSON.stringify(A3030?.state),
+);
+check(
+  'A3030 catalog row points at the life-tune-pro profile',
+  M.marketEntryForProfile('life-tune-pro')?.sku === 'A3030',
+);
+const cTunePro = M.deriveCapabilities(A3030);
+check(
+  'A3030 gates classic sound modes + 02:81 EQ but no LDAC/dual/gaming',
+  cTunePro.supportsNoiseControl === true && cTunePro.supportsEqualizer === true &&
+    cTunePro.supportsLdac === false && cTunePro.supportsDual === false && cTunePro.supportsGaming === false,
+);
+check(
+  'A3030 name and SKU resolve to its own profile, not the A3027 row',
+  M.matchDevice('soundcore Life Tune Pro').id === 'life-tune-pro' && M.matchDevice('A3030').id === 'life-tune-pro',
+);
+check(
+  'A3030 profile remains physically unvalidated (no hardware claim)',
+  M.marketEntryForSku('A3030')?.physicalValidation === 'pending' && A3030.verified === true,
+);
+
+// The identity-only headset rows added on 2026-10-01: exact SKU resolution,
+// protocol-universal reads only, and every model-specific write denied.
+const NEW_CATALOG_ONLY_HEADSETS = [
+  ['A3023', 'life-2', 'Life 2'],
+  ['A3032', 'life-q10', 'Life Q10'],
+  ['A3045', 'life-q20-plus', 'Life Q20+'],
+  ['A3031', 'vortex', 'Soundcore Vortex'],
+  ['A3033', 'life-2-neo', 'Life 2 Neo'],
+];
+const classicAncFrame = M.buildAnc('classic', { mode: 'anc', level: 3, scene: 'outdoor', transVocal: false, wind: false });
+for (const [sku, id, name] of NEW_CATALOG_ONLY_HEADSETS) {
+  const profile = M.matchDevice(sku);
+  check(`${sku}: exact SKU resolves to its catalog-only ${name} identity`, profile.id === id && profile.sku === sku && profile.verified === false);
+  check(`${sku}: no guessed battery scale, ANC, EQ or codec write`, profile.batteryMax === null &&
+    !M.gateCommandForProfile('sound-modes.set', classicAncFrame, profile).ok &&
+    !M.gateCommandForProfile('equalizer.set', M.buildEq('02:81', 0x0001, Array(8).fill(0)), profile).ok &&
+    !M.gateCommandForProfile('ldac.set', M.LDAC.enable, profile).ok &&
+    !M.gateCommandForProfile('dual-audio.set', M.DUAL.enable, profile).ok);
+  check(`${sku}: protocol-universal identity/battery reads stay available`, M.gateCommandForProfile('state.request', M.INIT, profile).ok &&
+    M.gateCommandForProfile('battery.query', M.BATTERY_QUERY, profile).ok &&
+    M.gateCommandForProfile('device.info', M.DEVICE_INFO, profile).ok);
+  check(`${sku}: catalog row is present and marked unknown/pending`, M.marketEntryForSku(sku)?.protocolStatus === 'unknown' &&
+    M.marketEntryForSku(sku)?.physicalValidation === 'pending');
+}
+check('Q21i NC shares the A3004 profile without creating a second SKU', M.matchDevice('soundcore Q21i NC').sku === 'A3004' &&
+  M.DEVICES.filter((d) => d.sku === 'A3004').length === 1 && !M.DEVICES.some((d) => d.sku === 'A3004X'));
+check('legacy catalog rows are labelled legacy, not current', ['A3023', 'A3027', 'A3029', 'A3030', 'A3031', 'A3032', 'A3033', 'A3045']
+  .every((sku) => M.marketEntryForSku(sku)?.marketStatus === 'legacy'));
 
 /* ------------------------------------ 6. response validation (Task 12) */
 
