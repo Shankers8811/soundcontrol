@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { beep } from '../lib/feedback';
 import { toHex, verifyFrame } from '../protocol/codec';
+import { describeAncPayload, describeFrame } from '../protocol/diagnostics';
 import { DEVICES, UNKNOWN_PROFILE, matchDevice, matchNote } from '../protocol/devices';
 import {
   DEVICE_INFO,
@@ -48,6 +49,7 @@ import {
 } from './derive';
 import type {
   AncMode,
+  AncSubMode,
   AncScene,
   BatteryState,
   DeviceProfile,
@@ -138,6 +140,8 @@ interface AppState {
   ancMode: AncMode;
   ancLevel: number;
   ancScene: AncScene;
+  /** A3959 `06:81` automation sub-mode as last reported by the device. */
+  ancSubMode: AncSubMode;
   transVocal: boolean;
   windNoise: boolean;
   gaming: boolean;
@@ -178,6 +182,8 @@ interface AppState {
   commitEq: () => Promise<void>;
   applyBands: (bands: number[]) => Promise<void>;
   inject: (bytes: Uint8Array, note?: string) => Promise<void>;
+  /** Ask the connected device for a full `01:01` state update (hardware-validation evidence). */
+  readState: () => Promise<void>;
   clearLog: () => void;
   resetDevice: () => Promise<void>;
 }
@@ -249,6 +255,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [ancMode, setAncMode] = useState<AncMode>('anc');
   const [ancLevel, setAncLevel] = useState(5);
   const [ancScene, setAncScene] = useState<AncScene>('outdoor');
+  // A3959 `06:81` byte 3 selects exactly one of Manual/Adaptive/Multi-scene.
+  // These mirror what the device last reported (never a guess): the sub-mode,
+  // the firmware-owned adaptive strength and the adaptive sensitivity.
+  const [ancSubMode, setAncSubMode] = useState<AncSubMode>('manual');
+  const [ancAdaptiveLevel, setAncAdaptiveLevel] = useState(5);
+  const [ancSensitivity, setAncSensitivity] = useState<number | undefined>(undefined);
   const [transVocal, setTransVocalState] = useState(false);
   const [windNoise, setWindNoiseState] = useState(false);
   const [gaming, setGamingState] = useState(false);
@@ -309,6 +321,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!report) return;
     setAncMode(report.mode);
     if (report.level !== undefined) setAncLevel(report.level);
+    if (report.subMode !== undefined) setAncSubMode(report.subMode);
+    if (report.adaptiveLevel !== undefined) setAncAdaptiveLevel(report.adaptiveLevel);
+    if (report.adaptiveSensitivity !== undefined) setAncSensitivity(report.adaptiveSensitivity);
     if (report.transVocal !== undefined) setTransVocalState(report.transVocal);
     if (report.wind !== undefined) setWindNoiseState(report.wind);
     if (report.scene !== undefined) setAncScene(report.scene);
@@ -465,6 +480,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
         confirmedLayoutRef.current = true;
         manualMismatchRef.current = false;
         setConfirmedLayout(true);
+        // Hardware-validation evidence (docs/R50I-NC-HARDWARE-VALIDATION.md):
+        // the device's own state update is the only proof a write was applied,
+        // so its sound-mode block is logged verbatim and mirrored. Only
+        // profiles that document an exact block length are read this way —
+        // everything else keeps the previous 06:01-only behaviour.
+        if (offsets.soundModes !== null && offsets.soundModeLength !== undefined) {
+          const slice = payload.slice(
+            offsets.soundModes,
+            offsets.soundModes + offsets.soundModeLength,
+          );
+          if (slice.length === offsets.soundModeLength) {
+            pushLog(
+              'sys',
+              '',
+              `STATE sound modes @${offsets.soundModes} [${toHex(slice)}] — ${describeAncPayload(profileRef.current.ancLayout, slice)}`,
+            );
+            syncSoundModes(slice);
+          }
+        }
         // Automatic evidence wins even if an earlier manual candidate disagreed.
         // The guarded RX belongs to the current session; drop only its MAC's
         // candidate, never an unrelated device's identity.
@@ -565,7 +599,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (data: Uint8Array, note?: string) => {
       const t = transportRef.current;
       if (!t) throw new Error('Connect a device first');
-      pushLog('tx', data, note);
+      // Every transmitted frame carries its own decoded evidence line, so an
+      // exported log shows exactly which bytes went out and what they mean.
+      const diag = describeFrame(profileRef.current, data);
+      pushLog('tx', data, note ? `${note} — ${diag}` : diag);
       try {
         await t.write(data);
       } catch (err) {
@@ -1056,11 +1093,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (over: Partial<AncIntent> = {}): AncIntent => ({
       mode: over.mode ?? ancMode,
       level: over.level ?? ancLevel,
+      // The sub-mode travels with every frame: on the A3959 the automation
+      // byte decides whether the manual level, the adaptive mode or the
+      // multi-scene selection is the one the firmware applies.
+      subMode: over.subMode ?? ancSubMode,
+      adaptiveLevel: over.adaptiveLevel ?? ancAdaptiveLevel,
+      adaptiveSensitivity: over.adaptiveSensitivity ?? ancSensitivity,
       scene: over.scene ?? ancScene,
       transVocal: over.transVocal ?? transVocal,
       wind: over.wind ?? windNoise,
     }),
-    [ancLevel, ancMode, ancScene, transVocal, windNoise],
+    [ancAdaptiveLevel, ancLevel, ancMode, ancScene, ancSensitivity, ancSubMode, transVocal, windNoise],
   );
 
   const prepareAnc = useCallback(
@@ -1086,17 +1129,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const setAnc = useCallback(
-    async (mode: AncMode, level?: number, scene = ancScene) => {
+    async (mode: AncMode, level?: number, scene?: AncScene) => {
       const appliedLevel = level ?? ancLevel;
-      const intent = ancIntent({ mode, level: appliedLevel, scene });
+      const appliedScene = scene ?? ancScene;
+      // Which sub-mode the user just chose. An explicit scene pick means
+      // multi-scene; the adaptive toggle means adaptive; a level button means
+      // manual. On the A3959 these are mutually exclusive (byte 3), so the
+      // frame always states the one that was actually selected instead of
+      // leaving the firmware on a stale automation mode.
+      const subMode: AncSubMode =
+        scene !== undefined ? 'multiscene' : mode === 'adaptive' ? 'adaptive' : 'manual';
+      const intent = ancIntent({ mode, level: appliedLevel, subMode, scene: appliedScene });
       const pkt = prepareAnc(intent);
       // Build the documented packet BEFORE touching UI state. Unsupported
       // profiles therefore have no transient optimistic mutation at all.
       if (!pkt) return;
-      const prev = { mode: ancMode, level: ancLevel, scene: ancScene };
+      const prev = { mode: ancMode, level: ancLevel, scene: ancScene, subMode: ancSubMode };
       setAncMode(mode);
       setAncLevel(appliedLevel);
-      setAncScene(scene);
+      setAncScene(appliedScene);
+      setAncSubMode(subMode);
       setBusy('anc');
       try {
         await sendAnc(
@@ -1111,13 +1163,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setAncMode(prev.mode);
         setAncLevel(prev.level);
         setAncScene(prev.scene);
+        setAncSubMode(prev.subMode);
         throw err;
       } finally {
         setBusy(null);
       }
       if (prompts) await beep('mode');
     },
-    [ancIntent, ancLevel, ancMode, ancScene, prepareAnc, profile.scenes, prompts, sendAnc],
+    [ancIntent, ancLevel, ancMode, ancScene, ancSubMode, prepareAnc, profile.scenes, prompts, sendAnc],
   );
 
   const setTransVocal = useCallback(
@@ -1330,6 +1383,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [write],
   );
 
+  /**
+   * Re-request the full `01:01` state update. The response is the device's own
+   * account of its sound modes, so the diagnostics console can show a BEFORE
+   * and AFTER around a manual hardware test without restarting the app.
+   */
+  const readState = useCallback(async () => {
+    try {
+      await write(INIT, 'State request (manual)');
+    } catch {
+      /* the failure is already logged by write() */
+    }
+  }, [write]);
+
   const selectManualModel = useCallback((id: string) => {
     const candidate = verifiedCandidate(id);
     if (!candidate || !connected || !connectedMac) return;
@@ -1452,6 +1518,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ancMode,
       ancLevel,
       ancScene,
+      ancSubMode,
       transVocal,
       windNoise,
       gaming,
@@ -1501,6 +1568,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       commitEq,
       applyBands,
       inject,
+      readState,
       clearLog: () => setLog([]),
       resetDevice,
     }),
@@ -1525,6 +1593,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ancMode,
       ancLevel,
       ancScene,
+      ancSubMode,
       transVocal,
       windNoise,
       gaming,
@@ -1534,6 +1603,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       prompts,
       theme,
       firmware,
+      readState,
       serial,
       linkInfo,
       profileNote,

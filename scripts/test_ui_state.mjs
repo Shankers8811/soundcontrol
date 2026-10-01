@@ -588,10 +588,19 @@ eq('l4nc: manual level 3 + wind on', parseSoundModes([0x00, 0x30, 0x00, 0x00, 0x
   mode: 'anc', level: 3, transVocal: false, wind: true, scene: 'transport',
 });
 eq('p30i: adaptive nibble below 1 is not a level', parseSoundModes([0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], 'tws-p30i'), {
-  mode: 'normal', wind: false, scene: 'transport',
+  mode: 'normal', subMode: 'manual', adaptiveSensitivity: 0, wind: false, scene: 'transport',
 });
 eq('p30i: automation byte confirms adaptive ANC', parseSoundModes([0x00, 0x53, 0x00, 0x01, 0x00, 0x00, 0x00], 'tws-p30i'), {
-  mode: 'adaptive', level: 5, wind: false, scene: 'transport',
+  mode: 'adaptive', level: 5, subMode: 'adaptive', adaptiveLevel: 3, adaptiveSensitivity: 0, wind: false, scene: 'transport',
+});
+// A3959 automation byte: 0 = Manual, 1 = Adaptive, 2 = Multi-scene
+// (OpenSCQ30 9b6e42a7 fixed exactly this enum). The decoded sub-mode must
+// follow the byte, never the previous UI selection.
+eq('p30i: byte 3 = 0 is Manual with its level, nibbles and sensitivity', parseSoundModes([0x00, 0x35, 0x00, 0x00, 0x01, 0x05, 0x02], 'tws-p30i'), {
+  mode: 'anc', level: 3, subMode: 'manual', adaptiveLevel: 5, adaptiveSensitivity: 5, wind: true, scene: 'indoor',
+});
+eq('p30i: byte 3 = 2 is Multi-scene, and 0xFF sensitivity is not a level', parseSoundModes([0x00, 0x55, 0x00, 0x02, 0x00, 0xff, 0x01], 'tws-p30i'), {
+  mode: 'anc', level: 5, subMode: 'multiscene', adaptiveLevel: 5, wind: false, scene: 'outdoor',
 });
 eq('l4nc: automation byte confirms adaptive ANC', parseSoundModes([0x00, 0x32, 0x00, 0x01, 0x00, 0x00, 0x00], 'tws-l4nc'), {
   mode: 'adaptive', level: 3, transVocal: false, wind: false, scene: 'transport',

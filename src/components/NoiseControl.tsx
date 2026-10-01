@@ -229,11 +229,27 @@ export function NoiseControl() {
         {/* Sub-options — only the bytes this model's layout really carries. */}
         {(sub.level || sub.adaptive || sub.scenes || sub.wind || sub.transVocal) && (
           <div className="mt-4 space-y-3.5 border-t border-edge-soft pt-4">
+            {app.profile.ancLayout === 'tws-p30i' && isAnc && (
+              <p className="text-[11px] leading-relaxed text-mute">
+                Device sub-mode:{' '}
+                <span className="font-semibold text-ink">
+                  {app.ancSubMode === 'multiscene'
+                    ? `Multi-scene (${app.ancScene})`
+                    : app.ancSubMode === 'adaptive'
+                      ? 'Adaptive (firmware-controlled strength)'
+                      : `Manual (level ${app.ancLevel})`}
+                </span>
+                {' '}— the R50i NC applies exactly one of manual level, adaptive or multi-scene
+                (06:81 byte 3), so tapping a level, the adaptive toggle or a scene switches it.
+              </p>
+            )}
             {sub.level && (
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold text-ink">Cancellation strength</p>
-                  <p className="text-[11px] text-mute">Manual level sent in the 06:81 frame</p>
+                  <p className="text-[11px] text-mute">
+                    Manual level; tapping one also switches the 06:81 sub-mode to Manual
+                  </p>
                 </div>
                 <div className="flex items-center gap-1" role="group" aria-label="Noise cancellation level">
                   {[1, 2, 3, 4, 5].map((lvl) => {
@@ -243,7 +259,7 @@ export function NoiseControl() {
                         key={lvl}
                         disabled={disabled}
                         aria-pressed={on}
-                        onClick={() => void app.setAnc(app.ancMode === 'adaptive' ? 'adaptive' : 'anc', lvl).catch(() => {})}
+                        onClick={() => void app.setAnc('anc', lvl).catch(() => {})}
                         className={`h-8 w-8 rounded-lg border text-xs font-bold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${
                           on
                             ? 'border-accent bg-accent/15 text-accent-soft shadow-[0_0_10px_rgb(61_123_255/0.25)]'
@@ -264,7 +280,9 @@ export function NoiseControl() {
                   <p className="flex items-center gap-1.5 text-xs font-semibold text-ink">
                     <IconAdaptive size={14} className="text-accent" /> Adaptive cancelling
                   </p>
-                  <p className="text-[11px] text-mute">Device adjusts strength to your environment</p>
+                  <p className="text-[11px] text-mute">
+                    Device adjusts strength to your environment (06:81 sub-mode Adaptive)
+                  </p>
                 </div>
                 <Toggle
                   label="Adaptive noise cancelling"
@@ -282,7 +300,9 @@ export function NoiseControl() {
                   <p className="text-[11px] text-mute">
                     {app.profile.ancLayout === 'tws-l4nc'
                       ? 'Transportation profile carried in the frame'
-                      : 'Cancellation scene carried in every mode'}
+                      : app.profile.ancLayout === 'tws-p30i'
+                        ? 'Multi-scene selection; tapping one switches the sub-mode to Multi-scene'
+                        : 'Cancellation scene carried in every mode'}
                   </p>
                 </div>
                 <div className="flex items-center gap-1" role="group" aria-label="Noise cancellation scene">
@@ -293,7 +313,7 @@ export function NoiseControl() {
                         key={sc.id}
                         disabled={disabled}
                         aria-pressed={on}
-                        onClick={() => void app.setAnc(app.ancMode, undefined, sc.id).catch(() => {})}
+                        onClick={() => void app.setAnc('anc', undefined, sc.id).catch(() => {})}
                         className={`rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${
                           on
                             ? 'border-accent bg-accent/15 text-accent-soft'

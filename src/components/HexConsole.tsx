@@ -154,6 +154,14 @@ export function HexConsole() {
           </button>
         ))}
         <button
+          onClick={() => void app.readState()}
+          disabled={!app.connected}
+          title="Send 01:01 and log the device's own state frame (sound modes are decoded at their documented offset)"
+          className="rounded-full border border-edge bg-sunken px-3 py-1 font-mono text-[11px] text-mute transition-colors hover:text-accent-soft disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Read state
+        </button>
+        <button
           onClick={app.clearLog}
           className="rounded-full border border-edge bg-sunken px-3 py-1 font-mono text-[11px] text-mute transition-colors hover:text-ink"
         >

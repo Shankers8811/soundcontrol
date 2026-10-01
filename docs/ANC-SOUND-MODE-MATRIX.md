@@ -32,7 +32,7 @@ two-byte little-endian length including the checksum, payload, checksum byte).
 | `classic` | `buildClassicAnc` | 14 | `[mode, scene, transparency_mode, custom_nc=0]` | NC / Transparency / Normal | none (no level byte — a level value is ignored) | no | Transport / Outdoor / Indoor | full vs vocal | no | unknown mode/scene → rejected |
 | `classic-a3035` | `buildSpaceOneAnc` | 16 | `[ambient, manual<<4\|adaptive, ambient, adaptive, wind, 0x05/0x01]` | NC / Transparency / Normal + adaptive | 1..5 | yes | no | no (fixed custom transparency) | yes | level ∉ 1..5 → rejected |
 | `classic-a3040` | `buildSpaceQ45Anc` | 16 | `[ambient, manual<<4\|adaptive, transVocal, adaptive, wind, 0x05/0x01]` | NC / Transparency / Normal + adaptive | 1..5 | yes | no | full vs Talk/Manual | yes | level ∉ 1..5 → rejected |
-| `tws-p30i` | `buildP30iAnc` | 17 | `[ambient, manual<<4\|adaptive, ambient, automation, wind, 0x00, scene]` | NC / Transparency / Normal + adaptive + multi-scene | 1..5 | yes | Transport / Outdoor / Indoor | **none** (documented: R50i NC has no transparency modes) | yes | level ∉ 1..5 → rejected |
+| `tws-p30i` | `buildP30iAnc` | 17 | `[ambient, manual<<4\|adaptive, ambient, automation, wind, sensitivity, scene]` | NC / Transparency / Normal + adaptive + multi-scene | 1..5 | yes | Transport / Outdoor / Indoor | **none** (documented: R50i NC has no transparency modes) | yes | level ∉ 1..5 → rejected |
 | `tws-l4nc` | `buildLiberty4NcAnc` | 17 | `[ambient, manual<<4\|adaptive, transVocal, automation, wind, 0x00, transportation]` | NC / Transparency / Normal + adaptive | 1..5 | yes | — (transportation byte written from the internal scene; no UI control) | full vs vocal | yes | level ∉ 1..5 → rejected |
 | `tws-l3pro` | `buildLiberty3ProAnc` | 16 | `[ambient, manual<<4\|adaptive, transVocal, adaptive, wind, 0x00]` | NC / Transparency / Normal + adaptive | 1..5 | yes | no | full vs vocal | yes | level ∉ 1..5 → rejected |
 | `tws-a3062` | `buildSpaceOneProAnc` | 16 | `[ambient, manual<<4\|adaptive, 0x01, adaptive, wind, 0x05/0x01]` | NC / Transparency / Normal + adaptive | 1..5 | yes | no | no (custom transparency only) | yes | level ∉ 1..5 → rejected |
@@ -56,9 +56,10 @@ Shared rules (asserted in the matrix test):
   each builder keeps its own documented composition: l4nc/l3pro/p40i/l5 encode
   `manual << 4 | adaptive` from the level, a3035/a3040/a3062/a3936/a3968 keep
   the documented manual baseline of 5 for Transparency/Normal frames, p30i
-  fixes `manual=5, adaptive=1` in adaptive mode and uses the Android level-5
-  baseline when switching modes, and l4pro maps 1..5 to ANC bytes 1..5 and
-  transparency bytes 7..11. Any level outside the integer range 1..5, `NaN` or
+  sends the user's manual level plus the device's read-only adaptive nibble
+  (automation byte `0x00` Manual / `0x01` Adaptive / `0x02` Multi-scene,
+  sensitivity `0xFF` until the device reports one), and l4pro maps 1..5 to ANC
+  bytes 1..5 and transparency bytes 7..11. Any level outside the integer range 1..5, `NaN` or
   `Infinity` makes `buildAnc()` return `null` (no frame).
 * `layout: none` builds nothing at all.
 
@@ -119,7 +120,7 @@ write.
 
 ## 4. What is asserted automatically
 
-`npm run test:matrix` (980 checks) fails if any of the following changes
+`npm run test:matrix` (1046 checks) fails if any of the following changes
 without new evidence:
 
 * a profile's layout/flags/EQ/battery row in the pinned matrix;
