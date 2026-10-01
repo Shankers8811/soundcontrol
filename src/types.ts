@@ -242,7 +242,7 @@ export interface DeviceProfile {
    * the "type 2" family shares the standard list with a different Rock
    * curve). Absent ⇒ the standard 22-preset table.
    */
-  presetSet?: 'standard' | 'type2' | 'v20i' | 'c50i' | 'c30i';
+  presetSet?: 'standard' | 'type2' | 'v20i' | 'c50i' | 'c30i' | 'a3005';
   state: StateOffsets;
   /**
    * True only when the model accepts a CUSTOM equalizer curve (preset id

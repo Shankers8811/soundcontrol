@@ -941,6 +941,7 @@ export const DEVICES: DeviceProfile[] = [
     ancLayout: 'none',
     eqCommand: '02:83',
     customEq: true,
+    presetSet: 'a3005',
     state: Q11I_STATE,
     source: `${OPENSCQ30} (a3005): equalizer_with_drc, dual connections, auto power-off, single_battery_custom(max 10, offset 1); no sound-mode module`,
     verified: true,

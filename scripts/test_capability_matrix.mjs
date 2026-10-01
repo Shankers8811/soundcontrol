@@ -461,7 +461,7 @@ const CAPABILITY_PINS = {
   A3957: { layout: 'tws-l5', level: true, scenes: false, adaptive: true, tmode: true, tvocal: true, wind: true, surround: false, eq: '-', custom: false, set: 'standard' },
   A3062: { layout: 'tws-a3062', level: true, scenes: false, adaptive: true, tmode: true, tvocal: false, wind: true, surround: false, eq: '-', custom: false, set: 'standard' },
   A3004: { layout: 'classic', level: false, scenes: false, adaptive: false, tmode: true, tvocal: false, wind: false, surround: false, eq: '02:83', custom: true, set: 'standard' },
-  A3005: { layout: 'none', level: false, scenes: false, adaptive: false, tmode: false, tvocal: false, wind: false, surround: false, eq: '02:83', custom: true, set: 'standard' },
+  A3005: { layout: 'none', level: false, scenes: false, adaptive: false, tmode: false, tvocal: false, wind: false, surround: false, eq: '02:83', custom: true, set: 'a3005' },
   A3035: { layout: 'classic-a3035', level: true, scenes: false, adaptive: true, tmode: true, tvocal: false, wind: true, surround: false, eq: '-', custom: false, set: 'standard' },
   A3040: { layout: 'classic-a3040', level: true, scenes: false, adaptive: true, tmode: true, tvocal: true, wind: true, surround: false, eq: '-', custom: false, set: 'standard' },
   A3027: { layout: 'classic', level: false, scenes: true, adaptive: false, tmode: true, tvocal: false, wind: false, surround: false, eq: '02:81', custom: true, set: 'standard' },
@@ -596,6 +596,19 @@ check(
 eq('A3330 defines one preset', M.presetsForProfile(bySku.get('A3330')).map((p) => p.index), [0x00]);
 eq('D1101 defines six presets', M.presetsForProfile(bySku.get('D1101')).map((p) => p.index), [0x00, 0x02, 0x04, 0x05, 0x14, 0x1e]);
 eq('A3876 uses its own names for the same ids', M.presetsForProfile(bySku.get('A3876')).find((p) => p.index === 0x01).name, 'Balanced');
+// A3005 declares its own list (`a3005.rs`): BassBooster = 0x7E7E and no 0x02.
+check(
+  'A3005 Bass Booster is 0x7E7E, not the shared 0x0002',
+  M.presetsForProfile(bySku.get('A3005')).find((p) => p.name === 'Bass Booster').index === 0x7e7e &&
+    !M.presetsForProfile(bySku.get('A3005')).some((p) => p.index === 0x0002),
+);
+// Every other 02:83 model keeps the shared Bass Booster id.
+for (const sku of ['A3959', 'A3949', 'A3948', 'A3027', 'A3388']) {
+  check(
+    `${sku} keeps the shared Bass Booster id 0x0002`,
+    M.presetsForProfile(bySku.get(sku)).find((p) => p.name === 'Bass Booster').index === 0x0002,
+  );
+}
 eq('A3876 has its own Spoken Word/Podcast assignment', M.presetsForProfile(bySku.get('A3876')).find((p) => p.index === 0x13).name, 'Podcast');
 check(
   'the standard table keeps Dance at 0x06 and Spoken Word at 0x13',
