@@ -243,7 +243,11 @@ export function NoiseControl() {
         {/* Sub-options — only the bytes this model's layout really carries. */}
         {(sub.level || sub.adaptive || sub.scenes || sub.wind || sub.transVocal) && (
           <div className="mt-4 space-y-3.5 border-t border-edge-soft pt-4">
-            {app.profile.ancLayout === 'tws-p30i' && isAnc && (
+            {(app.profile.ancLayout === 'tws-p30i' ||
+              app.profile.ancLayout === 'tws-p40i' ||
+              app.profile.ancLayout === 'tws-d1202') &&
+              isAnc &&
+              app.ancSubMode !== undefined && (
               <p className="text-[11px] leading-relaxed text-mute">
                 Device sub-mode:{' '}
                 <span className="font-semibold text-ink">

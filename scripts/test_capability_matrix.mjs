@@ -349,6 +349,26 @@ for (const [layout, selector] of Object.entries(SELECTOR_LAYOUTS)) {
   );
 }
 
+// The parser must read the selector back, so the UI mirrors the device state
+// rather than whatever the user last clicked.
+for (const layout of ['tws-p30i', 'tws-p40i', 'tws-d1202']) {
+  const cases = [
+    ['manual', { subMode: 'manual' }, 'manual'],
+    ['adaptive', { mode: 'adaptive', subMode: 'adaptive' }, 'adaptive'],
+    ['multi-scene', { subMode: 'multiscene', scene: 'outdoor' }, 'multiscene'],
+  ];
+  for (const [name, over, want] of cases) {
+    const parsed = M.parseSoundModes(payload(frameFor(layout, over)), layout);
+    eq(`${layout}: device mirror reads back the ${name} sub-mode`, parsed?.subMode, want);
+  }
+}
+for (const layout of ['tws-l4nc', 'tws-l5']) {
+  // Value 2 means Transportation on these layouts, so no sub-mode may be
+  // inferred from it — guessing Multi-scene here would be a cross-model copy.
+  const parsed = M.parseSoundModes(payload(frameFor(layout, { subMode: 'multiscene', scene: 'transport' })), layout);
+  eq(`${layout}: value 2 is never reported as Multi-scene`, parsed?.subMode, undefined);
+}
+
 // The transition matrix: every step must state its own selector, so a stale
 // value from the previous control can never be re-sent.
 const TRANSITIONS = [
