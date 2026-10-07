@@ -1,0 +1,167 @@
+name: Windows Build
+
+on:
+  push:
+    branches: [main, 'arena/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      # Phase 15 credential probe: reports whether production signing
+      # credentials are configured. Names and booleans only — secret VALUES
+      # are never read into logs (and GitHub masks them regardless). This
+      # only says whether the secrets exist; the release workflow's
+      # certificate-validation and signing steps are what actually prove a
+      # credential works. Emitted as annotations so the answer is visible
+      # without downloading run logs.
+      - name: Report signing credential availability (names only, never values)
+        shell: bash
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK || secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD || secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "CI build: unsigned test artifacts are downloadable for local testing, not published as official releases."
+          if [ -n "$WIN_CSC_LINK" ] && [ -n "$WIN_CSC_KEY_PASSWORD" ]; then
+            echo "::notice::SIGNING_CREDENTIALS=configured — production releases can be Authenticode-signed (release workflow will validate the certificate before use)."
+          else
+            if [ -z "$WIN_CSC_LINK" ] && [ -z "$WIN_CSC_KEY_PASSWORD" ]; then
+              echo "::notice::Authenticode signing credentials are not configured for this CI test build; unsigned artifacts are expected. Official Windows releases remain blocked until the release signing certificate/secrets are configured."
+            else
+              echo "::notice::Authenticode signing credentials are incomplete for this CI test build; unsigned artifacts are expected. Official Windows releases remain blocked until the release signing certificate/secrets are configured."
+            fi
+            echo "See docs/WINDOWS-CODE-SIGNING.md for the required certificate and secret setup."
+          fi
+          if [ -n "$WIN_CSC_LINK" ] && [ -n "$WIN_CSC_KEY_PASSWORD" ]; then
+            echo "SOUNDCONTROL_CERT_CONFIGURED=1" >> "$GITHUB_ENV"
+          fi
+      # Signing validation without publishing (Phase 16, Task 4 step 8): when
+      # credentials are configured, stage the certificate and run the same
+      # validation the release workflow runs (private key, Code Signing EKU,
+      # validity window, trusted code-signing chain, publisher identity) — on a
+      # plain CI build. Nothing is signed and nothing is published here; a
+      # maintainer uses this to confirm the certificate BEFORE preparing a
+      # release. Skipped (harmlessly) while credentials are unconfigured.
+      - name: Validate the signing certificate (when configured)
+        if: env.SOUNDCONTROL_CERT_CONFIGURED == '1'
+        shell: bash
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK || secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD || secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          EXPECTED_PUBLISHER: ${{ vars.WINDOWS_EXPECTED_PUBLISHER }}
+        run: |
+          set -euo pipefail
+          material="$WIN_CSC_LINK"
+          case "$material" in
+            data:*)
+              material="${material#data:}"
+              material="${material#*;base64,}"
+              printf '%s' "$material" | tr -d '\r\n' | base64 --decode > cert.p12
+              ;;
+            *)
+              if [ -f "$material" ]; then cp "$material" cert.p12
+              else printf '%s' "$material" | tr -d '\r\n' | base64 --decode > cert.p12; fi
+              ;;
+          esac
+          first_byte="$(head -c 1 cert.p12 | od -An -tx1 | tr -d ' \n')"
+          if [ ! -s cert.p12 ] || [ "$first_byte" != "30" ]; then
+            echo "::error::WIN_CSC_LINK does not decode to a .pfx/.p12 certificate — check the secret."
+            exit 1
+          fi
+          args=(-CertPath cert.p12)
+          if [ -n "$EXPECTED_PUBLISHER" ]; then args+=(-ExpectedPublisher "$EXPECTED_PUBLISHER"); fi
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-signing-certificate.ps1 "${args[@]}"
+          echo "Signing certificate validated — a signed release can be prepared (see docs/WINDOWS-CODE-SIGNING.md)."
+      - name: Remove staged certificate material
+        if: always()
+        shell: bash
+        run: rm -f cert.p12
+      - run: npm ci
+      # --publish never: electron-builder auto-detects CI and would
+      # otherwise try to publish a GitHub Release on every push.
+      #
+      # SOUNDCONTROL_PYTHON_REQUIRED makes the `prebuild:win` hook hard-fail if
+      # the bundled Python runtime could not be staged. Without it the hook only
+      # warns and leaves an empty python-embed/ behind, so the build "succeeds"
+      # and uploads an artifact with no resources/python/ — a build whose
+      # earbud detection cannot start. Same guard the release workflow uses.
+      - name: Build Windows installer (with bundled Python runtime)
+        env:
+          SOUNDCONTROL_PYTHON_REQUIRED: '1'
+        run: npm run build:win -- --publish never
+      - name: Verify the bundled Python runtime shipped
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f release/win-unpacked/resources/python/python.exe
+          ls -la release/win-unpacked/resources/python | head -15
+          echo "Bundled runtime present in the CI artifact."
+      # Release-size policy: the COMPLETE Windows package (installer and
+      # unpacked app) must stay under 500 MB with margin. Measured from the
+      # real electron-builder output on this Windows runner — never from
+      # source, node_modules or git sizes.
+      - name: Measure release artifact sizes (500 MB gate)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function MB($bytes) { return [math]::Round($bytes / 1048576, 2) }
+          $installer = Get-ChildItem 'release\*.exe' | Sort-Object Length -Descending | Select-Object -First 1
+          if (-not $installer) { throw 'no NSIS installer found in release/' }
+          $unpacked = (Get-ChildItem 'release\win-unpacked' -Recurse -File | Measure-Object -Property Length -Sum).Sum
+          $pythonDir = 'release\win-unpacked\resources\python'
+          $python = 0
+          if (Test-Path $pythonDir) { $python = (Get-ChildItem $pythonDir -Recurse -File | Measure-Object -Property Length -Sum).Sum }
+          $asar = Get-Item 'release\win-unpacked\resources\app.asar' -ErrorAction SilentlyContinue
+          Write-Host "SIZE installer=$($installer.Name) bytes=$($installer.Length) mb=$(MB $installer.Length)"
+          Write-Host "SIZE win-unpacked bytes=$unpacked mb=$(MB $unpacked)"
+          Write-Host "SIZE bundled-python bytes=$python mb=$(MB $python)"
+          if ($asar) { Write-Host "SIZE app-asar bytes=$($asar.Length) mb=$(MB $asar.Length)" }
+          if ($installer.Length -ge 524288000) { throw "NSIS installer is $(MB $installer.Length) MB - exceeds the 500 MB release limit" }
+          if ($unpacked -ge 524288000) { throw "win-unpacked is $(MB $unpacked) MB - exceeds the 500 MB release limit" }
+          Write-Host 'SIZE_GATE_PASS installer and win-unpacked are both under 500 MB'
+      # Informational only: this CI artifact is not distributed, so it stays
+      # unsigned (no signing secrets are staged here). The release workflow is
+      # the one that hard-fails on unsigned output — see release-windows.yml.
+      # This step runs the same verifier in report mode so the signature
+      # status of every CI build is recorded in the run log.
+      - name: Report Authenticode signature status (CI builds stay unsigned)
+        shell: pwsh
+        run: |
+          ./scripts/verify-windows-signing.ps1 -ReleaseDir release
+          if ($LASTEXITCODE -ne 0) { throw "signature status step failed (exit $LASTEXITCODE)" }
+      # This is an unsigned, private-test CI artifact, NOT a GitHub Release.
+      # Stage only the NSIS installer (not the much larger win-unpacked tree),
+      # with a predictable download filename for Windows hardware testers.
+      - name: Stage unsigned NSIS installer for local testing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installers = @(Get-ChildItem 'release\*.exe' -File)
+          if ($installers.Count -ne 1) { throw "Expected exactly one NSIS installer in release/, found $($installers.Count)" }
+          foreach ($required in @('release\win-unpacked\SoundControl.exe', 'release\win-unpacked\resources\app.asar', 'release\win-unpacked\resources\app.asar.unpacked\soundcore_bridge.py', 'release\win-unpacked\resources\python\python.exe')) {
+            if (-not (Test-Path $required -PathType Leaf)) { throw "Missing packaged app/bridge/runtime file: $required" }
+          }
+          $signature = Get-AuthenticodeSignature -FilePath $installers[0].FullName
+          if ($signature.Status -ne 'NotSigned') { throw "Expected an unsigned CI test installer, got: $($signature.Status)" }
+          New-Item -ItemType Directory -Path 'test-installer' -Force | Out-Null
+          Copy-Item -LiteralPath $installers[0].FullName -Destination 'test-installer\SoundControl-Setup.exe'
+          $installer = Get-Item 'test-installer\SoundControl-Setup.exe'
+          if ($installer.Length -lt 1048576) { throw "Installer is unexpectedly small: $($installer.Length) bytes" }
+          $sha256 = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash
+          Write-Host "NSIS_TEST_INSTALLER source=$($installers[0].Name) file=$($installer.Name) bytes=$($installer.Length) sha256=$sha256 signature=$($signature.Status)"
+          Write-Host "::notice title=Unsigned Windows test installer::SoundControl-Setup.exe bytes=$($installer.Length) sha256=$sha256 (local testing only)"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: SoundControl-Windows-Test-Unsigned
+          path: test-installer/SoundControl-Setup.exe
+          if-no-files-found: error

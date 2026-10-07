@@ -1,0 +1,10 @@
+node_modules/
+dist/
+__pycache__/
+dist-electron/
+release/
+python-embed/
+python-embed.tmp/
+*.log
+.DS_Store
+*.local
