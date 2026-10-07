@@ -1,0 +1,1060 @@
+#!/usr/bin/env node
+/**
+ * Deterministic UI-state tests (no DOM, no UI test framework).
+ *
+ * The renderer's device-truth logic lives in pure modules — src/state/derive.ts
+ * (capabilities, battery math, per-side earbud state, connection phase, the
+ * Devices-page scan reducer) and src/protocol/devices.ts (the per-model
+ * profile table). This harness bundles them with esbuild (the same approach
+ * scripts/test_startup_e2e.mjs uses for the transport) and asserts the full
+ * matrices:
+ *
+ *   1. capability derivation for EVERY profile in the model table — including
+ *      the two hard protocol facts the UI must never fake (no volume command,
+ *      no gesture-write command) and the per-layout 06:81 sub-features
+ *   2. battery byte rules (0xFF = side absent, >100 = noise, scale math for
+ *      0..5 / 0..10 / Windows-percent values, passthrough above scale)
+ *   3. earbud presence + per-side state: both / left-only / right-only /
+ *      none / unknown — with "unknown" kept distinct from "disconnected"
+ *      and stale batteries suppressed for absent sides
+ *   4. connection-phase precedence (connected > connecting > error > idle)
+ *   5. the scan state machine: scanning / results / empty / error /
+ *      helper-offline transitions
+ *
+ * Run: npm run test:ui
+ */
+
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const ROOT = resolve(fileURLToPath(import.meta.url), '..', '..');
+
+let passed = 0;
+const failures = [];
+
+function check(label, condition, detail = '') {
+  if (condition) {
+    passed++;
+    console.log(`  ok  ${label}`);
+  } else {
+    failures.push(`${label}${detail ? ` — ${detail}` : ''}`);
+    console.log(`FAIL  ${label}${detail ? ` — ${detail}` : ''}`);
+  }
+}
+
+function eq(label, actual, expected) {
+  const ok = JSON.stringify(actual) === JSON.stringify(expected);
+  check(label, ok, ok ? '' : `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+}
+
+/* ------------------------------------------------------------- bundling */
+
+const dir = mkdtempSync(join(tmpdir(), 'soundcontrol-ui-state-'));
+const bundlePath = join(dir, 'ui-state.mjs');
+try {
+  const { build } = await import('esbuild');
+  await build({
+    stdin: {
+      contents: `export * from './src/state/derive.ts'; export * from './src/protocol/devices.ts'; export { parseCaseBatteryPercent, parseCaseBatteryStateFrame, createSessionGuard } from './src/protocol/responses.ts'; export { requiredStateLength, validStatePayloadLength } from './src/protocol/modelRegistry.ts'; export { checksum } from './src/protocol/codec.ts'; export { parseObservedFeatures, EMPTY_OBSERVED } from './src/protocol/observedFeatures.ts';`,
+      sourcefile: 'ui-state-barrel.ts',
+      resolveDir: ROOT,
+      loader: 'ts',
+    },
+    bundle: true,
+    format: 'esm',
+    platform: 'neutral',
+    outfile: bundlePath,
+    logLevel: 'error',
+  });
+} catch (err) {
+  console.error(`esbuild failed:\n${err?.message ?? err}`);
+  rmSync(dir, { recursive: true, force: true });
+  process.exit(1);
+}
+
+const M = await import(pathToFileURL(bundlePath).href);
+const {
+  DEVICES,
+  ANC_SUB_FEATURES,
+  deriveCapabilities,
+  batteryLevel,
+  batteryPercent,
+  parseCaseBatteryPercent,
+  parseCaseBatteryStateFrame,
+  checksum,
+  parseObservedFeatures,
+  EMPTY_OBSERVED,
+  requiredStateLength,
+  validStatePayloadLength,
+  createSessionGuard,
+  presenceFromRaw,
+  deriveEarbudState,
+  emptyBattery,
+  mergeBatteryTelemetry,
+  parseSoundModes,
+  deriveConnectionPhase,
+  nextScanState,
+  INITIAL_SCAN_STATE,
+  EMPTY_SCAN_MESSAGE,
+  matchDevice,
+  matchNote,
+  UNKNOWN_PROFILE,
+} = M;
+
+const byId = (id) => DEVICES.find((d) => d.id === id);
+
+/* ============================== 1. capabilities ========================= */
+
+console.log('\n[1] capability derivation (protocol truth per model)');
+
+check('model table has the 48 documented profiles', DEVICES.length === 48, `got ${DEVICES.length}`);
+
+for (const d of DEVICES) {
+  const c = deriveCapabilities(d);
+  // Two hard protocol facts: NO model gets a fake volume slider or fake
+  // gesture remapping — reference writes exist but cannot be safely verified here.
+  check(`${d.id}: volume is never claimed`, c.supportsVolume === false);
+  check(`${d.id}: gesture writes are never claimed`, c.supportsGestures === false);
+  // 01:05 firmware/serial is implemented by every supported model.
+  check(`${d.id}: firmware info supported`, c.supportsFirmwareInfo === true);
+  // Noise control exactly when a sound-mode layout exists.
+  eq(`${d.id}: supportsNoiseControl`, c.supportsNoiseControl, d.ancLayout !== 'none');
+  // EQ exactly when a real, model-specific EQ command exists, including the
+  // source-backed disabled-HearID 03:87 factory form.
+  eq(`${d.id}: supportsEqualizer`, c.supportsEqualizer, d.eqCommand !== null);
+  // Per-side earbud state only for TWS hardware with two battery bytes.
+  eq(
+    `${d.id}: supportsEarbudState`,
+    c.supportsEarbudState,
+    (d.kind === 'earbuds' || d.kind === 'open-ear') && d.state.batteryRight !== null,
+  );
+  eq(`${d.id}: gaming/surround/dual/ldac flags`, [c.supportsGaming, c.supportsSurround, c.supportsDual, c.supportsLdac], [d.gaming, d.surround, d.dual, d.ldac]);
+  // 01:85 is documented ONLY for the Motion+ (A3116) speaker — no profile in
+  // this table may claim a destructive frame it has no source for.
+  check(`${d.id}: factory reset never claimed without documentation`, c.supportsFactoryReset === (d.factoryReset === true) && d.factoryReset !== true);
+}
+
+// Per-layout 06:81 sub-features (byte-level truth from PROTOCOL.md).
+eq('classic layout sub-features', ANC_SUB_FEATURES.classic, {
+  level: false, scenes: true, transVocal: true, wind: false, adaptive: false,
+});
+eq('tws-p30i layout sub-features (no vocal byte on this model)', ANC_SUB_FEATURES['tws-p30i'], {
+  level: true, scenes: true, transVocal: false, wind: true, adaptive: true,
+});
+eq('tws-l4nc layout sub-features', ANC_SUB_FEATURES['tws-l4nc'], {
+  level: true, scenes: true, transVocal: true, wind: true, adaptive: true,
+});
+eq('tws-l3pro layout sub-features (no scene byte)', ANC_SUB_FEATURES['tws-l3pro'], {
+  level: true, scenes: false, transVocal: true, wind: true, adaptive: true,
+});
+
+eq('classic A3035/A3040 layouts expose documented wind and A3040 vocal controls', [
+  ANC_SUB_FEATURES['classic-a3035'].wind,
+  ANC_SUB_FEATURES['classic-a3040'].transVocal,
+  ANC_SUB_FEATURES['classic-a3040'].wind,
+], [true, true, true]);
+
+// Spot-check the capability consequences for representative models.
+eq('q30 (classic): no ANC level slider, scenes yes, no unsupported vocal sub-mode', [
+  deriveCapabilities(byId('q30')).ancSub.level,
+  deriveCapabilities(byId('q30')).ancSub.scenes,
+  deriveCapabilities(byId('q30')).ancSub.transVocal,
+], [false, true, false]);
+eq('q20i: common four-byte mode has no unsupported sub-features', deriveCapabilities(byId('q20i')).ancSub, {
+  level: false, scenes: false, transVocal: false, wind: false, adaptive: false,
+});
+eq('space-q45 (classic): EQ disabled (03:87), NC enabled', [
+  deriveCapabilities(byId('q45')).supportsEqualizer,
+  deriveCapabilities(byId('q45')).supportsNoiseControl,
+], [false, true]);
+eq('p20i: no noise control at all (no sound-mode module)', deriveCapabilities(byId('p20i')).supportsNoiseControl, false);
+eq('p20i: no ANC sub-features leak when layout is none', deriveCapabilities(byId('p20i')).ancSub, {
+  level: false, scenes: false, transVocal: false, wind: false, adaptive: false,
+});
+eq('liberty-4-nc: EQ disabled, earbud state enabled', [
+  deriveCapabilities(byId('liberty-4-nc')).supportsEqualizer,
+  deriveCapabilities(byId('liberty-4-nc')).supportsEarbudState,
+], [false, true]);
+eq('p30i: 0..10 battery scale', byId('p30i').batteryMax, 10);
+eq('Space One uses the six-byte A3035 layout, wind byte, and state battery offset 0', [byId('space-one').ancLayout, byId('space-one').wind, byId('space-one').state.batteryLeft], ['classic-a3035', true, 0]);
+eq('Space Q45 uses the six-byte A3040 layout, transparency/wind bytes, and state battery offset 0', [byId('q45').ancLayout, byId('q45').transparency, byId('q45').wind, byId('q45').state.batteryLeft], ['classic-a3040', true, true, 0]);
+eq('A3062 and A3005 use two-byte battery heads and corrected state offsets', [
+  byId('space-one-pro').state.batteryChargingLeft,
+  byId('space-one-pro').state.firmware.at,
+  byId('space-one-pro').state.soundModes,
+  byId('q11i').state.batteryChargingLeft,
+  byId('q11i').state.dualConnections,
+], [1, 2, 69, 1, 41]);
+eq('Space A40 uses its six-byte layout and state sound modes at 111', [byId('space-a40').ancLayout, byId('space-a40').state.soundModes], ['tws-a3936', 111]);
+eq('P40i uses seven-byte modes at state offset 119', [byId('p40i').ancLayout, byId('p40i').state.soundModes], ['tws-p40i', 119]);
+eq('Liberty 5 uses 10-step battery with offset 1', [byId('liberty-5').batteryMax, byId('liberty-5').batteryOffset], [10, 1]);
+eq('Space 2 is read-only by capability profile', [byId('space-2-readonly').ancLayout, byId('space-2-readonly').eqCommand, byId('space-2-readonly').gaming], ['none', null, false]);
+
+/* ============================== 2. battery math ========================= */
+
+console.log('\n[2] battery byte rules and percent math');
+
+eq('0xFF is "side absent", never 255%', batteryLevel(0xff), null);
+eq('undefined byte is unavailable', batteryLevel(undefined), null);
+eq('values >100 are layout noise', batteryLevel(101), null);
+eq('0 is a real (empty) level, not null', batteryLevel(0), 0);
+eq('level 4 stays 4', batteryLevel(4), 4);
+
+eq('4 of 5 steps = 80%', batteryPercent(4, 5), 80);
+eq('8 of 10 steps = 80%', batteryPercent(8, 10), 80);
+eq('A3005/A3062 offset: raw 0 of 10 steps = 10%', batteryPercent(0, 10, 1), 10);
+eq('A3005/A3062 offset: raw 9 of 10 steps = 100%', batteryPercent(9, 10, 1), 100);
+eq('0 of 5 steps = 0%', batteryPercent(0, 5), 0);
+eq('Windows PnP percent passes through (scale null)', batteryPercent(87, null), 87);
+eq('null level stays unavailable', batteryPercent(null, 5), null);
+eq('level above scale passes through, not rescaled', batteryPercent(7, 5), 7);
+eq('absurd percent is clamped, never shows 140%', batteryPercent(140, null), 100);
+
+/* ========================= 3. presence + earbuds ======================== */
+
+console.log('\n[3] earbud presence and per-side state (unknown ≠ disconnected)');
+
+eq('both sides present', presenceFromRaw(4, 4), 'both');
+eq('left only (0xFF right)', presenceFromRaw(4, 0xff), 'left');
+eq('right only (0xFF left)', presenceFromRaw(0xff, 4), 'right');
+eq('neither side (0xFF both)', presenceFromRaw(0xff, 0xff), 'none');
+eq('single byte (over-ear) is unknown, not none', presenceFromRaw(4, undefined), 'unknown');
+eq('no bytes at all is unknown', presenceFromRaw(undefined, undefined), 'unknown');
+eq('untrustworthy byte (>100) is unknown, never "present"', presenceFromRaw(0xff, 245), 'unknown');
+eq('garbage on both sides is unknown', presenceFromRaw(245, 245), 'unknown');
+
+const twsCaps = deriveCapabilities(byId('liberty-4-nc'));
+const overEarCaps = deriveCapabilities(byId('q45'));
+
+// TEST 6 — unsupported/non-TWS: explicit 'unavailable', never fake sides.
+const overEar = deriveEarbudState({ left: 4, right: null }, overEarCaps);
+eq('over-ears: supported=false, aggregate unavailable', [overEar.supported, overEar.connection], [false, 'unavailable']);
+eq('over-ears: both sides explicitly unavailable with no data', [
+  overEar.left.state, overEar.left.battery, overEar.right.state, overEar.right.battery,
+], ['unavailable', null, 'unavailable', null]);
+
+// TEST 5 — no valid telemetry: unknown (never 'disconnected').
+const unknownState = deriveEarbudState(emptyBattery(), twsCaps);
+eq('unknown: both sides unknown', [unknownState.left.state, unknownState.right.state], ['unknown', 'unknown']);
+eq('unknown: aggregate unknown', unknownState.connection, 'unknown');
+eq('unknown: no battery claimed per side', [unknownState.left.battery, unknownState.right.battery], [null, null]);
+check('unknown: supported flag stays true (model HAS sides)', unknownState.supported === true);
+
+const leftOnly = deriveEarbudState(
+  { left: 4, right: 4, batteryScale: 5, presence: 'left', leftCharging: true, rightCharging: true },
+  twsCaps,
+);
+eq('left-only: left connected at 80%', [leftOnly.left.state, leftOnly.left.battery], ['connected', 80]);
+eq('left-only: right explicitly disconnected', leftOnly.right.state, 'disconnected');
+eq('left-only: stale right battery suppressed', leftOnly.right.battery, null);
+eq('left-only: aggregate is left', leftOnly.connection, 'left');
+eq('left-only: charging shown only for the connected side', [leftOnly.left.charging, leftOnly.right.charging], [true, null]);
+
+const both = deriveEarbudState({ left: 8, right: 6, batteryScale: 10, presence: 'both' }, twsCaps);
+eq('both: independent per-side percents', [both.left.battery, both.right.battery], [80, 60]);
+eq('both: aggregate both from side states', [both.left.state, both.right.state, both.connection], ['connected', 'connected', 'both']);
+
+const rightOnly = deriveEarbudState({ left: 0, right: 9, batteryScale: 10, presence: 'right' }, twsCaps);
+eq('right-only: left disconnected (stale 0 suppressed), right 90%', [
+  rightOnly.left.state, rightOnly.left.battery, rightOnly.right.state, rightOnly.right.battery, rightOnly.connection,
+], ['disconnected', null, 'connected', 90, 'right']);
+
+const none = deriveEarbudState({ left: 4, right: 4, batteryScale: 5, presence: 'none' }, twsCaps);
+eq('none: both sides disconnected, no batteries', [
+  none.left.state, none.left.battery, none.right.state, none.right.battery, none.connection,
+], ['disconnected', null, 'disconnected', null, 'none']);
+
+const missingPresence = deriveEarbudState({ left: 4, right: 4, batteryScale: 5 }, twsCaps);
+eq('absent presence field defaults to unknown', [
+  missingPresence.left.state, missingPresence.right.state, missingPresence.connection,
+], ['unknown', 'unknown', 'unknown']);
+
+/* ================ 3b. source-of-truth telemetry merge ==================== */
+/* The store merges every battery frame through mergeBatteryTelemetry. These */
+/* are the Pass-4 regression tests: a side reported 0xFF (or missing, or      */
+/* untrustworthy) must lose its previous level AT THE SOURCE — the UI never   */
+/* gets a chance to mask a stale value. Raw percents (scale null) are used so */
+/* the numbers match the spec cases exactly: L=100 R=90 etc.                  */
+
+console.log('\n[3b] stale-battery regressions (mergeBatteryTelemetry)');
+
+const merge = (prev, rawL, rawR, extra = {}) =>
+  mergeBatteryTelemetry(prev, { rawLeft: rawL, rawRight: rawR, scale: null, ...extra });
+
+// TEST 9 shape: the cleared state every connect/disconnect starts from.
+eq('emptyBattery: no levels, no flags, presence unknown', emptyBattery(), {
+  left: null, right: null, casePercent: null, leftCharging: undefined, rightCharging: undefined,
+  batteryScale: null, presence: 'unknown',
+});
+const hostBattery = { ...emptyBattery(), hostPercent: 87 };
+const hostMerged = merge(hostBattery, 8, 7);
+check(
+  'host battery percentage survives Soundcore telemetry refresh',
+  hostMerged.hostPercent === 87,
+  JSON.stringify(hostMerged),
+);
+
+
+// Case telemetry: a model-verified full state only, with an independent scale.
+const caseModels = {
+  A3945: [5, 0], A3330: [5, 0], A3388: [10, 1], A3968: [5, 0],
+  D1202: [10, 1], A3947: [5, 0], A3952: [5, 0],
+  A3936: [10, 0], A3954: [10, 1], A3955: [5, 0], A3957: [10, 1],
+};
+for (const [sku, [max, offset]] of Object.entries(caseModels)) {
+  const model = DEVICES.find((p) => p.sku === sku);
+  check(`${sku} has independent case layout + scale`, model?.state.batteryCase !== null && model?.caseBatteryMax === max && (model?.caseBatteryOffset ?? 0) === offset);
+  if (!model) continue;
+  const bytes = new Uint8Array(requiredStateLength(model.state));
+  bytes[model.state.batteryCase] = max - offset;
+  eq(`${sku} full state: maximum case level → 100%`, parseCaseBatteryPercent(bytes, model), 100);
+  bytes[model.state.batteryCase] = 0;
+  eq(`${sku} first case step uses correct offset`, parseCaseBatteryPercent(bytes, model), offset ? 10 : 0);
+  bytes[model.state.batteryCase] = 0xff;
+  eq(`${sku} absent case byte → unavailable`, parseCaseBatteryPercent(bytes, model), null);
+  bytes[model.state.batteryCase] = max - offset + 1;
+  eq(`${sku} out-of-range case byte → unavailable`, parseCaseBatteryPercent(bytes, model), null);
+  eq(`${sku} short state → unavailable`, parseCaseBatteryPercent(bytes.slice(0, -1), model), null);
+}
+const caseModel = DEVICES.find((p) => p.sku === 'A3947');
+const caseBytes = new Uint8Array(requiredStateLength(caseModel.state));
+caseBytes[caseModel.state.batteryCase] = 4;
+const frameBody = [0x09, 0xff, 0, 0, 1, 1, 1, (caseBytes.length + 10) & 0xff, (caseBytes.length + 10) >> 8, ...caseBytes];
+const caseFrame = Uint8Array.from([...frameBody, checksum(frameBody)]);
+eq('case state frame with valid header/length/checksum accepted', parseCaseBatteryStateFrame(caseFrame, caseModel), 80);
+const corruptedCase = caseFrame.slice(); corruptedCase[9 + caseModel.state.batteryCase] ^= 1;
+eq('checksum failure cannot become case telemetry', parseCaseBatteryStateFrame(corruptedCase, caseModel), null);
+const wrongSizeCase = caseFrame.slice(); wrongSizeCase[7]--;
+eq('declared length mismatch cannot become case telemetry', parseCaseBatteryStateFrame(wrongSizeCase, caseModel), null);
+const wrongCommandCase = caseFrame.slice(); wrongCommandCase[6] = 3; wrongCommandCase[wrongCommandCase.length - 1] = checksum(wrongCommandCase, wrongCommandCase.length - 1);
+eq('01:03 cannot borrow case offset from a full state', parseCaseBatteryStateFrame(wrongCommandCase, caseModel), null);
+const shortCaseFrame = caseFrame.slice(0, -2); shortCaseFrame[7] = shortCaseFrame.length; shortCaseFrame[shortCaseFrame.length - 1] = checksum(shortCaseFrame, shortCaseFrame.length - 1);
+eq('truncated state cannot decode case', parseCaseBatteryStateFrame(shortCaseFrame, caseModel), null);
+eq('catalog-only/manual-unverified profile cannot yield case percent', parseCaseBatteryPercent(caseBytes, { ...caseModel, verified: false }), null);
+eq('unknown model cannot borrow a verified case layout', parseCaseBatteryPercent(caseBytes, UNKNOWN_PROFILE), null);
+eq('an over-ear cannot borrow case fields', parseCaseBatteryPercent(caseBytes, { ...caseModel, kind: 'overear' }), null);
+const freshCase = mergeBatteryTelemetry(emptyBattery(), { rawLeft: 4, rawRight: 3, scale: 5, casePercent: 80 });
+eq('fresh full-state case percentage is stored', freshCase.casePercent, 80);
+eq('buds-only 01:03 refresh does not overwrite case charge', mergeBatteryTelemetry(freshCase, { rawLeft: 3, rawRight: 2, scale: 5 }).casePercent, 80);
+eq('invalid new full-state case byte clears old percent', mergeBatteryTelemetry(freshCase, { rawLeft: 3, rawRight: 2, scale: 5, casePercent: null }).casePercent, null);
+eq('disconnect/new session clears case charge', emptyBattery().casePercent, null);
+const caseSession = createSessionGuard();
+const oldSession = caseSession.begin();
+const newSession = caseSession.begin();
+check('late case-bearing telemetry is rejected by the same session guard as other state', !caseSession.isActive(oldSession) && caseSession.isActive(newSession));
+
+// Newly researched, strictly read-only state fields. Reference offsets are
+// pinned to OpenSCQ30 A3040/A3954/D1202 parse chains and full-state fixtures.
+const observedSpecs = [
+  { sku: 'A3040', length: 142, volume: 67, limit: 90, button: 47 },
+  { sku: 'A3954', length: 165, volume: 145, limit: 95, spatial: 148 },
+  { sku: 'D1202', length: 152, volume: 134, limit: 90, spatial: 137 },
+];
+function rxState(payload, cat = 1, typ = 1) {
+  const total = payload.length + 10;
+  const body = [9, 255, 0, 0, 1, cat, typ, total & 255, total >> 8, ...payload];
+  return Uint8Array.from([...body, checksum(body)]);
+}
+for (const spec of observedSpecs) {
+  const model = DEVICES.find((d) => d.sku === spec.sku);
+  const bytes = new Uint8Array(spec.length);
+  bytes.set([spec.sku === 'A3954' ? 1 : 0, spec.limit, 0], spec.volume);
+  if (spec.button !== undefined) bytes[spec.button] = 7;
+  if (spec.spatial !== undefined) {
+    bytes[spec.spatial] = 1;
+    if (spec.sku === 'A3954') bytes.set([1, 2], spec.spatial + 1); // Fixed, Movie
+    else bytes[spec.spatial + 1] = 2; // Movie
+  }
+  const good = rxState(bytes);
+  const result = parseObservedFeatures(good, model);
+  eq(`${spec.sku}: exact state report exposes bounded safe-volume status`, result?.safeVolume,
+    { enabled: spec.sku === 'A3954', limitDb: spec.limit, refresh: 'Real-time' });
+  if (spec.button !== undefined) eq('A3040: only known BassUp double-press is read', result?.q45DoublePress, 'BassUp');
+  if (spec.spatial !== undefined) eq(`${spec.sku}: exact spatial readout`, result?.spatial,
+    { enabled: true, mode: 'Movie', tracking: spec.sku === 'A3954' ? 'Fixed' : null });
+  eq(`${spec.sku}: checksum failure ignored whole`, parseObservedFeatures(Uint8Array.from([...good.slice(0, -1), good.at(-1) ^ 1]), model), null);
+  const badLen = good.slice(); badLen[7] ^= 1;
+  eq(`${spec.sku}: length mismatch ignored whole`, parseObservedFeatures(badLen, model), null);
+  eq(`${spec.sku}: valid truncated state clears rather than preserves readout`, parseObservedFeatures(rxState(bytes.slice(0, -1)), model), EMPTY_OBSERVED);
+  eq(`${spec.sku}: non-state command does not update`, parseObservedFeatures(rxState(bytes, 1, 3), model), null);
+  eq(`${spec.sku}: manual/unverified model cannot borrow fields`, parseObservedFeatures(good, { ...model, verified: false }), EMPTY_OBSERVED);
+  bytes[spec.volume] = 2;
+  eq(`${spec.sku}: malformed enabled byte clears limiter`, parseObservedFeatures(rxState(bytes), model)?.safeVolume, null);
+  bytes[spec.volume] = 1; bytes[spec.volume + 1] = 101;
+  eq(`${spec.sku}: out-of-range dB clears limiter`, parseObservedFeatures(rxState(bytes), model)?.safeVolume, null);
+  bytes[spec.volume + 1] = 91;
+  eq(`${spec.sku}: non-step dB clears limiter`, parseObservedFeatures(rxState(bytes), model)?.safeVolume, null);
+  bytes[spec.volume + 1] = spec.limit; bytes[spec.volume + 2] = 3;
+  eq(`${spec.sku}: invalid refresh enum clears limiter`, parseObservedFeatures(rxState(bytes), model)?.safeVolume, null);
+  if (spec.spatial !== undefined) {
+    bytes[spec.spatial] = 2;
+    eq(`${spec.sku}: malformed spatial boolean clears mode`, parseObservedFeatures(rxState(bytes), model)?.spatial, null);
+    bytes[spec.spatial] = 1;
+    if (spec.sku === 'A3954') bytes[spec.spatial + 1] = 3;
+    else bytes[spec.spatial + 1] = 1; // unsupported D1202 Podcast
+    eq(`${spec.sku}: unsupported spatial enum clears mode`, parseObservedFeatures(rxState(bytes), model)?.spatial, null);
+  } else {
+    bytes[spec.button] = 5;
+    eq('A3040: unknown action id is not mislabelled BassUp', parseObservedFeatures(rxState(bytes), model)?.q45DoublePress, null);
+    bytes[spec.button] = 15;
+    eq('A3040: disabled action is distinguishable', parseObservedFeatures(rxState(bytes), model)?.q45DoublePress, 'Disabled');
+  }
+}
+// A3945: full 72-byte reference state (no BassUp/gesture/EQ writer enabled).
+const lifeNote = DEVICES.find((d) => d.sku === 'A3945');
+check('Life Note 3S is an exact-SKU read-only profile', lifeNote?.verified && lifeNote?.eqCommand === null && lifeNote?.gaming === false && lifeNote?.ancLayout === 'none');
+eq('A3945 requires all 72 state bytes before automatic layout confirmation', requiredStateLength(lifeNote.state), 72);
+eq('A3945 full state rejects under/overlength before identity confirmation', [71,72,73].map((n) => validStatePayloadLength(lifeNote.state,n)), [false,true,false]);
+eq('Life Note 3S alias cannot borrow Life Note 3 identity', [matchDevice('soundcore Life Note 3S').sku, matchDevice('Life Note 3').sku, matchDevice('A3945').sku], ['A3945', '—', 'A3945']);
+const notePayload = new Uint8Array(72);
+notePayload[0] = 0; notePayload[1] = 1; // host left; connected TWS action nibble
+notePayload[32] = 0; notePayload[33] = 0; // Signature factory EQ
+notePayload.set([1, 0x66, 1, 0x55, 1, 0x33, 1, 0x22, 1, 0, 1, 1], 54);
+notePayload[68] = 1; notePayload[69] = 4; notePayload[70] = 1; notePayload[71] = 2;
+const noteFrame = rxState(notePayload);
+const noteState = parseObservedFeatures(noteFrame, lifeNote);
+eq('A3945 BassUp is a standalone boolean at byte 70, not a preset or gesture', noteState.lifeNoteBassUp, true);
+eq('A3945 EQ and gaming are read-only exact state fields', [noteState.lifeNoteEq, noteState.lifeNoteGaming], ['Soundcore Signature', true]);
+eq('A3945 six connected-side assignments use per-model order and action IDs', noteState.lifeNoteButtons, [
+  { press: 'Left double press', action: 'Play / pause' },
+  { press: 'Left long press', action: 'Voice assistant' },
+  { press: 'Right double press', action: 'Next song' },
+  { press: 'Right long press', action: 'Previous song' },
+  { press: 'Left single press', action: 'Volume up' },
+  { press: 'Right single press', action: 'Volume down' },
+]);
+const noteAlternate = notePayload.slice(); noteAlternate[1] = 0; noteAlternate[55] = 0x26;
+eq('A3945 disconnected TWS uses HIGH action nibble, not the connected one', parseObservedFeatures(rxState(noteAlternate), lifeNote)?.lifeNoteButtons?.[0]?.action, 'Previous song');
+noteAlternate[1] = 1; noteAlternate[54] = 0;
+eq('A3945 explicitly disabled assignment is not labelled with its stored action', parseObservedFeatures(rxState(noteAlternate), lifeNote)?.lifeNoteButtons?.[0]?.action, 'Disabled');
+noteAlternate.set(notePayload);
+noteAlternate[70] = 2;
+eq('A3945 invalid BassUp boolean clears the field', parseObservedFeatures(rxState(noteAlternate), lifeNote)?.lifeNoteBassUp, null);
+noteAlternate.set(notePayload); noteAlternate[68] = 3;
+eq('A3945 invalid gaming boolean clears the field', parseObservedFeatures(rxState(noteAlternate), lifeNote)?.lifeNoteGaming, null);
+noteAlternate.set(notePayload); noteAlternate[55] = 0x46;
+eq('A3945 invalid disconnected-side action clears ALL button assignments', parseObservedFeatures(rxState(noteAlternate), lifeNote)?.lifeNoteButtons, null);
+noteAlternate.set(notePayload); noteAlternate[54] = 2;
+eq('A3945 invalid button enabled flag clears ALL assignments', parseObservedFeatures(rxState(noteAlternate), lifeNote)?.lifeNoteButtons, null);
+noteAlternate.set(notePayload); noteAlternate[1] = 2;
+eq('A3945 invalid TWS connection boolean clears assignments', parseObservedFeatures(rxState(noteAlternate), lifeNote)?.lifeNoteButtons, null);
+noteAlternate.set(notePayload); noteAlternate[32] = 0xff; noteAlternate[33] = 0xff;
+eq('A3945 unknown EQ index does not acquire a guessed preset', parseObservedFeatures(rxState(noteAlternate), lifeNote)?.lifeNoteEq, null);
+noteAlternate.set(notePayload); noteAlternate[32] = 0xfe; noteAlternate[33] = 0xfe;
+eq('A3945 custom EQ index labelled without inventing band data', parseObservedFeatures(rxState(noteAlternate), lifeNote)?.lifeNoteEq, 'Custom EQ');
+eq('A3945 valid-but-short state clears all readouts', parseObservedFeatures(rxState(notePayload.slice(0, 71)), lifeNote), EMPTY_OBSERVED);
+eq('A3945 overlong state cannot inherit this exact parser', parseObservedFeatures(rxState(Uint8Array.from([...notePayload, 0])), lifeNote), EMPTY_OBSERVED);
+eq('A3945 overlong 01:01 also cannot parse case battery', parseCaseBatteryStateFrame(rxState(Uint8Array.from([...notePayload, 0])), lifeNote), null);
+eq('A3945 wrong CAT:TYPE ignored', parseObservedFeatures(rxState(notePayload, 1, 3), lifeNote), null);
+eq('A3945 checksum violation ignored', parseObservedFeatures(Uint8Array.from([...noteFrame.slice(0, -1), noteFrame.at(-1) ^ 1]), lifeNote), null);
+const noteBadLength = noteFrame.slice(); noteBadLength[7] ^= 1;
+eq('A3945 incoherent framed length ignored', parseObservedFeatures(noteBadLength, lifeNote), null);
+eq('A3945 unverified/profile mismatch cannot inherit state', parseObservedFeatures(noteFrame, { ...lifeNote, verified: false }), EMPTY_OBSERVED);
+eq('different verified SKU cannot inherit A3945 BassUp', parseObservedFeatures(noteFrame, DEVICES.find((d) => d.sku === 'A3947')), EMPTY_OBSERVED);
+
+// D1301: source-author Sleep A30 firmware 01.91 captures, NOT local physical tests.
+// The three 150-byte 01:01 bodies come from OpenSCQ30's state_update.rs tests.
+const sleepBodies = [
+  '0101090930312e393130312e393131333031374345393133303738433841c7251a13e97c30312e36380000000006dd881100ff000168017c003200ffff01ffffff00000100003226000006007fdb3a0000000000020100000000000000000002018000000000000004030280000000000000040403800000000000000405048000000000000004010000010900000101010000010000',
+  '0101090930312e393130312e393131333031374345393133303738433841c7251a13e97c30312e36380000000006dd881100ff000168017c003200ffff00ffffff00000100003226000006007fdb3a0000000000020100000000000000000002018000000000000004030280000000000000040403800000000000000405048000000000000004010000010900000101000000010100',
+  '0101090930312e393130312e393131333031374345393133303738433841c7251a13e97c30312e36380000000006dd881100ff000168017c003200ffff01ffffff00000100003226000006007fdb3a0000000000020100000000000000000002018000000000000004030280000000000000040403800000000000000405048000000000000004010000010900000101010000010100',
+];
+const sleepModel = DEVICES.find((d) => d.sku === 'D1301');
+eq('D1301 full captured state is required to confirm layout (firmware 4 / serial 14)',
+  [sleepModel.state.firmware.at, sleepModel.state.serial.at, requiredStateLength(sleepModel.state)], [4, 14, 150]);
+eq('D1301 full captured layout rejects short and extra bytes', [149,150,151].map((n) => validStatePayloadLength(sleepModel.state,n)), [false,true,false]);
+for (const [i, expected] of ['Keep Bluetooth audio', 'Pause audio', 'Play on-device audio'].entries()) {
+  const payload = Uint8Array.from(Buffer.from(sleepBodies[i], 'hex'));
+  eq(`D1301 upstream captured ${expected} read-only state`, parseObservedFeatures(rxState(payload), sleepModel)?.sleepAfter, expected);
+  eq(`D1301 ${expected}: invalid checksum never updates`, parseObservedFeatures(Uint8Array.from([...rxState(payload).slice(0, -1), rxState(payload).at(-1) ^ 1]), sleepModel), null);
+}
+const sleepRaw = Uint8Array.from(Buffer.from(sleepBodies[1], 'hex'));
+const sleepBad = sleepRaw.slice(); sleepBad[148] = 2;
+eq('D1301 invalid auto-switch flag clears readout', parseObservedFeatures(rxState(sleepBad), sleepModel)?.sleepAfter, null);
+sleepBad.set(sleepRaw); sleepBad[144] = 3;
+eq('D1301 unknown local playback action clears readout', parseObservedFeatures(rxState(sleepBad), sleepModel)?.sleepAfter, null);
+eq('D1301 valid short state clears rather than reads partial audio state', parseObservedFeatures(rxState(sleepRaw.slice(0, 149)), sleepModel), EMPTY_OBSERVED);
+eq('D1301 overlong body is not a captured state layout', parseObservedFeatures(rxState(Uint8Array.from([...sleepRaw, 0])), sleepModel), EMPTY_OBSERVED);
+eq('D1301 wrong response command ignored', parseObservedFeatures(rxState(sleepRaw, 1, 3), sleepModel), null);
+const sleepLen = rxState(sleepRaw); sleepLen[7] ^= 1;
+eq('D1301 incoherent wire length ignored', parseObservedFeatures(sleepLen, sleepModel), null);
+eq('D1301 unverified model cannot show sleep state', parseObservedFeatures(rxState(sleepRaw), { ...sleepModel, verified: false }), EMPTY_OBSERVED);
+eq('D1301 state cannot be parsed as A3945 BassUp', parseObservedFeatures(rxState(sleepRaw), lifeNote)?.lifeNoteBassUp, null);
+
+eq('other model cannot inherit observed fields', parseObservedFeatures(rxState(new Uint8Array(165)), DEVICES.find((d) => d.sku === 'A3947')), EMPTY_OBSERVED);
+const observedSession = createSessionGuard();
+const priorObservedSession = observedSession.begin();
+const currentObservedSession = observedSession.begin();
+check('observed fields share session gate with 01:01 telemetry', !observedSession.isActive(priorObservedSession) && observedSession.isActive(currentObservedSession));
+eq('observed fields clear on reconnect/disconnect', EMPTY_OBSERVED, { q45DoublePress: null, safeVolume: null, spatial: null, lifeNoteBassUp: null, lifeNoteButtons: null, lifeNoteEq: null, lifeNoteGaming: null, sleepAfter: null });
+
+// TEST 10 — fresh connection: unknown until the first valid frame, then confirmed.
+const t10a = merge(emptyBattery(), undefined, undefined);
+eq('fresh link, no bytes yet → unknown/null', [t10a.left, t10a.right, t10a.presence], [null, null, 'unknown']);
+const t10b = merge(t10a, 100, 90);
+eq('first valid frame confirms both sides', [t10b.left, t10b.right, t10b.presence], [100, 90, 'both']);
+
+// TEST 1 — BOTH: L=100 R=90.
+const t1 = merge(emptyBattery(), 100, 90);
+const t1d = deriveEarbudState(t1, twsCaps);
+eq('TEST 1 both: states/aggregate', [t1d.left.state, t1d.right.state, t1d.connection], ['connected', 'connected', 'both']);
+eq('TEST 1 both: batteries 100/90', [t1d.left.battery, t1d.right.battery], [100, 90]);
+
+// TEST 2 + TEST 7 (CRITICAL) — R goes 0xFF while its previous level was 90.
+const t2 = merge(t1, 100, 0xff);
+eq('TEST 2 left-only: merge keeps left, nulls right', [t2.left, t2.right, t2.presence], [100, null, 'left']);
+check('TEST 7 CRITICAL: previous right=90 does NOT survive 0xFF', t2.right !== 90 && t2.right === null);
+const t2d = deriveEarbudState(t2, twsCaps);
+eq('TEST 2 left-only: right side disconnected, battery null', [t2d.right.state, t2d.right.battery], ['disconnected', null]);
+check('TEST 2 explicit: right.battery !== 90', t2d.right.battery !== 90);
+eq('TEST 2 left-only: aggregate left, left battery 100', [t2d.connection, t2d.left.battery], ['left', 100]);
+
+// TEST 3 + TEST 8 — mirror image: L goes 0xFF while its previous level was 100.
+const t3 = merge(t1, 0xff, 90);
+eq('TEST 3 right-only: merge nulls left, keeps right', [t3.left, t3.right, t3.presence], [null, 90, 'right']);
+check('TEST 8 CRITICAL: previous left=100 does NOT survive 0xFF', t3.left === null);
+const t3d = deriveEarbudState(t3, twsCaps);
+eq('TEST 3 right-only: left disconnected/null, right connected/90', [
+  t3d.left.state, t3d.left.battery, t3d.right.state, t3d.right.battery, t3d.connection,
+], ['disconnected', null, 'connected', 90, 'right']);
+
+// TEST 4 — NONE: both sides 0xFF.
+const t4 = merge(t1, 0xff, 0xff);
+const t4d = deriveEarbudState(t4, twsCaps);
+eq('TEST 4 none: both disconnected, no batteries, aggregate none', [
+  t4d.left.state, t4d.left.battery, t4d.right.state, t4d.right.battery, t4d.connection,
+], ['disconnected', null, 'disconnected', null, 'none']);
+
+// TEST 11 — LIVE TRANSITION both → left-only → both, on ONE state chain.
+const tr1 = merge(emptyBattery(), 100, 90);          // both
+const tr2 = merge(tr1, 100, 0xff);                   // right removed
+const tr3 = merge(tr2, 100, 90);                     // right returned
+eq('TEST 11 step 1: both 100/90', [tr1.left, tr1.right, tr1.presence], [100, 90, 'both']);
+eq('TEST 11 step 2: right gone → null immediately', [tr2.left, tr2.right, tr2.presence], [100, null, 'left']);
+eq('TEST 11 step 3: right back from FRESH bytes, not reused', [tr3.left, tr3.right, tr3.presence], [100, 90, 'both']);
+eq('TEST 11 aggregates follow the sides', [
+  deriveEarbudState(tr1, twsCaps).connection,
+  deriveEarbudState(tr2, twsCaps).connection,
+  deriveEarbudState(tr3, twsCaps).connection,
+], ['both', 'left', 'both']);
+
+// Charging flags: cleared for absent sides, kept across frames that carry none.
+const c1 = merge(emptyBattery(), 100, 90, { chargingLeft: true, chargingRight: true });
+eq('charging flags stored from a state frame', [c1.leftCharging, c1.rightCharging], [true, true]);
+const c2 = merge(c1, 100, 90); // 01:03-style frame without charging bits
+eq('a frame without charging bits keeps the confirmed flags', [c2.leftCharging, c2.rightCharging], [true, true]);
+const malformedCharging = merge(c2, 100, 90, { chargingLeft: null, chargingRight: null });
+eq('malformed charging flags clear confirmation instead of retaining true', [malformedCharging.leftCharging, malformedCharging.rightCharging], [null, null]);
+const c3 = merge(c2, 100, 0xff);
+eq('absent side loses its charging flag too', c3.rightCharging, undefined);
+const c4 = merge(c3, 100, undefined);
+eq('missing side byte clears level AND charging (untrusted telemetry)', [c4.right, c4.rightCharging, c4.presence], [null, undefined, 'unknown']);
+const c5 = merge(emptyBattery(), 245, 90);
+eq('untrustworthy byte (>100) never becomes a battery', [c5.left, c5.presence], [null, 'unknown']);
+
+// Pass 11 §11 telemetry freshness: rapid repeats are idempotent, single-side
+// frames never resurrect the other side, and the newest valid frame wins.
+const r1 = merge(emptyBattery(), 80, 60, { chargingLeft: true });
+const r2 = merge(r1, 80, 60, { chargingLeft: true });
+eq('repeated identical frames are idempotent', r2, r1);
+const r3 = merge(r2, 80, undefined);
+eq('a single-side frame clears the other side instead of remembering it', [r3.right, r3.rightCharging, r3.presence], [null, undefined, 'unknown']);
+const r4 = merge(r3, 80, 60);
+eq('the next valid frame restores both sides (newest valid wins)', [r4.left, r4.right, r4.presence], [80, 60, 'both']);
+const r5 = merge(r4, 20, 20);
+eq('a newer lower reading replaces the older one (no keep-the-max heuristic)', [r5.left, r5.right], [20, 20]);
+const sc5 = merge(emptyBattery(), 4, 4, { scale: 5 });
+const sc6 = merge(sc5, 4, 4, { scale: 'unknown' });
+eq('a scale change is taken from the frame, never remembered', [batteryPercent(sc5.left, sc5.batteryScale), batteryPercent(sc6.left, sc6.batteryScale)], [80, null]);
+
+// Scale conversion still applies to raw-step devices through the merge.
+const sc = mergeBatteryTelemetry(emptyBattery(), { rawLeft: 4, rawRight: 0xff, scale: 5 });
+const scd = deriveEarbudState(sc, twsCaps);
+eq('raw steps: 4/5 → 80%, absent side null', [scd.left.battery, scd.right.battery], [80, null]);
+
+/* ============ 3c. sound-mode mirror parsing (confirmed ANC state) ======== */
+
+console.log('\n[3c] parseSoundModes — device-confirmed ANC mirror');
+
+eq('classic ANC + transport scene + vocal', parseSoundModes([0x00, 0x00, 0x01, 0x00], 'classic'), {
+  mode: 'anc', transVocal: true, scene: 'transport',
+});
+eq('classic transparency + indoor', parseSoundModes([0x01, 0x02, 0x00, 0x00], 'classic'), {
+  mode: 'transparency', transVocal: false, scene: 'indoor',
+});
+eq('l4nc: manual level 3 + wind on', parseSoundModes([0x00, 0x30, 0x00, 0x00, 0x01, 0x00, 0x00], 'tws-l4nc'), {
+  mode: 'anc', level: 3, transVocal: false, wind: true, scene: 'transport',
+});
+eq('p30i: adaptive nibble below 1 is not a level', parseSoundModes([0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], 'tws-p30i'), {
+  mode: 'normal', wind: false, scene: 'transport',
+});
+eq('p30i: automation byte confirms adaptive ANC', parseSoundModes([0x00, 0x53, 0x00, 0x01, 0x00, 0x00, 0x00], 'tws-p30i'), {
+  mode: 'adaptive', level: 5, wind: false, scene: 'transport',
+});
+eq('l4nc: automation byte confirms adaptive ANC', parseSoundModes([0x00, 0x32, 0x00, 0x01, 0x00, 0x00, 0x00], 'tws-l4nc'), {
+  mode: 'adaptive', level: 3, transVocal: false, wind: false, scene: 'transport',
+});
+eq('A3035 mirror parses wind while keeping custom transparency opaque', parseSoundModes([0x00, 0x50, 0x00, 0x01, 0x01, 0x05], 'classic-a3035'), {
+  mode: 'adaptive', level: 5, wind: true,
+});
+eq('A3040 mirror parses Talk transparency and wind', parseSoundModes([0x01, 0x50, 0x00, 0x01, 0x01, 0x05], 'classic-a3040'), {
+  mode: 'transparency', level: 5, wind: true, transVocal: true,
+});
+// TEST 12 input — a malformed mirror must be REJECTED, so the last confirmed
+// mode survives (the store only moves ANC state on a non-null report).
+eq('garbage mode byte → null (confirmed state untouched)', parseSoundModes([0x07, 0x00, 0x00, 0x00], 'classic'), null);
+eq('short payload → null', parseSoundModes([0x00], 'classic'), null);
+eq('six-byte layout rejects a five-byte prefix', parseSoundModes([0x00, 0x50, 0x00, 0x01, 0x00], 'tws-a3968'), null);
+eq('eight-byte D1202 layout rejects a seven-byte prefix', parseSoundModes([0x00, 0x50, 0x00, 0x01, 0x00, 0x00, 0x00], 'tws-d1202'), null);
+eq('layouts without ANC never parse', parseSoundModes([0x00, 0x00, 0x00, 0x00], 'none'), null);
+
+console.log('\n[3d] single-earbud ANC capability');
+const p30i = DEVICES.find((d) => d.id === 'p30i');
+eq('P30i ANC remains supported without both-side telemetry', deriveCapabilities(p30i).supportsNoiseControl, true);
+
+/* ======================= 4. connection phase ============================ */
+
+console.log('\n[4] connection phase precedence');
+
+eq('connected wins over everything', deriveConnectionPhase({ connected: true, connecting: true, error: 'x' }), 'connected');
+eq('connecting beats error', deriveConnectionPhase({ connected: false, connecting: true, error: 'x' }), 'connecting');
+eq('error surfaces when idle', deriveConnectionPhase({ connected: false, connecting: false, error: 'boom' }), 'error');
+eq('clean idle is disconnected', deriveConnectionPhase({ connected: false, connecting: false, error: null }), 'disconnected');
+
+/* ========================= 5. scan state machine ======================== */
+
+console.log('\n[5] Devices-page scan state machine');
+
+const s0 = INITIAL_SCAN_STATE;
+eq('starts checking the helper', [s0.helper, s0.status], ['checking', 'idle']);
+
+const s1 = nextScanState(s0, { type: 'start' });
+eq('manual scan → scanning, message cleared', [s1.status, s1.message], ['scanning', null]);
+
+const s2 = nextScanState(s1, {
+  type: 'results',
+  devices: [{ id: 'AA', name: 'soundcore Q30', mac: 'AA', battery: 80 }],
+  at: 1234,
+});
+eq('results → results + devices + timestamp + helper online', [s2.status, s2.devices.length, s2.lastScanAt, s2.helper], ['results', 1, 1234, 'online']);
+
+const s3 = nextScanState(s1, { type: 'results', devices: [], at: 5 });
+eq('empty list → empty state with pairing hint', [s3.status, s3.message], ['empty', EMPTY_SCAN_MESSAGE]);
+
+const s4 = nextScanState(s2, { type: 'error', message: 'scan failed' });
+eq('error → error state keeps helper status', [s4.status, s4.message, s4.helper], ['error', 'scan failed', 'online']);
+
+const s5 = nextScanState(s2, { type: 'helper-offline', message: 'helper down' });
+eq('helper-offline → offline + error + stale devices cleared', [s5.helper, s5.status, s5.devices.length], ['offline', 'error', 0]);
+
+const s6 = nextScanState(s0, { type: 'helper', online: true });
+eq('background health probe flips helper online without touching scan status', [s6.helper, s6.status], ['online', 'idle']);
+const s7 = nextScanState(s6, { type: 'helper', online: false });
+eq('health probe can also report offline', s7.helper, 'offline');
+
+/* ------------------------------- unknown model: ambiguous battery rule */
+
+console.log('\n[13] unknown-model identity + battery ambiguity (Pass 10 §1-§5)');
+
+// The unidentified-model profile: no scale, no model-specific capability.
+eq('unknown profile has an unproven battery scale', [UNKNOWN_PROFILE.id, UNKNOWN_PROFILE.batteryMax, UNKNOWN_PROFILE.verified], ['unknown', null, false]);
+
+// Identity resolution: fallbacks must land on UNKNOWN, never on a real model.
+eq('empty name → unknown profile (no guessed identity)', matchDevice('').id, 'unknown');
+eq('null name → unknown profile', matchDevice(null).id, 'unknown');
+eq('raw MAC → unknown profile (no MAC→model inference)', matchDevice('AA:BB:CC:DD:EE:01').id, 'unknown');
+eq('generic "soundcore" → unknown profile', matchDevice('soundcore').id, 'unknown');
+eq('real name still resolves to its documented model', matchDevice('Soundcore Liberty 4 NC').id, 'liberty-4-nc');
+check('unknown identity carries an explanatory note', /could not be identified/.test(matchNote('AA:BB:CC:DD:EE:01') ?? ''), String(matchNote('AA:BB:CC:DD:EE:01')).slice(0, 120));
+eq('verified model match produces no note', matchNote('Soundcore Liberty 4 NC'), null);
+
+// Pass 11 §12: unverified marketing names and SKUs must STAY UNKNOWN —
+// Liberty 4 (A3953) is a different product from Liberty 4 NC (A3947), and
+// Sport X10 (A3961) / Sleep A10 (A6610) are not A3949. Borrowing a verified
+// profile would assert an unproven battery scale and ANC layout.
+eq('unverified "Liberty 4" (A3953) stays on the unknown profile', matchDevice('Soundcore Liberty 4').id, 'unknown');
+eq('unverified SKU A3953 stays on the unknown profile', matchDevice('A3953').id, 'unknown');
+eq('unverified "Sport X10" stays on the unknown profile', matchDevice('Soundcore Sport X10').id, 'unknown');
+eq('unverified "Sleep A10" stays on the unknown profile', matchDevice('soundcore Sleep A10').id, 'unknown');
+eq('unverified SKUs A3961/A6610 stay unknown', [matchDevice('A3961').id, matchDevice('A6610').id], ['unknown', 'unknown']);
+eq('unverified Life aliases stay unknown', [matchDevice('A3935').id, matchDevice('A3939').id, matchDevice('A3933').id], ['unknown', 'unknown', 'unknown']);
+check('unverified alias note explains the unknown treatment', /unknown model/.test(matchNote('Soundcore Liberty 4') ?? ''), String(matchNote('Soundcore Liberty 4')).slice(0, 80));
+check('unverified alias note never claims a borrowed profile', !/using the/i.test(matchNote('Soundcore Sport X10') ?? ''), String(matchNote('Soundcore Sport X10')).slice(0, 80));
+eq('longest-alias ranking still separates Liberty 4 NC from Liberty 3 Pro', [matchDevice('Soundcore Liberty 4 NC').id, matchDevice('Soundcore Liberty 3 Pro').id], ['liberty-4-nc', 'liberty-3-pro']);
+
+// §3 percent matrix: known scales interpret, unknown NEVER converts.
+eq('known scale-5 model: raw 4 → 80%', batteryPercent(4, 5), 80);
+eq('known scale-10 model: raw 4 → 40%', batteryPercent(4, 10), 40);
+eq('unknown model: raw 4 → unavailable (neither 40 nor 80)', batteryPercent(4, 'unknown'), null);
+eq('unknown model: raw 0 → unavailable (no invented 0%)', batteryPercent(0, 'unknown'), null);
+eq('unknown model: raw 5 → unavailable', batteryPercent(5, 'unknown'), null);
+eq('Windows PnP percent passthrough preserved (scale null)', batteryPercent(73, null), 73);
+
+// Pass 11 §13 boundary matrix: corrupt levels and corrupt scales must never
+// crash and never invent a plausible-looking percentage.
+eq('negative level → unavailable (not a clamped guess)', batteryPercent(-2, 5), null);
+eq('NaN level → unavailable', batteryPercent(NaN, 5), null);
+eq('+Infinity level → unavailable', batteryPercent(Infinity, 5), null);
+eq('-Infinity level → unavailable', batteryPercent(-Infinity, 10), null);
+eq('zero scale is corrupt profile data → unavailable', batteryPercent(3, 0), null);
+eq('negative scale → unavailable', batteryPercent(3, -5), null);
+eq('NaN scale → unavailable', batteryPercent(3, NaN), null);
+eq('+Infinity scale → unavailable', batteryPercent(3, Infinity), null);
+eq('scale-5 range ends: 0→0%, 5→100%', [batteryPercent(0, 5), batteryPercent(5, 5)], [0, 100]);
+eq('scale-10 range ends: 0→0%, 10→100%', [batteryPercent(0, 10), batteryPercent(10, 10)], [0, 100]);
+eq('percent-shaped level above its scale still degrades gracefully', batteryPercent(1700, 5), 100);
+eq('batteryLevel rejects negative raws', batteryLevel(-1), null);
+eq('batteryLevel rejects NaN', batteryLevel(NaN), null);
+eq('batteryLevel rejects Infinity', batteryLevel(Infinity), null);
+eq('batteryLevel passes valid wire bytes through', [batteryLevel(0), batteryLevel(4), batteryLevel(100)], [0, 4, 100]);
+eq('batteryLevel still maps 0xFF / undefined / >100 to null', [batteryLevel(0xff), batteryLevel(undefined), batteryLevel(101)], [null, null, null]);
+eq('presence treats negative and NaN raws as unknown, never present', [presenceFromRaw(-1, 4), presenceFromRaw(NaN, 4), presenceFromRaw(4, NaN)], ['unknown', 'unknown', 'unknown']);
+eq('presence still decodes valid pairs', [presenceFromRaw(4, 4), presenceFromRaw(0xff, 4), presenceFromRaw(4, 0xff), presenceFromRaw(0xff, 0xff)], ['both', 'right', 'left', 'none']);
+
+// Wire-level rules are scale-independent and stay exactly as documented.
+eq('0xFF remains "side absent", never 0%', batteryLevel(0xff), null);
+eq('level above 100 remains invalid noise', batteryLevel(173), null);
+eq('presence: 0xFF right → left-only under any scale', presenceFromRaw(4, 0xff), 'left');
+eq('presence: noise bytes → unknown, not disconnected', presenceFromRaw(173, 200), 'unknown');
+
+// Transition: known (scale-5, 80/80) → unknown model telemetry. No stale
+// percentage may survive; presence truth from the wire is kept.
+const prevKnown = mergeBatteryTelemetry(emptyBattery(), { rawLeft: 4, rawRight: 4, scale: 5 });
+eq('known device reads 80/80 before the transition', [batteryPercent(prevKnown.left, prevKnown.batteryScale), batteryPercent(prevKnown.right, prevKnown.batteryScale)], [80, 80]);
+const afterUnknown = mergeBatteryTelemetry(prevKnown, { rawLeft: 4, rawRight: 0xff, scale: 'unknown' });
+eq('known→unknown drops every percentage', [batteryPercent(afterUnknown.left, afterUnknown.batteryScale), batteryPercent(afterUnknown.right, afterUnknown.batteryScale)], [null, null]);
+eq('known→unknown keeps wire presence (left present, right absent)', afterUnknown.presence, 'left');
+eq('absent side keeps no stale level', afterUnknown.right, null);
+
+// Per-side UI state for the unknown model: presence renders, percent does not.
+const capsU = deriveCapabilities(UNKNOWN_PROFILE);
+const esU = deriveEarbudState(afterUnknown, capsU);
+eq('unknown model: left connected with NO percentage', [esU.left.state, esU.left.battery], ['connected', null]);
+eq('unknown model: right disconnected per the 0xFF rule', [esU.right.state, esU.right.battery], ['disconnected', null]);
+eq('unknown model still exposes per-side presence (documented 01:03 layout)', [capsU.supportsEarbudState, capsU.supportsPerEarbudBattery], [true, true]);
+
+// §2.4/§7: only genuinely universal operations remain for unknown models.
+eq('unknown model claims no ANC/EQ/gaming/surround/dual/LDAC', [capsU.supportsNoiseControl, capsU.supportsEqualizer, capsU.supportsGaming, capsU.supportsSurround, capsU.supportsDual, capsU.supportsLdac], [false, false, false, false, false, false]);
+eq('unknown model keeps the universal 01:05 firmware read', capsU.supportsFirmwareInfo, true);
+eq('unknown profile sends no sound-mode layout', parseSoundModes(new Uint8Array([0, 0x50]), UNKNOWN_PROFILE.ancLayout), null);
+
+// Unknown model + garbage bytes: presence degrades to unknown, no levels.
+const garbage = mergeBatteryTelemetry(emptyBattery(), { rawLeft: 173, rawRight: 200, scale: 'unknown' });
+eq('unknown model + noise → unknown presence, no levels', [garbage.presence, garbage.left, garbage.right], ['unknown', null, null]);
+
+// Identity becomes known (override/reconnect with a real name): the profile
+// — and only then the percentage interpretation — becomes available.
+const promoted = matchDevice('soundcore Liberty 4 NC');
+eq('identity resolution promotes to the real model', [promoted.id, promoted.batteryMax], ['liberty-4-nc', 5]);
+const afterKnown = mergeBatteryTelemetry(afterUnknown, { rawLeft: 4, rawRight: 4, scale: promoted.batteryMax });
+eq('fresh telemetry under the known scale reads 80/80 again', [batteryPercent(afterKnown.left, afterKnown.batteryScale), batteryPercent(afterKnown.right, afterKnown.batteryScale)], [80, 80]);
+
+/* Host disconnect and manual identification: neither an unrelated device nor
+   an enumeration failure can terminate the active session. */
+const hostDir = mkdtempSync(join(tmpdir(), 'soundcontrol-host-check-'));
+try {
+  const out = join(hostDir, 'host.mjs');
+  const { build: buildHost } = await import('esbuild');
+  await buildHost({ stdin: {
+    contents: "export * from './src/state/hostDisconnect.ts'; export * from './src/state/identification.ts';",
+    sourcefile: 'host-barrel.ts', resolveDir: ROOT, loader: 'ts',
+  }, bundle: true, format: 'esm', platform: 'node', outfile: out, logLevel: 'error' });
+  const {
+    hostDisconnectObservation: observe, verifiedCandidate,
+    candidateForAddress, discardCandidateOnAutomaticVerification, identificationState: identify,
+  } = await import(pathToFileURL(out).href);
+  const addr = 'AA:BB:CC:DD:EE:FF';
+  let step = observe(addr, [{mac: '11:22:33:44:55:66', connected: false}], 0);
+  eq('other device disappearing never disconnects active MAC', step, {misses: 0, disconnect: false});
+  step = observe(addr, [{mac: addr.toLowerCase(), connected: false}], step.misses);
+  eq('first explicit disconnect is not sufficient', step, {misses: 1, disconnect: false});
+  step = observe(addr, [], step.misses, true);
+  eq('scan failure resets confirmation (not proof of disconnect)', step, {misses: 0, disconnect: false});
+  step = observe(addr, [{mac: addr, connected: false}], step.misses);
+  step = observe(addr, [{mac: addr, connected: false}], step.misses);
+  eq('two consecutive reports about same address confirm disconnect', step, {misses: 2, disconnect: true});
+  eq('unknown connection property cannot confirm disconnect', observe(addr, [{mac: addr}], 1), {misses: 0, disconnect: false});
+  const known = verifiedCandidate('liberty-4-nc');
+  const other = verifiedCandidate('p20i');
+  const unverified = DEVICES.find((d) => !d.verified);
+  check('manual selector refuses arbitrary IDs, model codes and unverified profiles',
+    verifiedCandidate('unknown') === null && verifiedCandidate('A1234') === null &&
+    verifiedCandidate('does-not-exist') === null && Boolean(unverified) && verifiedCandidate(unverified.id) === null);
+  eq('automatic verified identity needs no manual choice', identify(true, known, true, null), 'verified');
+  eq('manual selection never verifies an unidentified physical device', identify(true, UNKNOWN_PROFILE, false, known), 'uncertain');
+  eq('tentative automatic identification and incompatible manual candidate produce mismatch',
+    identify(true, known, false, other), 'mismatch');
+  eq('later verified automatic identification wins over incompatible manual candidate',
+    identify(true, known, true, other), 'verified');
+  eq('disconnected stays disconnected regardless of candidate', identify(false, known, true, other), 'not-connected');
+  const manualForTwo = { [addr]: other.id, '11:22:33:44:55:66': known.id };
+  eq('manual choices are scoped by MAC (including case-normalization)',
+    [candidateForAddress(manualForTwo, addr.toLowerCase())?.id,
+      candidateForAddress(manualForTwo, '11:22:33:44:55:66')?.id,
+      candidateForAddress(manualForTwo, '22:33:44:55:66:77')],
+    [other.id, known.id, null]);
+  const afterAutomatic = discardCandidateOnAutomaticVerification(manualForTwo, addr.toLowerCase());
+  eq('automatic confirmation drops only its own stale manual candidate',
+    [candidateForAddress(afterAutomatic, addr)?.id, candidateForAddress(afterAutomatic, '11:22:33:44:55:66')?.id],
+    [null, known.id]);
+  eq('automatic verification recalculates from the automatic profile, not the conflicting candidate',
+    [deriveCapabilities(known).supportsNoiseControl, deriveCapabilities(other).supportsNoiseControl],
+    [true, false]);
+  eq('unknown identity cannot gain ANC by manual selection',
+    deriveCapabilities(UNKNOWN_PROFILE).supportsNoiseControl, false);
+} finally { rmSync(hostDir, {recursive: true, force: true}); }
+
+const releaseDir = mkdtempSync(join(tmpdir(), 'soundcontrol-release-check-'));
+try {
+  const out = join(releaseDir, 'download.mjs');
+  const { build: buildDownloads } = await import('esbuild');
+  await buildDownloads({ entryPoints: [join(ROOT, 'src/lib/downloads.ts')], bundle: true,
+    format: 'esm', platform: 'node', outfile: out, logLevel: 'error',
+    define: { __REPO_URL__: JSON.stringify('https://github.com/Shankers8811/soundcontrol') } });
+  const D = await import(pathToFileURL(out).href);
+  const url = (file) => `https://github.com/Shankers8811/soundcontrol/releases/download/v1.0.7/${file}`;
+  const assets = D.releaseAssetLinks({assets: [
+    {name: 'SoundControl.AppImage', browser_download_url: url('SoundControl.AppImage')},
+    {name: 'SoundControl.deb', browser_download_url: url('SoundControl.deb')},
+    {name: 'SoundControl-Setup.exe', browser_download_url: 'https://evil.example/Setup.exe'},
+  ]});
+  eq('downloader offers only actual official release assets', assets,
+    {appimage: url('SoundControl.AppImage'), deb: url('SoundControl.deb')});
+  eq('malformed release cannot create a fake Windows installer link', D.releaseAssetLinks({assets: []}), {});
+} finally { rmSync(releaseDir, {recursive: true, force: true}); }
+
+const scanDir = mkdtempSync(join(tmpdir(), 'soundcontrol-scan-check-'));
+try {
+  const out = join(scanDir, 'scan.mjs');
+  const { build: buildScan } = await import('esbuild');
+  await buildScan({ entryPoints: [join(ROOT, 'src/transports/bridge.ts')], bundle: true,
+    format: 'esm', platform: 'node', outfile: out, logLevel: 'error' });
+  const realLocation = globalThis.location;
+  const realWindow = globalThis.window;
+  const realFetchForScan = globalThis.fetch;
+  globalThis.location = {hostname: '127.0.0.1', protocol: 'http:'};
+  globalThis.window = {};
+  try {
+    const bridge = await import(pathToFileURL(out).href);
+    globalThis.fetch = async () => ({ok: true, status: 200, json: async () => ({devices: [
+      {mac: 'AA:BB:CC:DD:EE:FF', name: 'device', battery: 999},
+      {mac: '11:22:33:44:55:66', name: 'second', connected: false, battery: 73},
+    ]})});
+    const scan = await bridge.scanBridgeDevicesDetailed();
+    check('missing host connection property is unknown, never explicit false',
+      scan.error === null && scan.devices[0].connected === undefined && scan.devices[0].battery === null);
+    check('explicit false for another address remains scoped, valid host battery retained',
+      scan.devices[1].connected === false && scan.devices[1].battery === 73);
+    globalThis.fetch = async () => ({ok: true, status: 200, json: async () => ({message: 'bad scan'})});
+    check('malformed scan is an error rather than an empty authoritative enumeration',
+      (await bridge.scanBridgeDevicesDetailed()).error !== null);
+  } finally {
+    globalThis.location = realLocation;
+    globalThis.window = realWindow;
+    globalThis.fetch = realFetchForScan;
+  }
+} finally { rmSync(scanDir, {recursive: true, force: true}); }
+
+/* ------------------------------------------- update checker (Settings → Updates) */
+
+// Bundle src/lib/reporting.ts twice — once with the real build-time repo URL,
+// once with a non-GitHub URL — to prove the endpoint is derived ONLY from
+// __REPO_URL__ (checkForUpdates takes no URL argument, so renderer input can
+// never redirect it) and that the "unconfigured" path is real.
+const repDir = mkdtempSync(join(tmpdir(), 'soundcontrol-updates-'));
+let repBundleN = 0;
+async function bundleReporting(repoUrl) {
+  const { build: buildR } = await import('esbuild');
+  // Unique filename per build: identical names would hit the ESM import
+  // cache and every "different REPO_URL" bundle would silently be the first.
+  const out = join(repDir, `reporting-${repBundleN++}.mjs`);
+  await buildR({
+    stdin: {
+      contents: `export * from './src/lib/reporting.ts';`,
+      sourcefile: 'reporting-barrel.ts',
+      resolveDir: ROOT,
+      loader: 'ts',
+    },
+    bundle: true,
+    format: 'esm',
+    platform: 'neutral',
+    define: { __REPO_URL__: JSON.stringify(repoUrl) },
+    outfile: out,
+    logLevel: 'error',
+  });
+  return import(pathToFileURL(out).href);
+}
+const R = await bundleReporting('https://github.com/Shankers8811/soundcontrol');
+
+eq(
+  'API URL is derived from the build-time repo URL only',
+  R.latestReleaseApiUrl(),
+  'https://api.github.com/repos/Shankers8811/soundcontrol/releases/latest',
+);
+
+// Numeric version compare — a string compare would rank 1.0.10 < 1.0.9.
+eq('compareVersions is numeric, v-prefix and length tolerant', [
+  R.compareVersions('1.0.10', '1.0.9'),
+  R.compareVersions('v1.2.3', '1.2.3'),
+  R.compareVersions('1.0', '1.0.0'),
+  R.compareVersions('2.0.0', '10.0.0'),
+], [1, 0, 0, -1]);
+
+// Every check runs through a scripted fetch; the real one is restored after.
+const realFetch = globalThis.fetch;
+let fetchCalls = [];
+let fetchOpts = [];
+function stubFetch(handler) {
+  fetchCalls = [];
+  fetchOpts = [];
+  globalThis.fetch = async (url, opts) => {
+    fetchCalls.push(String(url));
+    fetchOpts.push(opts);
+    return handler(String(url));
+  };
+}
+const okJson = (body, status = 200) => ({
+  status,
+  ok: status >= 200 && status < 300,
+  json: async () => body,
+});
+const TAG_URL = 'https://github.com/Shankers8811/soundcontrol/releases/tag/v1.2.3';
+
+try {
+  stubFetch(() => okJson({ tag_name: 'v1.2.3', html_url: TAG_URL }));
+  let r = await R.checkForUpdates('1.0.5');
+  eq('newer tag → available with the validated html_url', [r.kind, r.release?.tag, r.release?.url], ['available', 'v1.2.3', TAG_URL]);
+  eq('the check hits ONLY the official API endpoint', fetchCalls, [R.latestReleaseApiUrl()]);
+
+  stubFetch(() => okJson({ tag_name: '1.0.5', html_url: TAG_URL }));
+  r = await R.checkForUpdates('1.0.5');
+  eq('same version → latest', r.kind, 'latest');
+
+  stubFetch(() => okJson({ tag_name: 'v0.9.0', html_url: TAG_URL }));
+  r = await R.checkForUpdates('1.0.5');
+  eq('older tag → latest', r.kind, 'latest');
+
+  stubFetch(() => ({ status: 404, ok: false, json: async () => ({}) }));
+  r = await R.checkForUpdates('1.0.5');
+  eq('no releases published (404) → none, an honest answer', r.kind, 'none');
+
+  stubFetch(() => ({ status: 500, ok: false, json: async () => ({}) }));
+  r = await R.checkForUpdates('1.0.5');
+  eq('HTTP 500 → error with the real status', [r.kind, r.message], ['error', 'GitHub replied HTTP 500']);
+
+  stubFetch(() => {
+    throw new TypeError('fetch failed');
+  });
+  r = await R.checkForUpdates('1.0.5');
+  check('network failure → honest reachability error', r.kind === 'error' && /Could not reach GitHub/.test(r.message), JSON.stringify(r));
+
+  // The request is time-bounded: a hung GitHub connection must abort into
+  // the same honest error path instead of pinning the UI on "Checking…".
+  stubFetch(() => okJson({ tag_name: 'v1.0.0' }));
+  await R.checkForUpdates('1.0.5');
+  check('every update request carries an abort signal', fetchOpts.length === 1 && fetchOpts[0]?.signal instanceof AbortSignal, JSON.stringify(fetchOpts.map((o) => typeof o?.signal)));
+  stubFetch(() => {
+    throw new DOMException('The operation timed out.', 'TimeoutError');
+  });
+  r = await R.checkForUpdates('1.0.5');
+  check('request timeout → honest error, no fabricated state', r.kind === 'error' && /Could not reach GitHub/.test(r.message), JSON.stringify(r));
+
+  stubFetch(() => okJson({}));
+  r = await R.checkForUpdates('1.0.5');
+  eq('response without tag_name → error, never a fabricated version', [r.kind, r.message], ['error', 'Release response contained no version tag']);
+
+  stubFetch(() => okJson([1, 2, 3]));
+  r = await R.checkForUpdates('1.0.5');
+  eq('JSON array response → error', r.kind, 'error');
+
+  stubFetch(() => okJson({ tag_name: 42, html_url: TAG_URL }));
+  r = await R.checkForUpdates('1.0.5');
+  eq('non-string tag_name → error', r.kind, 'error');
+
+  stubFetch(() => ({
+    status: 200,
+    ok: true,
+    json: async () => {
+      throw new SyntaxError('Unexpected token');
+    },
+  }));
+  r = await R.checkForUpdates('1.0.5');
+  check('malformed JSON body → honest error', r.kind === 'error' && /Could not reach GitHub/.test(r.message), JSON.stringify(r));
+
+  // A non-github.com html_url must never be surfaced — the checker falls
+  // back to the repository's own releases page instead.
+  stubFetch(() => okJson({ tag_name: 'v9.9.9', html_url: 'https://evil.example.com/malware.exe' }));
+  r = await R.checkForUpdates('1.0.5');
+  eq('foreign html_url → falls back to the repo releases page', [r.kind, r.release?.url], ['available', 'https://github.com/Shankers8811/soundcontrol/releases/latest']);
+
+  // Invalid/untrusted REPO_URL values → unconfigured, and fetch never runs.
+  const R2 = await bundleReporting('https://gitlab.com/foo/bar');
+  stubFetch(() => okJson({ tag_name: 'v1.0.0' }));
+  r = await R2.checkForUpdates('1.0.5');
+  eq('non-GitHub REPO_URL → unconfigured without any fetch', [R2.latestReleaseApiUrl(), r.kind, fetchCalls.length], [null, 'unconfigured', 0]);
+
+  const R3 = await bundleReporting('https://github.com.evil.com/foo/bar');
+  eq('lookalike-host REPO_URL → unconfigured', [R3.latestReleaseApiUrl()], [null]);
+
+  /* --------------------------------- diagnostics redaction (Pass 11 §21) */
+
+  console.log('\n[14] problem-report / feedback / console-export redaction');
+
+  const MAC = 'AA:BB:CC:DD:EE:FF';
+  const MAC_DASH = 'aa-bb-cc-dd-ee-ff';
+  const reportText = R.buildReportText({
+    description: 'Audio drops when switching to the phone',
+    device: { name: MAC, model: 'Unknown model', firmware: '02.31', serial: 'SN-123456' },
+    version: '1.0.5',
+    platform: 'win32',
+    diagnostics: [
+      { id: 1, ts: Date.now(), dir: 'sys', hex: `Invalid Bluetooth address ${MAC_DASH}`, note: `retrying ${MAC_DASH}`, valid: null },
+      { id: 2, ts: Date.now(), dir: 'tx', hex: '08EE000000010101', note: 'State request', valid: true },
+    ],
+    attachmentNames: ['soundcontrol-log.csv'],
+  });
+  check('report drops the colon-separated MAC (device name field)', !reportText.includes(MAC), reportText.slice(0, 160));
+  check('report drops case-insensitive dash MACs from text fields and notes', !new RegExp(MAC_DASH, 'i').test(reportText), reportText.slice(0, 300));
+  check(
+    'report keeps the write-up and the real device facts',
+    reportText.includes('Audio drops when switching to the phone') &&
+      reportText.includes('SN-123456') &&
+      reportText.includes('02.31') &&
+      reportText.includes('State request'),
+  );
+  const named = R.buildReportText({
+    description: '',
+    device: { name: 'Soundcore Liberty 4 NC', model: 'Liberty 4 NC', firmware: '02.31', serial: null },
+    version: '1.0.5',
+    platform: 'win32',
+    diagnostics: [],
+    attachmentNames: [],
+  });
+  check('human-readable device names are never touched', named.includes('Soundcore Liberty 4 NC'), named.slice(0, 120));
+  const fb = R.buildFeedbackText({ rating: 4, text: `Latency on ${MAC} is fine`, version: '1.0.5', platform: 'win32' });
+  check('feedback text drops MACs too', !fb.includes(MAC), fb);
+  eq('token redaction still applies', R.redactSecrets('ws://127.0.0.1:8765/?token=SUPERSECRET'), 'ws://127.0.0.1:8765/?token=[redacted]');
+  check('bearer redaction still applies', /Bearer \[redacted\]/.test(R.redactSecrets('Authorization: Bearer abc.def-123')));
+  eq(
+    'frame bytes (no separators) are never mistaken for a MAC',
+    R.redactSecrets('08EE000000010101 0A0B0C0D0E0F'),
+    '08EE000000010101 0A0B0C0D0E0F',
+  );
+} finally {
+  globalThis.fetch = realFetch;
+  rmSync(repDir, { recursive: true, force: true });
+}
+
+/* ------------------------------------------------------------- verdict */
+
+rmSync(dir, { recursive: true, force: true });
+
+console.log(`\n  ${passed} checks`);
+if (failures.length) {
+  console.error(`\n${failures.length} FAILURES:`);
+  for (const f of failures) console.error(`  - ${f}`);
+  process.exit(1);
+}
+console.log('All UI state derivation checks passed.');

@@ -1,0 +1,681 @@
+# SoundControl protocol
+
+SoundControl talks to already-paired Soundcore hardware over **Classic
+Bluetooth RFCOMM** with the exact frames the official apps use. The Windows/Linux
+desktop renderer reaches RFCOMM through the bundled local Python helper
+(`soundcore_bridge.py`); Android BLE captures are decode-only reference
+material (Appendix A).
+
+Everything below cites where each fact comes from. Wherever a claim is
+captured live on real hardware, the source project is named;
+[OpenSCQ30](https://github.com/Oppzippy/OpenSCQ30) is the authoritative
+per-model reference and the other projects cross-check it with their own
+captures. `scripts/verify-protocol.mjs` rebuilds every registered outbound frame
+and checks pinned capture/reference vectors; not every SKU/command has an
+independent live HCI capture. It runs as part of `npm run build` and fails on
+any drift. No feature here is claimed as physically validated by this repo.
+
+Service UUID (when advertised): `0cf12d31-fac3-4553-bd80-d6832e7d1402` —
+the last nibble pair is the model id, so `…34fb` is the generic SPP UUID and
+**not** the DSP service on Liberty-family units.
+
+## Command targets and the host boundary (Phase 17)
+
+**SOUND CONTROL = EAR BUD / HEADPHONE DEVICE CONTROL — never Windows audio.**
+
+Every outbound command carries an explicit target, and the only legal target
+for a user-facing feature is the **connected earbud device**. Windows may be
+touched only for application infrastructure: read-only Bluetooth
+(paired-device) discovery, the local helper process, and app lifecycle. The
+application never modifies Windows volume, mute, default devices, endpoints,
+mixer, enhancements, spatial sound, Sound/Bluetooth settings, or registry
+audio configuration, and it contains no APIs for doing so (enforced by a
+static scan in `scripts/test_command_targets.mjs`).
+
+The renderer command registry in `src/protocol/targets.ts` is an upper bound
+on what it may attempt. The helper has a **stricter independent allowlist**:
+`01:85` exists in the renderer registry as an A3116-only reference but is
+rejected by the helper, and SoundControl has no A3116 profile. All other
+newly researched writes remain denied by both layers:
+
+1. **Renderer (`withEarbudOnlyBoundary`)** — every transport the store
+   installs is wrapped, so all writes (UI actions, connect handshake,
+   background battery polls, the diagnostics console) pass
+   `validateOutboundFrame`: structurally valid Soundcore frame (header,
+   coherent length, checksum) AND a registered `CAT:TYPE` AND target
+   `earbud`. Anything else is rejected before it leaves the renderer.
+2. **Helper (`validate_tx_frame` in `soundcore_bridge.py`)** — the Windows
+   helper re-validates every `tx` frame against its narrower command set, so even
+   a buggy or hostile renderer cannot make it transmit researched writes
+   without deliberate changes to both gates. The helper contains no Windows audio APIs at
+   all; its only device I/O is the RFCOMM socket.
+
+| Frame | Command id | Feature |
+|---|---|---|
+| `01:01` | `state.request` | Handshake / state request |
+| `01:03` | `battery.query` | Battery levels |
+| `01:04` | `charging.query` | Charging flags |
+| `01:05` | `device.info` | Serial + firmware |
+| `01:7F` | `ldac.query` | LDAC codec state |
+| `01:FF` | `ldac.set` | LDAC enable/disable |
+| `01:85` | `device.factory-reset` | Renderer registry only; helper **rejects** it and no A3116 profile exists |
+| `01:87` | `game-mode.set` | Gaming / low-latency mode |
+| `10:85` | `game-mode.set-a3947` | Gaming mode (Liberty 4 NC / Liberty 5 variant) |
+| `02:81` | `equalizer.set` | Equalizer preset/bands |
+| `02:83` | `equalizer.set-drc` | Equalizer with DRC (TWS) |
+| `03:87` | `equalizer.set-hearid` | D1202 disabled-HearID factory EQ form |
+| `02:86` | `surround.set` | 3D Surround Sound |
+| `06:81` | `sound-modes.set` | ANC / transparency / wind |
+| `0B:84` | `dual-audio.set` | Dual audio |
+
+An unrecognized frame — wrong header, incoherent length, bad checksum, a
+`CAT:TYPE` outside this table, or the helper-blocked `01:85` — is **rejected** with a clear error and never
+transmitted. Both sides of the contract are cross-checked by tests
+(`scripts/test_command_targets.mjs`,
+`scripts/test_bridge_probe.py` → `TX_ALLOWED_FRAMES`). Device-side volume is not in SoundControl’s permitted TX set; OpenSCQ30
+contains an A3116 Motion+ speaker-only `01:81` write, not a general headphone
+slider. The Volume card stays disabled until an exact-model, readback-verified
+implementation is in place.
+
+## Frame
+
+```
+offset  bytes   meaning
+0       08      host → device   (device → host is 09)
+1       EE      host magic      (device magic is FF)
+2–4     00 00 00
+5       cat     command family
+6       type    command
+7–8     len     total frame length, u16 little-endian (= 10 + payload length)
+9…      payload
+last    Σ       additive checksum, sum of every preceding byte mod 256
+```
+
+So a 20-byte frame has `len = 0x14`, a 32-byte frame `0x20`. Verified against
+OpenSCQ30 `common/packet.rs` (`body_length = length − 5 − 2 − 2 − 1`) and
+against every capture below.
+
+### Checksum
+
+```
+cs = bytes[0] + bytes[1] + … + bytes[n-2]   (mod 256)
+bytes[n-1] == cs
+```
+
+## Reads every supported model implements
+
+| Command | Response payload | Source |
+|---|---|---|
+| `01:01` | full state update; **layout differs per model**, see "State offsets" | OpenSCQ30 `request_state.rs` |
+| `01:03` | live battery: byte0 left, byte1 right (TWS) or one level (over-ear); `0xFF` = side not connected | OpenSCQ30 `request_battery_level.rs` |
+| `01:04` | charging flag(s) | OpenSCQ30 `request_battery_charging.rs` |
+| `01:05` | 10 ASCII bytes firmware (`XX.XX` + `XX.XX`) then 16 ASCII bytes serial | OpenSCQ30 `request_serial_number_and_firmware_version.rs` |
+
+SoundControl sends `01:01` (handshake), `01:05` and `01:03` on every connect
+and re-polls `01:03` every 30 s while a real device is attached. Firmware and
+serial are read from `01:05`, because the `01:01` blob layout differs per
+model — no more fabricated version strings.
+
+Handshake (also OpenSCQ30's `STATE_COMMAND`):
+
+```
+08 EE 00 00 00 01 01 0A 00 02
+```
+
+## State-update offsets per model
+
+Payload offsets inside the `01:01` body, from OpenSCQ30's per-model
+`packets/inbound/state_update.rs`:
+
+| Field | P30i / R50i NC (A3959) | Liberty 4 NC (A3947) | P20i family (A3949) |
+|---|---|---|---|
+| left battery (0..10 / 0..5 steps) | 2 | 2 | 2 |
+| right battery | 3 | 3 | 3 |
+| charging flags | 4, 5 | 4, 5 | 4, 5 |
+| case battery | — | 139 | — |
+| firmware ASCII | 6 (10) | 6 (10) | 6 (10) |
+| serial ASCII | 16 (16) | 16 (16) | 16 (16) |
+| EQ preset u16LE / bands | 32 / 34 (10) | 37 / 39 (10) | 32 / 34 (10) |
+| sound-mode block start | 64 | 126 | — (no module registered) |
+
+These are the sums of OpenSCQ30's `nom` parse chains (tws 2 + battery 4 +
+firmware 10 + serial 16, then each model's own blocks). Liberty 3 Pro
+(A3952) has sound modes at 120 and case battery at 129. The additional rows
+implemented by this release are pinned in `scripts/verify-protocol.mjs`:
+
+| SKU | Battery / charging | EQ block | Sound modes | Other mirrored flags |
+|---|---|---|---|---|
+| A3004 Q20i | 0 / 1 | 23 / 25 (10) | 35 (4 bytes) | — |
+| A3027 Q35 | 0 / 1 | 2 / 4 (8) | 35 (4 bytes) | — |
+| A3028 Q30 / A3029 Life Tune | 0 / 1 | 2 / 4 (8) | 35 (4 bytes) | — |
+| A3062 Space One Pro | 0 / 1 | 23 / 25 (10) | 69 (6 bytes) | dual 79 |
+| A3936 Space A40 | 2 / 3, charging 4 / 5 | 32 / 34 (20) | 111 (6 bytes) | dual 121, gaming 124, case 118 |
+| A3954 Liberty 4 Pro | 2 / 3, charging 4 / 5 | 44 / 46 (20) | 125 (4 bytes) | dual 142, case 37 |
+| A3955 P40i | 2 / 3, charging 4 / 5 | 38 / 40 (20) | 119 (7 bytes) | dual 135, case 37 |
+| A3957 Liberty 5 | 2 / 3, charging 4 / 5 | 38 / 40 (20) | 119 (7 bytes) | dual 130, gaming 146, case 37 |
+
+The A3035 Space One and A3040 Space Q45 state bodies begin with a single
+battery at offset **0**, not offset 2. Their model-specific state parser is
+otherwise intentionally read minimally; firmware and serial come from `01:05`.
+The Q20i/Q30/Q35/Life Tune classic parsers also place their single battery at
+0, with charging at 1. A3005 Q11i and A3062 Space One Pro place firmware at 2,
+serial at 7, and use a custom single-battery scale with `max_level: 10,
+level_offset: 1`: raw 0 is displayed as 10% and raw 9 as 100%. D1402's state
+blob also starts its firmware/model bytes at 2/7, but its separate `01:04`
+charging read remains outside that state-offset map.
+
+D1402's `01:01` blob is a separate read-only layout: battery at 0, firmware
+at 2–6, model bytes at 7–10, and the 12-byte host/device address at 11–22;
+its charging flag comes from the separate `01:04` read rather than a state
+byte. SoundControl records that state address as the serial field only for
+read decoding and still does not expose any D1402 write.
+
+Case charge is **read-only** and visible for 11 verified SKUs: the ten in the
+case-scale table below plus A3945 Life Note 3S (documented in the audit below).
+A checksum/length-valid `01:01` state update must confirm the current
+transport’s layout and identity. OpenSCQ30’s
+`case_battery_level` module supplies independent scales (some differ from the
+bud scale). `0xFF`, missing or out-of-range case bytes clear the case value;
+`01:03` is buds-only and never refreshes or clears it. Reconnect, disconnect
+or model change clears it. Most models still have no documented case field,
+and host Bluetooth percentage is never used to synthesize one.
+
+| Case SKU(s) | Payload offset | Max, raw offset | Source (OpenSCQ30) |
+|---|---:|---|---|
+| A3330 C30i, A3388 AeroClip | 35 | 5, +0; 10, +1 | `a3330.rs`, `a3388.rs` |
+| A3947 Liberty 4 NC, A3952 Liberty 3 Pro | 139; 129 | 5, +0 | `a3947.rs`, `a3952.rs` |
+| A3936 Space A40 | 118 | 10, +0 (buds are 5) | `a3936.rs` |
+| A3954 Liberty 4 Pro, A3955 P40i, A3957 Liberty 5 | 37 | 10, +1; 5, +0; 10, +1 | matching `a395*.rs` |
+| A3968 Sport X20, D1202 P31i/R60i NC | 37 | 5, +0; 10, +1 | `a3968.rs`, `d1202.rs` |
+
+Case is sampled at handshake (`01:01`), **not** refreshed by the 30 s bud
+poll (`01:03`); “last known this session” is not a live charging-case
+connection indicator. The simulator uses a clearly synthetic raw level 3.
+
+`0xFF` in a battery slot means *that side is not connected to the host* — it
+is availability, not a zero-percent reading.
+
+## Sound modes — `06:81`
+
+Multiple model-specific payload layouts share this one command; sending the
+wrong length or byte meaning silently sets the wrong state, so SoundControl
+keys the layout by SKU.
+
+### `classic` — Q20i / Life Q30 / Q35 / Life Tune (4 bytes)
+
+```
+08 EE 00 00 00 06 81 0E 00  [mode]  [nc_scene]  [transparency]  [custom_nc]  [cs]
+```
+
+| mode | `00` ANC · `01` Transparency · `02` Normal |
+|---|---|
+| nc_scene | `00` Transport · `01` Outdoor · `02` Indoor (carried in every mode) |
+| transparency | `00` fully transparent · `01` vocal / talk mode |
+
+Worked examples (byte-identical in OpenSCQ30 `set_sound_modes.rs` unit tests
+**and** in the live frames of Noiseclapper-GNOME / SoundcoreDesktop):
+
+```
+ANC transport    08 EE 00 00 00 06 81 0E 00 00 00 01 00 8C
+ANC outdoor      08 EE 00 00 00 06 81 0E 00 00 01 01 00 8D
+ANC indoor       08 EE 00 00 00 06 81 0E 00 00 02 01 00 8E
+Transparency     08 EE 00 00 00 06 81 0E 00 01 01 01 00 8E
+Normal           08 EE 00 00 00 06 81 0E 00 02 01 01 00 8F
+```
+
+### `tws-p30i` — P30i / R50i NC (A3959) (7 bytes)
+
+From OpenSCQ30 `a3959/structures/sound_modes.rs`:
+
+```
+0  ambient      00 NC · 01 Transparency · 02 Normal
+1  (manual << 4) | adaptive     manual 1–5, adaptive 0–5
+2  ambient again
+3  automation   00 Manual · 01 Adaptive · 02 Multi-scene
+4  wind         bit0 suppression · bit1 wind-detected (read-only)
+5  adaptive sensitivity
+6  multi-scene scene            00 Transport · 01 Outdoor · 02 Indoor
+```
+
+Android Soundcore RFCOMM captures for A3959 use `0x5` as the manual
+sub-level and `0x1` as the adaptive sub-level. Mode changes retain a
+level-5 baseline, so the observed Adaptive vector is `00 51 00 01 01 00
+[scene]`. When the app selects a scene, the manual vector uses the device's
+MultiScene automation value: manual level 5 is `00 55 00 02 01 00 [scene]`.
+The desktop packet builder follows these documented values rather than the
+older inferred level-dependent adaptive mapping.
+
+This model has **no transparency sub-mode byte** (OpenSCQ30 changelog:
+"R50i NC should not have transparency modes"), so the app hides that option.
+
+### `tws-l4nc` — Liberty 4 NC (A3947) (7 bytes)
+
+From OpenSCQ30 `a3947/structures.rs`:
+
+```
+0  ambient
+1  (manual << 4) | adaptive
+2  transparency   00 fully · 01 vocal
+3  automation     00 Manual · 01 Adaptive · 02 Transportation
+4  wind
+5  environment detection
+6  transportation 00 Plane · 01 Train · 02 Bus · 03 Car
+```
+
+### `tws-l3pro` — Liberty 3 Pro (A3952) (6 bytes)
+
+```
+[ambient, (manual<<4)|adaptive, transparency, automation, wind, unknown]
+```
+
+The device answers sound-mode changes with a `06:01` report of the same
+block; SoundControl mirrors that report back into the UI so a level changed
+from the phone app shows up correctly.
+
+### Additional OpenSCQ30 layouts
+
+The following profiles are deliberately separate builders in
+`src/protocol/packets.ts`; a model name is not enough because all of them use
+`06:81` with different body lengths and byte meanings:
+
+| Layout | Models | Payload | Important fields |
+|---|---|---:|---|
+| `classic-a3035` | Space One A3035 | 6 | ambient, manual/adaptive nibble, repeated ambient, automation, wind, custom transparency |
+| `classic-a3040` | Space Q45 A3040 | 6 | ambient, manual/adaptive nibble, transparency mode, ANC mode, wind, manual transparency |
+| `tws-a3062` | Space One Pro A3062 | 6 | ambient, manual/adaptive nibble, fixed custom transparency, ANC mode, wind, custom transparency level |
+| `tws-a3936` | Space A40 A3936 | 6 | ambient, manual/adaptive nibble, transparency mode, ANC mode, wind, adaptive sensitivity |
+| `tws-l4pro` | Liberty 4 Pro A3954 | 4 | ambient, slider (ANC 5..1 / transparency 7..11), airplane mode, wind |
+| `tws-p40i` | P40i A3955 | 7 | ambient, manual/adaptive nibble, transparency, ANC mode, wind, sensitivity, multi-scene ANC |
+| `tws-l5` | Liberty 5 A3957 | 7 | ambient, manual/adaptive nibble, transparency, ANC mode, wind, sensitivity, transportation |
+
+A3004 Q20i, A3027 Q35, A3028 Q30 and A3029 Life Tune use the documented
+four-byte common layout. Their state parsers place the battery at offset 0 and
+Q20i/Q30-class sound modes at offset 35; they do not claim per-model features
+that their OpenSCQ30 `AvailableSoundModes` lists do not expose. A3954's
+slider is **not** interchangeable with the nibble used by Liberty 4 NC.
+A3955's scene byte is multi-scene ANC, while A3957's final byte is a
+transportation value (plane `0`, car `3`); those bytes must not be conflated.
+
+### Space 2 (D1402) read-only boundary
+
+The independent `soundcorebridge` protocol map identifies Space 2's channel
+30, one-byte battery scale 0–9, six-byte `06:01` mirror, and a verified write
+unlock sequence (`05:01`, four `05:81` phases, then `18:85`). Its `03:87`
+EQ write is a 53-byte HearID/DSP template, not the simple `02:81`/`02:83`
+curve. SoundControl has the D1402 identity and read-layout metadata so a
+channel-30 transport can decode its read-only battery/state telemetry with the
+documented offset-1 scale; the current Windows bridge still uses the ordinary
+Soundcore channel and does not attempt the Space 2 handshake. The app
+intentionally sends no ANC, EQ, LDAC, dual, gaming, or reset writes until that
+handshake and model-specific template are implemented and tested.
+
+## Equalizer
+
+Bands: **100, 200, 400, 800 Hz, 1.6, 3.2, 6.4, 12.8 kHz**, wire byte
+`120 + dB×10`, `0x78` = 0 dB. Preset id is a **u16 little-endian** — that is
+why every factory preset looks like `NN 00` on the wire. Custom curves use
+`FE FE` (captured in SoundcoreDesktop `EQGain()`, OpenSCQ30 `set_equalizer`
+test, Space 2 HCI snoop).
+
+Three EQ commands exist in the wild, and a model accepts exactly one:
+
+### `02:81` — classic over-ears (`common_settings()` models)
+
+```
+08 EE 00 00 00 02 81 14 00  [preset u16LE]  [8 band bytes]  [cs]
+```
+
+Unit-tested in OpenSCQ30 and byte-identical in SoundcoreDesktop +
+Noiseclapper captures.
+
+### `02:83` — P20i / P25i / R50i / P30i / A20i (`equalizer_with_drc_tws`)
+
+```
+08 EE 00 00 00 02 83 20 00  [preset u16LE]  [10 raw band bytes]  [10 DRC band bytes]  [cs]
+```
+
+The second channel is **not** a copy: it is the raw curve passed through the
+DSP's cross-band compensation matrix (OpenSCQ30
+`volume_adjustments.rs::apply_drc`, ported to `src/protocol/drc.ts`).
+SoundControl's DRC port reproduces all 22 live P20i captures from
+victor-oliveira1/soundcore_anker_equalyzer **byte for byte** — see
+`scripts/verify-protocol.mjs`.
+
+### `03:87` — model-specific HearID EQ
+
+This frame embeds each model's HearID/DSP block (personalised curves, genre
+bytes, per-channel DRC tails) and its layout differs per model. SoundControl
+keeps personalised HearID editing disabled for Liberty 4 NC, Space One, Space
+Q45, Space A40, Liberty 4 Pro, P40i, Liberty 5, Space One Pro and Space 2:
+a guessed frame risks **overwriting the hearing profile the phone app
+measured**, so those profiles remain read-only here.
+
+D1202/P31i/R60i NC is the exception. OpenSCQ30's D1202 module publishes the
+complete two-channel 10-band `03:87` builder, including the disabled-HearID
+factory-preset form. SoundControl emits that form for ordinary EQ presets and
+encodes the HearID arrays as absent (`FF`); it does not expose a personalised
+HearID test or custom curve. `buildEq87D1202` and the shape/checksum vector in
+`scripts/verify-protocol.mjs` pin the 114-byte payload until physical D1202
+validation is performed.
+
+### Preset table
+
+All 22 factory curves, one table, three independent sources agreeing exactly
+(SoundcoreDesktop live frames, Noiseclapper live frames, mervin008's Space-2
+HCI snoop). The app ships them with the wire bytes verbatim; dB values are
+derived, never hand-typed.
+
+| id | name | bands dB |
+|---|---|---|
+| 00 | Soundcore Signature | 0 0 0 0 0 0 0 0 |
+| 01 | Acoustic | +4 +1 +2 +2 +4 +4 +4 +2 |
+| 02 | Bass Booster | +4 +3 +1 0 0 0 0 0 |
+| 03 | Bass Reducer | −4 −3 −1 0 0 0 0 0 |
+| 04 | Classical | +3 +3 −2 −2 0 +2 +3 +4 |
+| 05 | Podcast | −3 +2 +4 +4 +3 +2 0 −2 |
+| 06 | Dance | +2 −3 −1 +1 +2 +2 +1 −3 |
+| 07 | Deep | +2 +1 +3 +3 +2 −2 −4 −5 |
+| 08 | Electronic | +3 +2 −2 +2 +1 +2 +3 +3 |
+| 09 | Flat | −2 −2 −1 0 0 0 −2 −2 |
+| 0A | Hip-Hop | +2 +3 −1 −1 +2 −1 +2 +3 |
+| 0B | Jazz | +2 +2 −2 −2 0 +2 +3 +4 |
+| 0C | Latin | 0 0 −2 −2 −2 0 +3 +5 |
+| 0D | Lounge | −1 +2 +4 +3 0 −2 +2 +1 |
+| 0E | Piano | 0 +3 +3 +2 +4 +5 +3 +4 |
+| 0F | Pop | −1 +1 +3 +3 +1 −1 −2 −3 |
+| 10 | R&B | +6 +2 −2 −2 +2 +3 +3 +4 |
+| 11 | Rock | +3 +2 −1 −1 +1 +3 +3 +3 |
+| 12 | **Small Speakers** | +4 +3 +1 0 −2 −3 −4 −4 |
+| 13 | Spoken Word | −3 −2 +1 +2 +2 +1 0 −3 |
+| 14 | Treble Booster | −2 −2 −2 −1 +1 +2 +2 +4 |
+| 15 | Treble Reducer | 0 0 0 −2 −3 −4 −4 −6 |
+
+Two notes on that table:
+
+* Preset `0x12` is **Small Speaker(s)** in every capture. An earlier build of
+  this app mislabelled it "Vocal Booster", which is not a Soundcore preset.
+* The P20i HCI capture has one documented divergence: its Rock frame carries
+  bands 6–8 as `A0 AA` (+4 +5) instead of the three-source consensus
+  `96 96 96`. SoundControl keeps the consensus and `verify-protocol.mjs`
+  pins both facts.
+
+## Toggles
+
+| Feature | Frame | Source |
+|---|---|---|
+| Gaming / low latency | `01:87 [01/00]` common; `10:85` on Liberty 4 NC / Liberty 5 | OpenSCQ30 `SET_GAMING_MODE_COMMAND`, `a3947/modules/flag.rs` |
+| 3D Surround Sound | `02:86 [01/00]` | OpenSCQ30 `SET_SURROUND_SOUND_COMMAND` |
+| Dual connection | `0B:84 [01/00]` | OpenSCQ30 `dual_connections.rs` |
+| LDAC query / set | `01:7F` / `01:FF [codec, on]` | OpenSCQ30 `REQUEST_LDAC_STATE_COMMAND` |
+| Factory reset | `01:85` | A3116 reference only; no A3116 SoundControl profile, helper rejects it, and that speaker uses a different checksum policy |
+| ~~BassUp device toggle~~ | — | No model-verified generic `02:82` BassUp toggle. A3945 Life Note 3S **reports** a read-only BassUp boolean at state byte 70 but no setter; A3040 Space Q45 has `BassUp=7` as a **button action** in `04:81`, not a global bass switch. EQ Bass Booster is only a preset. |
+
+### Unrelated reference material
+
+The reference A3954 `07:87` smart-case preference is not a SoundControl
+desktop control. Find My Device is intentionally excluded from desktop scope;
+there is no locator UI or parity target.
+
+## 2026-09 Android parity evidence audit (read-only findings)
+
+For the follow-up per-SKU query/write/ACK/readback matrix, encoding details,
+new read-only controls and explicit blockers, see
+[docs/ANDROID-PARITY-INVESTIGATION.md](docs/ANDROID-PARITY-INVESTIGATION.md).
+
+Research sources: [Soundcore Liberty 4 official setup](https://service.soundcore.com/article-description/Get-Started-with-Liberty-4)
+(describes app-only HearID test, squeeze customization, LDAC, spatial head tracking and
+phone-mediated updates), [official Liberty 4 NC product information](https://www.soundcore.com/products/liberty-4-nc-a3947z11)
+(ANC/LDAC/multipoint interactions), [OpenSCQ30 per-model packet implementations](https://github.com/Oppzippy/OpenSCQ30/tree/master/lib/src/devices/soundcore),
+[CoreSound](https://github.com/CriticalRange/CoreSound),
+[soundcore-windows](https://github.com/officiallor/soundcore-windows) and
+[SoundCoreReversing](https://github.com/CallMeTak/SoundCoreReversing).
+A reference builder or unit vector is **not** the same as an independent live
+capture or physical-device acceptance test. Interpret the labels by feature
+**and** exact model (none of them means physically tested by SoundControl):
+
+- **VERIFIED / IMPLEMENTED:** documented model layout, strict read parser and
+  model/session-gated display (case battery and the new read-only observations),
+  or a previously model-gated command with its existing tests. This does not
+  imply the related *write* is safe.
+- **VERIFIED BUT UNSAFE / INCOMPLETE:** specific upstream command or state
+  encoding exists (e.g. A3040 `04:81`, A3954 `07:87`, D1301 alarm records),
+  but success ACK, preservation, post-write reread and reconnect persistence
+  are unproven. Never unlock its write from a builder alone.
+- **PARTIAL / PARTIALLY VERIFIED:** a per-model reference suggests a layout or
+  setter but SoundControl lacks a complete parser/validator or model-specific
+  query→response→write→readback proof. Research is not an enabled control.
+- **UNKNOWN:** no safe desktop command or complete lifecycle evidence (e.g.
+  device white-noise mixer and firmware recovery).
+- **UNSUPPORTED:** the proposed *generic* operation is contradicted by model
+  differences (e.g. using A3116 speaker volume for earbuds or treating EQ Bass
+  Booster as a BassUp switch). It must remain blocked.
+
+| Android feature / transport evidence | Confidence, model scope | SoundControl response / UI / tests | Decision |
+|---|---|---|---|
+| Case battery `01:01` at per-SKU offsets (table above); source `case_battery_level` read-only modules | VERIFIED reference layout: A3330, A3388, A3945, A3947, A3952, A3936, A3954, A3955, A3957, A3968, D1202 | Frame header/length/checksum, confirmed layout, exact SKU offset and independent scale; reject 0xFF/out of range; Dashboard read-only last-known case card; `test_ui_state`, `test_ui_render`, `test_simulator` | **Implemented**; `01:03` never contains case, no case polling or writer |
+| Button remap: usually `04:81 [side, button_id, action_id]`, `04:82` reset, `04:83` enable, `04:84` bulk (OpenSCQ30 `common/packet/outbound/set_button_configuration.rs`, per-SKU button settings). A3040 `set_button_action.rs` test vector: `08 EE 00 00 00 04 81 0D 00 00 00 07 8F` (BassUp=7); disabled ends `0F 97` | PARTIALLY VERIFIED model-specific reference builder and A3040 unit vector; not a universal action list; A3040 state parses one double-press byte | Mapping editor disabled; A3040 double-press and A3945 six model-specific actions are displayed read-only; `04:*` still rejected by renderer + helper. Needs tested per-SKU action/side table, exact state parser, ACK semantics, reread and reconnect verification before write | No speculative TX or fake gesture remap |
+| Safe-volume limit `20:82 [enabled, db_limit]`, range 75..100 step 5; refresh `20:81 [rate]` (OpenSCQ30 `common/packet/outbound/set_limit_high_volume.rs`, `LimitHighVolume::take` reads 3 state bytes) | PARTIALLY VERIFIED model-specific modules e.g. A3035, A3040, A3062, A3947, A3954/A3955/A3957, D1202; **not** a global volume slider and no independent capture/ACK verified by this app | Both `20:*` rejected; A3040/A3954/D1202 limit state now shown read-only, no limiter toggle. Needs per-SKU offsets, full query/strict readback, response validation and range/model gates | Deferred; prior “no command exists” claim was false |
+| Device volume `01:81` (A3116 Motion+ speaker `packets/outbound.rs`) and A3876 earbud balance module | PARTIALLY VERIFIED, different functions/models; A3116 uses `ChecksumKind::None` and a different DSP service UUID, and is absent from SoundControl’s model registry; neither implies a general earbud volume slider | No `01:81` TX; slider disabled; no host mixer mutation | Deferred pending exact readback; not reusable across profiles |
+| BassUp™ | VERIFIED READ: Q45 gesture action 7, plus A3945 **separate boolean byte at state payload 70** (strict 0/1); UNKNOWN setter (`02:82` is unproven); Bass Booster is a different EQ preset | A3945 shows read-only device-reported status on a new 72-byte read-only profile; no BassUp write capability | Do not confuse gesture mapping, EQ and device BassUp state |
+| HearID hearing measurement, custom EQ, personalized ANC | PARTIALLY VERIFIED model-specific serialized fields and EQ setters in OpenSCQ30; mobile hearing test/audio capture workflow unavailable; D1202 factory preset `03:87` disabled-HearID form already supported | No fabricated audiogram; never overwrite an unknown personalized curve | Disabled unless full personalized state/write protocol is established |
+| Additional spatial modes / head tracking / ANC presets | PARTIALLY VERIFIED mobile feature descriptions and some per-model fields; not interchangeable with universal `02:86` or `06:81` | Existing exact-model ANC/surround plus **read-only** A3954/D1202 spatial modes; unsupported mode writes disabled | Model-specific validation required |
+| Sleep A30 (D1301) post-sleep audio, timers and alarms | VERIFIED READ for post-sleep choice: three upstream 150-byte `01:01` captures on firmware 01.91 have action 144 (0 Pause/1 Play local), strict enable 148 (0 Keep Bluetooth audio). PARTIAL for independent timer `15:03` and alarm `14:01` queries, `15:85` timer/post-sleep writes and `14:81/82` alarm vectors; none is a white-noise mixer | D1301 shows post-sleep choice read-only; timers and alarms are not queried by this app. No sleep write is allowed by either TX gate; alarm slot safety and persistence unproven | No write or fake audio playback |
+| White-noise mixer / firmware install or flashing / cloud profile management | UNKNOWN complete desktop device protocol (app-only or server/codec dependent); firmware/serial **read-only** via `01:05` | No mixer, download, progress or flash command; `01:85` reset is only an A3116 reference and the helper rejects it | Not implemented; do not experiment with firmware writes |
+
+Lifecycle for **the new case read**: QUERY existing `01:01` at attach → PARSE
+only checksum-valid, coherent-length `09 FF 01:01` after transport session
+identity and full model layout confirmation → DISPLAY bounded case percentage or
+unavailable → no WRITE exists → keep last full-state reading across buds-only
+`01:03` polling; invalid new case value clears it; disconnect/reconnect resets
+it. A manual model selection alone cannot authorize parsing. This is a
+read-only feature, so outbound builder/helper allowlists do not change.
+The follow-up adds no outbound write bytes. A3945 Life Note 3S is a new exact-SKU read-only profile: 72-byte `01:01` state, battery 2/3, charging 4/5, firmware 6–15, serial 16–31, EQ preset 32–33 / bands 34–53, six button enabled/action pairs 54–65, gaming 68, case 69 (0–5), BassUp 70, color 71. BassUp is its own strict boolean byte, not a bitmask or EQ preset; no matching setter or firmware floor is proven. The source parser is `a3945/packets/state_update_packet.rs`; the model registers standard `01:01`/`01:03`/`01:05` reads but SoundControl grants no A3945 writes. `01:01` also safely exposes A3040
+current double-press mapping and safe-volume status, plus A3954/D1202
+safe-volume and spatial mode status, **read-only**; response parser and
+model-specific guards are in `src/protocol/observedFeatures.ts`. An A3953
+unmerged reference PR reports real-device gesture testing by its author,
+not by SoundControl. There is no physical-device test in this audit;
+simulator and unit fixtures are not evidence of an Android parity claim.
+
+## RFComm channels and the connect handshake
+
+The DSP channel is model-dependent: **4** on most earbuds, **10** on the P20i
+family (victor-oliveira1), **12** on Life Q30-class over-ears
+(Noiseclapper/SoundcoreDesktop), **15** on some headless captures
+(CoreSound), **30** on Space 2 (soundcorebridge).
+
+Accepting a socket is *not* proof the channel is the DSP: hands-free and
+A2DP control profiles accept RFCOMM connections and then never answer —
+exactly the "Connected but no battery / no ANC" failure. So `soundcore_bridge.py`
+probes each candidate with the `01:01` handshake and adopts the **first
+channel that answers with a valid `09 FF` frame**. If nothing answers it falls
+back to the first accepting socket, logs the condition together with the
+refused channels (visible in `%AppData%\soundcontrol\main.log` on Windows,
+mirrored to the in-app diagnostics log), and arms an 8 s silent-link watchdog:
+the watchdog names the fake-"Connected" state, then keeps re-sending the
+read-only handshake in the background. When the single control slot frees up
+(the Soundcore phone app closes) and the device finally answers, the bridge
+announces "battery and ANC are live now" — no manual reconnect needed.
+
+Channels **12/13** on some families are TOTA/BESOTA firmware-flash channels
+and **16** is Apple iAP2; soundcorebridge hard-blocks them. The probe only
+sends a read-only state request and never probes 13/16.
+
+Operational rules borrowed from soundcorebridge (all observed behaviour):
+
+* **One control client at a time** — the phone app holding the slot makes
+  the headset drop new clients. Close it (or switch the phone's Bluetooth
+  off) before connecting.
+* **SPP slot exhaustion** — abandoned channels make the headset accept and
+  immediately drop connections until power-cycled; the bridge always closes
+  its sockets.
+* Earbuds/headphones must stay *connected* in the host's Bluetooth settings
+  (audio can be playing); "pairing mode" is the wrong state and the error text says so.
+
+## Telemetry persistence and freshness
+
+What the UI may keep, and for how long, is a protocol question — not a UI
+preference. Two rules decide it everywhere:
+
+1. **A field moves only when this connection produced valid telemetry for
+   it.** Frames that fail the length/checksum/shape checks are logged as
+   invalid and mutate nothing.
+2. **A field persists only across frames that provably do not carry it.**
+   If a frame carries the field's bytes, those bytes decide (including
+   “side absent”); nothing is remembered through them.
+
+### Connection phases
+
+`deriveConnectionPhase` folds the store's state into four phases; the finer
+distinctions the UI needs are expressed per field, not per phase:
+
+| Phase | Means | Ends when |
+|---|---|---|
+| `connecting` | RFCOMM probe + `01:01` handshake in flight (bounded: 2.5 s per candidate, one candidate set per connect) | a channel answers with a checksum-valid `09 FF`, or the connect fails |
+| `connected` | the channel was **proven** by the handshake — but this says nothing yet about the *audio* link or either earbud | the link drops, or the user disconnects |
+| `error` | the connect attempt failed; the message carries the real reason (no device / slot busy / no DSP answer) | the next attempt starts |
+| `disconnected` | no session | a connect starts |
+
+Two conditions do **not** get their own phase because they are per-field:
+**connected-but-unconfirmed telemetry** (battery/presence read “unavailable”
+or “detecting”, never a number, until the first valid `01:03`/`01:01`
+arrives) and **connected-but-silent** (the 8 s silent-link watchdog names it
+in the diagnostics log; the header reports the drop honestly). Disconnecting
+is a transient bounded teardown, so it is never shown as a stable state.
+
+Related: “RFCOMM connected” is never translated into “both earbuds
+connected”. Side presence comes only from the `01:03`/`01:01` bytes; an
+over-ear reports one level and structurally has no L/R; an unknown model
+exposes presence but no percentage (see the model table).
+
+### What persists, per field
+
+| Field | Written by | Persists across | Cleared by | Why |
+|---|---|---|---|---|
+| Left/right level | `01:03` (byte0/byte1) and the `01:01` blob head | **Nothing** — recomputed from every valid frame | same | Levels are instantaneous readings; a recalled level next to “Disconnected” would be a fabricated state |
+| Side presence | same bytes (`0xFF` = absent) | **Nothing** | same | Presence is line-state, not configuration; a missing byte means *unknown*, never “still present” |
+| Charging flags | `01:04` / `01:01` (bit 0 of the side's charging byte) | `01:03` battery-only polls, **while the side is trusted in the current frame** | side absent/untrusted byte | `01:03` has no charging bits, so “no bit” must not be read as “not charging”; an absent side must not keep a stale bolt |
+| Case percent | verified model’s `01:01` at its own offset/scale | `01:03` buds-only polling within current session | invalid case byte, disconnect/new session/identity change | Read-only and last-known; not inferred from host charge or buds |
+| Firmware version, serial | `01:05` | The rest of the connection | disconnect | Immutable while a device is connected; re-read per session |
+| Sound mode (ANC) | `06:01` mirror (authoritative) and the local `06:81` write intent | Session | disconnect / device switch | A phone-app change arrives as `06:01` and overrides the UI; a write that never reached the device is rolled back |
+| EQ preset / custom bands | EQ mirror (where the model has one) and the local write intent | Session | disconnect / device switch | Same two sources as ANC; `02:83` custom curves commit with a debounce, one write per gesture |
+| Identity → profile → capabilities | Scan name, the persisted name for that exact MAC, or the user's explicit override | Session | disconnect (resets to the default profile) | Identity must come from a verified source; never from MAC bytes, telemetry, packet shape or battery values |
+| Battery scale | The profile's documented maximum (5 or 10), or “unknown” | With the identity | identity change | The scale is a property of the model, so it can never outlive the model |
+| Connection state, link info | The transport (probe result, channel, transport label) | Session | disconnect | Transport facts, not device telemetry |
+
+### Freshness invariants (pinned by tests)
+
+* Invalid or checksum-failed frames mutate nothing and are logged as invalid.
+* Repeated identical frames are idempotent; the newest valid value wins.
+* A single-side frame clears the other side's level, charging and presence
+  rather than remembering them (see the table).
+* Frames can only reach the session they belong to: connects are serialized
+  in the bridge, the previous socket's reader exits as soon as its socket
+  identity is replaced, the renderer tears its old WebSocket down before a
+  new connect and resets all device state at every connect start — so a late
+  frame from the previous link cannot seed the new session.
+* Disconnect clears every device-derived field in the table above, including
+  the profile and any percentage.
+
+---
+
+From OpenSCQ30's device definitions and i18n names; `verified` in
+`src/protocol/devices.ts` marks rows with at least one published capture.
+
+| SKU | Models | family | ANC layout | EQ | gaming | ldac | dual | surround | battery |
+|---|---|---|---|---|---|---|---|---|---|
+| A3959 | P30i / R50i NC | tws | tws-p30i | 02:83 | yes | no | yes | yes | 0..10 |
+| A3949 | P20i / P25i / R50i | tws | none | 02:83 | yes | no | no | no | 0..5 |
+| A3948 | A20i | tws | none | 02:83 | no | no | no | no | 0..5 |
+| A3947 | Liberty 4 NC | tws | tws-l4nc | — (03:87) | yes | no | no | yes | 0..5 + case |
+| A3952 | Liberty 3 Pro | tws | tws-l3pro | — (HearID) | no | yes | no | no | 0..5 + case |
+| A3936 | Space A40 | tws | tws-a3936 | — (HearID) | yes | yes | yes | no | 0..5 + case |
+| A3954 | Liberty 4 Pro | tws | tws-l4pro | — (HearID) | no | yes | yes | no | 0..100 + case |
+| A3955 | P40i | tws | tws-p40i | — (HearID) | no | no | yes | no | 0..5 + case |
+| A3957 | Liberty 5 | tws | tws-l5 | — (HearID) | yes (`10:85`) | yes | yes | no | (raw+1)/10 + case |
+| A3004 | Q20i | classic | classic | 02:83 | no | no | no | no | 0..5 |
+| A3035 | Space One | classic | classic-a3035 | — (03:87) | no | yes | yes | no | 0..5 |
+| A3040 | Space Q45 | classic | classic-a3040 | — (03:87) | no | yes | yes | no | 0..5 |
+| A3027 | Life Q35 | classic | classic | 02:81 | no | no | no | no | 0..5 |
+| A3028 | Life Q30 | classic | classic | 02:81 | no | no | no | no | 0..5 |
+| A3029 | Life Tune | classic | classic | 02:81 | no | no | no | no | 0..5 |
+| A3062 | Space One Pro | classic | tws-a3062 | — (HearID) | no | yes | yes | no | (raw+1)/10 |
+| A3005 | Q11i | classic | none | 02:83 | no | no | yes | no | (raw+1)/10 |
+| D1402 | Space 2 | classic | none (read-only) | — | no | no | no | no | (raw+1)/10 |
+| A3945 | Life Note 3S | tws | none (read-only) | — (read-only EQ state) | no | no | no | no | 0..5 + case |
+| A3330 | C30i | tws | none | 02:83 single-channel DRC | no | no | yes | no | 0..5 + case |
+| A3388 | AeroClip | tws | none | 02:83 dual-channel | no | no | yes | no (read-only state byte) | (raw+1)/10 + case |
+| A3876 | V20i | tws | none | 02:83 single-channel DRC | yes | no | yes | no | (raw+1)/10 |
+| A3968 | Sport X20 | tws | tws-a3968 | — (HearID) | no | no | yes | yes | 0..5 + case |
+| D1101 | C50i | tws | none | 02:81 dual-channel | no | yes | yes | no | (raw+1)/10 |
+| D1202 / D1202C | P31i / R60i NC | tws | tws-d1202 | 03:87 factory form; HearID custom read-only | no | yes | yes | no | (raw+1)/10 + case |
+| D1301 | Sleep A30 | tws | none | — (sleep-specific) | no | no | no | no | (raw+1)/10 |
+
+A3330/C30i and A3388/AeroClip state packets place the case byte at 35,
+readable surround at 44, dual-connections at 47, the EQ preset at 50–51,
+and a ten-band state EQ block at 52–61. AeroClip's outbound `02:83` frame
+still has two ten-band channels; that outbound shape must not be used to size
+or parse its state telemetry. AeroClip's state parser may read the surround
+byte for diagnostics, but its OpenSCQ30 module does not register a surround
+writer, so SoundControl advertises and sends no `02:86` for A3388.
+D1101/C50i's dual-connections state flag is at payload offset 53.
+D1301/Sleep A30 has a **level-only** battery head (L/R 2–3, firmware 4–13, serial 14–29), not a DualBattery charging head. Its captured 01:01 state is 150 bytes; post-sleep action is at 144 and enabled at 148. SoundControl requires exactly 150 state-body bytes before confirming that layout (also for case/identity telemetry) and only displays the read-only after-sleep choice. Timer and alarm requests are separate commands, not aliases for this state.
+
+SKU traps worth knowing: **A3959 is both the P30i and the R50i NC** while
+**A3949 is the R50i without NC** — matching by name alone attaches the wrong
+sound-mode layout, so the app ranks aliases longest-first. Liberty 4 (A3953),
+Sport X10 (A3961), Sleep A10 (A6610), Life A2 NC (A3935), Life P3 (A3939) and
+Life Note 3 (A3933) are not silently mapped to a sibling profile here: an
+approximate marketing name is not evidence. Liberty 4 (A3953), for example,
+is a different product from Liberty 4 NC (A3947). These unverified names
+resolve to the unknown-model profile (protocol-universal reads only:
+firmware/serial and earbud presence, never battery percentages or
+model-specific controls) and the UI explains why. If a capture ever verifies
+one of these layouts, it gets promoted to a full profile row with its own
+evidence — not a resolves-to fallback.
+
+## Appendix A — Android BLE captures (decode-only reference)
+
+The Windows/Linux app does **not** use BLE: Electron has no reliable Web Bluetooth
+stack on the desktop, and the bundled helper reaches hardware over RFCOMM. This
+appendix exists so Android captures can be decoded in the diagnostics console
+(**Diagnostics → Base64 capture → hex**).
+
+GATT endpoints seen on Soundcore BLE captures:
+
+| Role | UUID |
+|---|---|
+| Primary service | `0000ab00-0000-1000-8000-00805f9b34fb` (alt `0000ff00-…`) |
+| TX (write) | `0000ab01-0000-1000-8000-00805f9b34fb` |
+| RX (notify) | `0000ab02-0000-1000-8000-00805f9b34fb` |
+
+Simplified BLE frame (captures only — never send over RFCOMM):
+
+```text
+08 EE | cmd (1B) | len (1B) | payload | XOR checksum (1B)
+```
+
+| BLE cmd | Meaning | RFCOMM equivalent SoundControl sends |
+|---|---|---|
+| `0x61` telemetry request | Device state | `01:01` + `01:05` + `01:03` |
+| `0x06` ANC toggle | Ambient mode | `06:81` per-model layout |
+| `0x01` EQ bands | Equalizer | `02:81` / `02:83` per model |
+
+`src/protocol/ble.ts` implements `buildBlePacket` / `parseBlePacket` /
+`describeBlePacket`; the HexConsole shows both Σ and XOR validity so a pasted
+capture is never misread as the wrong transport. Base64 → hex:
+`base64ToHex(pastedBlob)`.
+
+## Appendix B — sources surveyed
+
+Used for the fixes in this document: Oppzippy/OpenSCQ30 (authoritative per-
+model definitions), mervin008/soundcorebridge (Space-2 HCI traces, 22 EQ
+curves, operational notes), DamienStaebler/SoundcoreDesktop and
+JordanViknar/Noiseclapper-GNOME (live RFCOMM frame tables),
+victor-oliveira1/soundcore_anker_equalyzer (22 live `02:83` captures,
+channel 10), thetahmeed/SoundX (Liberty 5 framing),
+CriticalRange/CoreSound (TWS 06:81 template, battery offsets),
+CallMeTak/SoundCoreReversing (HCI method). Checked, nothing to take:
+soundcored, dumpforq45, flip-dots/SolixBLE, tacshi/Soundcore,
+andrewseago/d3200-ble-note-downloader, Weldawadyathink/soundcore-utilities
+(Sleep A30 GATT, different family), BastionPinnacle/soundcore.
