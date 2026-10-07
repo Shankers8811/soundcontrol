@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store';
 import { EQ_PRESETS } from '../protocol/presets';
 import { EQ_HZ } from '../types';
@@ -6,6 +6,71 @@ import { EqCurve } from '../components/EqCurve';
 import { DeviceSettingsHeader } from '../components/DeviceSettingsHeader';
 import { IconCheck, IconEqualizer } from '../components/Icons';
 import { Button, CapabilityGate, Card, PageHeader, StatusBadge } from '../components/ui';
+
+// ---------------------------------------------------------------------------
+// EQ preset import / export helpers
+// ---------------------------------------------------------------------------
+
+interface EqPresetFile {
+  /** Schema identifier — guards against loading unrelated JSON files. */
+  soundcontrol: 'eq-preset';
+  /** Friendly name the user gave this preset. */
+  name: string;
+  /** Band gains in dB, 8 values, same order as EQ_HZ (100 Hz → 12.8 kHz). */
+  bands: number[];
+  /** App version that exported the file — informational only. */
+  exportedBy?: string;
+}
+
+function exportEqPreset(bands: number[], name: string) {
+  const payload: EqPresetFile = {
+    soundcontrol: 'eq-preset',
+    name,
+    bands,
+    exportedBy: 'SoundControl',
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `eq-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+function importEqPreset(): Promise<EqPresetFile | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) { resolve(null); return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result as string) as unknown;
+          if (
+            typeof data === 'object' &&
+            data !== null &&
+            (data as EqPresetFile).soundcontrol === 'eq-preset' &&
+            Array.isArray((data as EqPresetFile).bands) &&
+            (data as EqPresetFile).bands.length === 8 &&
+            (data as EqPresetFile).bands.every((v: unknown) => typeof v === 'number' && v >= -6 && v <= 6)
+          ) {
+            resolve(data as EqPresetFile);
+          } else {
+            resolve(null);
+          }
+        } catch {
+          resolve(null);
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  });
+}
 
 /**
  * Equalizer page (PART N) — everything here sends real frames.
@@ -161,6 +226,23 @@ function CustomFaders() {
   const app = useApp();
   const timer = useRef<number | null>(null);
   const disabled = !app.connected || app.busy === 'eq';
+  const [importError, setImportError] = useState<string | null>(null);
+
+  const handleExport = () => {
+    const name = prompt('Name for this EQ preset:', 'My Custom EQ') ?? 'My Custom EQ';
+    exportEqPreset(app.bands, name.trim() || 'My Custom EQ');
+  };
+
+  const handleImport = async () => {
+    setImportError(null);
+    const preset = await importEqPreset();
+    if (!preset) {
+      setImportError('Invalid file — make sure it is a SoundControl EQ preset (.json).');
+      return;
+    }
+    preset.bands.forEach((v, i) => app.setBand(i, v));
+    if (app.connected) void app.commitEq().catch(() => {});
+  };
 
   useEffect(
     () => () => {
@@ -194,7 +276,13 @@ function CustomFaders() {
           <IconEqualizer size={15} className="text-accent" />
           Custom equalizer
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" disabled={false} onClick={handleExport}>
+            Export preset
+          </Button>
+          <Button size="sm" disabled={false} onClick={handleImport}>
+            Import preset
+          </Button>
           <Button size="sm" disabled={disabled} onClick={resetFlat}>
             Reset flat
           </Button>
@@ -206,6 +294,11 @@ function CustomFaders() {
           </Button>
         </div>
       </div>
+      {importError && (
+        <p className="mb-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+          {importError}
+        </p>
+      )}
 
       <div className="flex items-end justify-between gap-1 overflow-x-auto rounded-xl border border-edge bg-sunken px-4 pb-3 pt-4">
         {app.bands.map((db, i) => (
@@ -233,7 +326,8 @@ function CustomFaders() {
       <p className="mt-2 text-[10px] leading-relaxed text-faint">
         Dragging commits the custom curve (preset id FE FE) to the device after a short debounce;
         the device's own EQ reports keep this view in sync when anything changes from the phone
-        app. HearID personalisation is deliberately absent: per-model reference writes exist,
+        app. Use <strong>Export preset</strong> to save your custom curve as a JSON file, and{' '}
+        <strong>Import preset</strong> to load a saved curve. HearID personalisation is deliberately absent: per-model reference writes exist,
         but this app has no measured-profile read/verify workflow and will not overwrite a
         hearing profile or invent a hearing test.
       </p>
