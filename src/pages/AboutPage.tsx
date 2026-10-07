@@ -1,0 +1,162 @@
+import { useEffect, useState } from 'react';
+import { getAppVersion, isDesktop } from '../lib/appSettings';
+import { LATEST_RELEASE_URL, REPO_URL, RELEASE_ASSET_NAMES, latestReleaseAssets } from '../lib/downloads';
+import { IconExternal, IconLogo } from '../components/Icons';
+import { Card } from '../components/ui';
+
+/**
+ * About section (PART Q, Pass 8 IA) — real information only, embedded in
+ * Settings → About (About is no longer a sidebar page).
+ *
+ * The version is the actual application version (package.json via Vite in
+ * the renderer, app.getVersion() in the desktop app — they are the same
+ * string in a packaged build). Both links are real, working URLs to this
+ * project's GitHub. There is deliberately no "check for updates",
+ * "privacy policy" or "contact support" button: the app has no update
+ * channel, no policy page and no support desk, and a button that pretended
+ * otherwise would be exactly the fake UI this build forbids.
+ */
+
+// Vite injects the real version at build time; fall back to the Electron
+// main process (same value in a packaged app), then to an honest "dev".
+const BUILD_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
+
+function Downloads() {
+  const [links, setLinks] = useState<Awaited<ReturnType<typeof latestReleaseAssets>> | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let stopped = false;
+    void latestReleaseAssets().then((assets) => { if (!stopped) setLinks(assets); })
+      .catch(() => { if (!stopped) setFailed(true); });
+    return () => { stopped = true; };
+  }, []);
+  const options = [
+    ['windows', 'Windows installer'], ['appimage', 'Linux AppImage'], ['deb', 'Debian / Ubuntu .deb'],
+  ] as const;
+  return <Card title="App Downloader" subtitle="Assets on the latest published release — only available files have download links">
+    <ul className="space-y-2 text-xs">
+      {options.map(([key, title]) => <li key={key} className="flex items-center justify-between gap-3">
+        <span className="text-ink">{title} · {RELEASE_ASSET_NAMES[key]}</span>
+        {links?.[key] ? <a href={links[key]} target="_blank" rel="noopener noreferrer" className="text-accent-soft underline">Download</a> :
+          <span className="text-mute">{failed ? 'Availability could not be checked' : links ? 'Not on latest release' : 'Checking…'}</span>}
+      </li>)}
+    </ul>
+    {links && !links.windows && <p className="mt-2 text-xs text-warn">The latest release has no Windows installer. Windows release publication requires Authenticode signing; check Releases for availability. No unsigned installer is offered here.</p>}
+    <p className="mt-2 text-xs text-mute"><a href={LATEST_RELEASE_URL} target="_blank" rel="noopener noreferrer" className="underline">View release details</a> for older versions and release notes.</p>
+  </Card>;
+}
+
+export function AboutSection() {
+  const [version, setVersion] = useState<string>(BUILD_VERSION);
+  const platform =
+    typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
+      ? 'Linux desktop'
+      : typeof window !== 'undefined' && window.electronAPI?.platform === 'win32'
+        ? 'Windows desktop'
+        : 'desktop';
+
+  useEffect(() => {
+    let stopped = false;
+    if (isDesktop()) {
+      void getAppVersion().then((v) => {
+        if (!stopped && v) setVersion(v);
+      });
+    }
+    return () => {
+      stopped = true;
+    };
+  }, []);
+
+  return (
+    <div className="space-y-4">
+        <Card>
+          <div className="flex items-start gap-5">
+            <IconLogo size={64} />
+            <div className="min-w-0">
+              <h2 className="text-2xl font-bold tracking-tight text-ink">SoundControl</h2>
+              <p className="mt-0.5 font-mono text-xs text-accent-soft">version {version} · {platform}</p>
+              <p className="mt-3 text-sm leading-relaxed text-mute">
+                SoundControl: Windows + Linux desktop companion for Soundcore devices.
+                Bluetooth connectivity and verified profiles provide model-specific ANC and transparency,
+                EQ, Game Mode, LDAC, multipoint, and spatial audio where supported.
+                Battery telemetry, diagnostics, device identification, and manual verified model
+                selection are available as a fallback. Automatic identification is the default;
+                manual selection cannot authorize unverified commands or replace a confirmed identity.
+              </p>
+              <p className="mt-2 text-sm leading-relaxed text-mute">
+                Supported commands follow model-specific public captures or reference implementations,
+                with frame checks and model gates at the renderer and Bluetooth helper. Controls
+                without a safe protocol lifecycle stay unavailable rather than being faked.
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Downloads />
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Card title="Project">
+            <ul className="space-y-2 text-xs text-mute">
+              <li className="flex items-center justify-between gap-3">
+                <span>Source code & issue tracker</span>
+                <a
+                  href={REPO_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-edge bg-sunken px-2.5 py-1.5 font-semibold text-accent-soft transition-colors hover:border-accent/50"
+                >
+                  GitHub <IconExternal size={12} />
+                </a>
+              </li>
+              <li className="flex items-center justify-between gap-3">
+                <span>Desktop releases (Windows/Linux)</span>
+                <a
+                  href={LATEST_RELEASE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-edge bg-sunken px-2.5 py-1.5 font-semibold text-accent-soft transition-colors hover:border-accent/50"
+                >
+                  Open releases <IconExternal size={12} />
+                </a>
+              </li>
+              <li className="flex items-center justify-between gap-3">
+                <span>Release notes & older versions</span>
+                <a
+                  href={LATEST_RELEASE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-edge bg-sunken px-2.5 py-1.5 font-semibold text-accent-soft transition-colors hover:border-accent/50"
+                >
+                  Releases <IconExternal size={12} />
+                </a>
+              </li>
+            </ul>
+            <p className="mt-3 text-[11px] leading-relaxed text-faint">
+              Updating is manual by design: choose an available Windows installer or Linux package
+              from Releases and install it yourself. There is no background updater, so no update button.
+            </p>
+          </Card>
+
+          <Card title="License & credits">
+            <p className="text-xs leading-relaxed text-mute">
+              SoundControl is free, open-source software under the{' '}
+              <span className="font-semibold text-ink">MIT License</span> — see the LICENSE file in
+              the repository for the full text.
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-mute">
+              Protocol knowledge was reverse-engineered from publicly captured device traffic
+              published by the community, and every frame this app sends is credited back to its
+              capture in{' '}
+              <span className="font-mono text-[11px] text-ink/80">PROTOCOL.md</span> — the full
+              provenance record, source by source, lives there.
+            </p>
+            <p className="mt-3 rounded-lg border border-edge bg-sunken px-3 py-2.5 text-[11px] leading-relaxed text-faint">
+              SoundControl is an independent, unofficial project. It is not affiliated with,
+              endorsed by, or sponsored by Anker Innovations or the soundcore brand. “Soundcore”
+              and product names are used nominatively to describe compatibility.
+            </p>
+          </Card>
+        </div>
+    </div>
+  );
+}

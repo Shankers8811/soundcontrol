@@ -1,0 +1,121 @@
+name: Release Linux
+
+# Linux desktop artifacts are published alongside the signed Windows asset.
+# The package contains Electron and a relocated Python bridge runtime; the
+# user's only runtime Bluetooth dependency is the host BlueZ stack.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)build and publish, e.g. v1.0.7'
+        required: true
+        type: string
+      source_ref:
+        description: 'Git ref to build (leave blank to use the selected ref)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.source_ref || github.ref }}
+      # Use the Python 3 runtime supplied by the Ubuntu runner. It is built
+      # against the same distro/glibc as the Linux package and is what the
+      # relocation probe is intended to copy into the app.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run the full release test suite
+        run: npm test
+      # Keep this explicit as well as retaining the prebuild:linux hook in
+      # package.json. The release must contain the host-compatible interpreter
+      # and standard library that the bridge needs for Bluetooth RFCOMM.
+      - name: Stage the bundled Linux Python runtime
+        run: npm run stage:linux-python
+      - name: Build AppImage and Debian packages with bundled Python
+        run: npm run build:linux -- --publish never
+      - name: Verify the relocated runtime and both Linux packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x release/linux-unpacked/resources/python/python3
+          release/linux-unpacked/resources/python/python3 -c \
+            'import sys, socket; assert sys.prefix.endswith("/resources/python"); assert hasattr(socket, "AF_BLUETOOTH") and hasattr(socket, "BTPROTO_RFCOMM")'
+
+          APPIMAGE="$(find release -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          DEB="$(find release -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -n "$APPIMAGE"
+          test -n "$DEB"
+          test -s "$APPIMAGE"
+          test -s "$DEB"
+
+          # Keep electron-builder's version/architecture-named files and add
+          # stable aliases for the README's direct latest-release links. The
+          # current Ubuntu runner produces the x64/amd64 Linux packages.
+          rm -rf release-assets
+          mkdir -p release-assets
+          cp "$APPIMAGE" release-assets/SoundControl.AppImage
+          cp "$DEB" release-assets/SoundControl.deb
+          APPIMAGE_NAME="$(basename "$APPIMAGE")"
+          DEB_NAME="$(basename "$DEB")"
+          if [ "$APPIMAGE_NAME" != "SoundControl.AppImage" ]; then
+            cp "$APPIMAGE" "release-assets/$APPIMAGE_NAME"
+          fi
+          if [ "$DEB_NAME" != "SoundControl.deb" ]; then
+            cp "$DEB" "release-assets/$DEB_NAME"
+          fi
+          test -s release-assets/SoundControl.AppImage
+          test -s release-assets/SoundControl.deb
+          echo "AppImage: $APPIMAGE"
+          echo "Debian package: $DEB"
+          echo "Linux packages contain the bundled Python runtime and both targets were produced."
+      - name: Resolve release tag
+        id: release-tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            VERSION="$(node -p "require('./package.json').version")"
+            echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish Linux assets to GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" \
+            --title "SoundControl $RELEASE_TAG" \
+            --generate-notes \
+            --latest \
+            || gh release edit "$RELEASE_TAG" --latest
+          # Upload the stable aliases used by the project page and the
+          # original electron-builder filenames, which retain version and
+          # architecture information for users who prefer them.
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          gh release view "$RELEASE_TAG"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SoundControl-Linux-Release
+          path: |
+            release/
+            release-assets/
+          if-no-files-found: error
