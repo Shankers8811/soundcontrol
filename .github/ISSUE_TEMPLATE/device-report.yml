@@ -1,0 +1,126 @@
+name: "🎧 New device report / protocol capture"
+description: "Report a Soundcore device model, firmware, and what features work in SoundControl. Every validated report becomes a pinned verifier check."
+title: "[device] "
+labels: ["device-report", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing SoundControl with your device! Community reports are
+        how the device matrix grows. Please fill in every field you can — partial
+        reports are still useful, just mark unknown fields as "unknown".
+
+        **Do not include:** serial numbers, MAC addresses of devices you don't own,
+        or private pairing/account data. MAC suffixes like `AA:BB:CC:DD:EE:FF` are fine.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Desktop platform
+      multiple: false
+      options:
+        - Windows (SoundControl-Setup installer)
+        - Windows (built from source)
+        - Linux AppImage
+        - Linux deb package
+        - Linux (built from source)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: model-name
+    attributes:
+      label: Soundcore model name
+      description: "e.g. Liberty 4 NC, Space One, Q45, P40i"
+      placeholder: "Liberty 4 NC"
+    validations:
+      required: true
+
+  - type: input
+    id: model-sku
+    attributes:
+      label: SKU (printed inside the case or in the official app)
+      description: "e.g. A3947, A3954, A3040. Look inside the charging case lid or under Settings in the Soundcore mobile app."
+      placeholder: "A3947"
+    validations:
+      required: false
+
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware version
+      description: "Shown under Settings > Device info in the Soundcore app, or in SoundControl's Settings page once connected."
+      placeholder: "2.1.4"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: features-working
+    attributes:
+      label: Which features worked in SoundControl?
+      description: "Check everything that actually worked on your device."
+      options:
+        - label: Device detected and identified correctly
+        - label: Battery levels (left, right, case)
+        - label: Charging status
+        - label: Firmware / serial read (Settings page)
+        - label: ANC (Active Noise Cancellation)
+        - label: Transparency mode
+        - label: Normal / Ambient mode
+        - label: Wind noise reduction
+        - label: Equalizer presets
+        - label: Custom EQ (FE FE curve)
+        - label: Gaming / low-latency mode
+        - label: LDAC codec toggle
+        - label: 3D Surround Sound
+        - label: Dual audio / multipoint
+
+  - type: checkboxes
+    id: features-not-working
+    attributes:
+      label: Which features did NOT work or showed as unsupported?
+      options:
+        - label: Device not detected at all
+        - label: Detected but wrong model identified
+        - label: Battery levels missing or wrong
+        - label: ANC controls greyed out
+        - label: Equalizer greyed out or wrong presets
+        - label: Custom EQ not available
+        - label: Gaming mode not available
+        - label: LDAC toggle not available
+        - label: 3D Surround not available
+        - label: Dual audio not available
+
+  - type: textarea
+    id: hex-log
+    attributes:
+      label: Diagnostics hex console (optional but very helpful)
+      description: >-
+        Paste the hex console output from Settings > Diagnostics. This lets us
+        add a pinned verifier check for your device. Redact the last 3 bytes of
+        any MAC address if you like.
+      render: shell
+      placeholder: |
+        TX 08 EE 00 00 00 01 01 0A 00 02
+        RX 09 FF 00 00 00 01 01 ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: "e.g. which features work in the official Soundcore mobile app that are missing here, unexpected behaviour, firmware version matters."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you post
+      options:
+        - label: I searched existing issues for my model/SKU
+          required: true
+        - label: This report contains no private serial numbers or MAC addresses of devices I don't own
+          required: true
