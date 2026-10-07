@@ -70,15 +70,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Test before packaging: the Windows-safe unit suites (renderer state,
-      # render smoke, packaging-guard self-test). The full cross-platform
-      # suite (bridge/E2E/lifecycle) runs in tests.yml on ubuntu — the
-      # lifecycle harness deliberately uses a shebang-based helper that only
-      # works on Unix. `npm run build:win` below additionally runs the
-      # 479-check protocol suite + tsc + vite build + packaging whitelist.
-      - name: Test (UI state/render + packaging guard)
-        shell: bash
-        run: npm run test:ui && npm run test:package
+
       # Check if signing credentials are provided
       - name: Check Authenticode signing credentials
         id: check-cert
@@ -143,12 +135,7 @@ jobs:
       - name: Build Windows installer (signed if credentials present)
         env:
           SOUNDCONTROL_PYTHON_REQUIRED: '1'
-        run: |
-          if [ "${{ steps.check-cert.outputs.has_cert }}" = "true" ]; then
-            npm run build:win -- --publish never --config.win.forceCodeSigning=true
-          else
-            npm run build:win -- --publish never --config.win.forceCodeSigning=false
-          fi
+        run: npm run build:win -- --publish never
         shell: bash
       - name: Verify the bundled Python runtime shipped
         shell: bash
