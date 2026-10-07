@@ -20,17 +20,24 @@ verifier checks.
 
 | Model | SKU | Firmware | Platform | Battery | ANC | EQ | Custom EQ | Gaming | LDAC | Dual | Source |
 |-------|-----|----------|----------|---------|-----|----|-----------|----|------|------|--------|
-| Liberty 5 | A3957 | — | — | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | Protocol: OpenSCQ30 |
-| Liberty 4 Pro | A3954 | — | — | ❓ | ❓ | 🔒 | ❌ | ❓ | ❓ | ❓ | Protocol: OpenSCQ30 |
-| Liberty 4 NC | A3947 | — | — | ❓ | ❓ | 🔒 | ❌ | ❓ | ❓ | ❓ | Protocol: OpenSCQ30 |
-| P40i | A3955 | — | — | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | Protocol: OpenSCQ30 |
-| Space A40 | A3936 | — | — | ❓ | ❓ | 🔒 | ❌ | ❓ | ❓ | ❓ | Protocol: OpenSCQ30 |
-| Sport X20 | A3968 | — | — | ❓ | ❓ | 🔒 | ❌ | ❓ | ❓ | ✅ | Protocol: OpenSCQ30 |
-| R50i NC / P30i | A3959 | — | — | ❓ | ❓ | ❓ | ✅ | ✅ | ❌ | ✅ | Protocol: OpenSCQ30 |
-| R50i / P20i / P25i | A3949 | — | — | ❓ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | Protocol: OpenSCQ30 |
-| P31i / R60i NC | D1202 | — | — | ❓ | ❓ | 🔒 | ❓ | ❓ | ✅ | ✅ | Protocol: OpenSCQ30 |
-| Space One A40 | A3035 | — | — | ❓ | ❓ | ❓ | ❓ | ❓ | ✅ | ❓ | Protocol: OpenSCQ30 |
-| Q45 | A3040 | — | — | ❓ | ❓ | ❓ | ❓ | ❓ | ✅ | ✅ | Protocol: OpenSCQ30 |
+| Liberty 5 | A3957 | — | — | ❓ | ✅ (tws-l5) | 🔒 (HearID) | ❌ | ✅ | ❓ | ❓ | Protocol: OpenSCQ30 + APK verification |
+| Liberty 4 Pro | A3954 | — | — | ❓ | ✅ (tws-l4pro) | 🔒 (HearID) | ❌ | ❓ | ❓ | ❓ | Protocol: OpenSCQ30 + APK verification |
+| Liberty 4 NC | A3947 | — | — | ❓ | ✅ (tws-l4nc) | 🔒 (HearID) | ❌ | ✅ | ❌ | ❌ | Protocol: OpenSCQ30 + APK verification |
+| Liberty 3 Pro | A3952 | — | — | ❓ | ✅ (tws-l3pro) | 🔒 (HearID) | ❌ | ❓ | ✅ | ❌ | Protocol: OpenSCQ30 + APK verification |
+| P40i | A3955 | — | — | ❓ | ✅ (tws-p40i) | 🔒 (HearID) | ❌ | ❌ | ❓ | ✅ | Protocol: OpenSCQ30 |
+| Space A40 | A3936 | — | — | ❓ | ✅ (tws-a3936) | 🔒 (HearID) | ❌ | ❓ | ❓ | ❓ | Protocol: OpenSCQ30 |
+| Sport X20 | A3968 | — | — | ❓ | ✅ (tws-a3968) | 🔒 (HearID) | ❌ | ❓ | ❓ | ✅ | Protocol: OpenSCQ30 |
+| R50i NC / P30i | A3959 | — | — | ❓ | ✅ (tws-p30i) | ✅ (02:83) | ✅ | ✅ | ❌ | ✅ | Protocol: OpenSCQ30 + APK verification |
+| R50i / P20i / P25i | A3949 | — | — | ❓ | ❌ | ✅ (02:83) | ❌ | ✅ | ❌ | ❌ | Protocol: OpenSCQ30 |
+| P31i / R60i NC | D1202 | — | — | ❓ | ✅ (tws-d1202) | 🔒 (03:87) | ❌ | ❓ | ✅ | ✅ | Protocol: OpenSCQ30 |
+| Space One Pro | A3062 | — | — | ❓ | ✅ (tws-a3062) | 🔒 (HearID) | ❌ | ❓ | ❓ | ❓ | Protocol: OpenSCQ30 |
+| Space One | A3035 | — | — | ❓ | ✅ (classic-a3035) | 🔒 (HearID) | ❌ | ❓ | ✅ | ❓ | Protocol: OpenSCQ30 |
+| Space Q45 | A3040 | — | — | ❓ | ✅ (classic-a3040) | 🔒 (HearID) | ❌ | ❓ | ✅ | ✅ | Protocol: OpenSCQ30 |
+| C30i | A3330 | — | — | ❓ | ❌ | ✅ (02:83) | ✅ | ❌ | ❌ | ✅ | Protocol: OpenSCQ30 |
+| C50i | D1101 | — | — | ❓ | ❌ | ✅ (02:81) | ✅ | ❌ | ✅ | ✅ | Protocol: OpenSCQ30 |
+| V20i | A3876 | — | — | ❓ | ❌ | ✅ (02:83) | ✅ | ✅ | ❌ | ✅ | Protocol: OpenSCQ30 |
+| AeroClip | A3388 | — | — | ❓ | ❌ | ✅ (02:83) | ✅ | ❌ | ❌ | ✅ | Protocol: OpenSCQ30 |
+| Life Note 3S | A3945 | — | — | ❓ | ❌ | 🔒 (Read-only) | ❌ | 🔒 | ❌ | ❌ | Protocol: OpenSCQ30 |
 
 ## Over-Ear Headphones
 

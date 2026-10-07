@@ -552,11 +552,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
               .filter((p) => p < 20);
       if (!lowBatteryWarned.current && low.length > 0) {
         lowBatteryWarned.current = true;
-        pushLog(
-          'sys',
-          '',
-          `Low battery: ${low.map((p) => `${Math.round(p)}%`).join(', ')} — charge soon`,
-        );
+        const msg = `Low battery: ${low.map((p) => `${Math.round(p)}%`).join(', ')} — charge soon`;
+        pushLog('sys', '', msg);
+        // HTML5 Desktop Notification
+        try {
+          if (typeof window !== 'undefined' && 'Notification' in window) {
+            if (Notification.permission === 'granted') {
+              new Notification('SoundControl', { body: msg, icon: '/icon-512.png' });
+            } else if (Notification.permission !== 'denied') {
+              Notification.requestPermission().then((permission) => {
+                if (permission === 'granted') {
+                  new Notification('SoundControl', { body: msg, icon: '/icon-512.png' });
+                }
+              }).catch(() => {});
+            }
+          }
+        } catch {
+          // Notifications not supported or failed
+        }
       }
     },
     [pushLog, syncSoundModes],
