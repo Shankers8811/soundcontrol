@@ -38,4 +38,4 @@ Date: 2026-10-12. Source of truth: `features.csv` (this is a feature-level diff 
 
 ## Delivery
 
-The repo is cloned here with these three files under `replica/`. Pushing to GitHub is refused for this session because the Claude GitHub App is not installed on your repo.
+These three files live under `replica/` on the branch `replicator-parity-recon`, pushed to GitHub for review.
