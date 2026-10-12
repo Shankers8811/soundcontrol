@@ -1,0 +1,33 @@
+feature,area,priority,original,clone,notes
+Device-specific control pages per model,core,must,yes,yes,Model-gated profiles; unsupported controls show disabled with reason
+Noise control (ANC / ambient / transparency),audio,must,yes,yes,Real 06:81 frames per exact profile
+Adaptive ANC / wind-noise / scene fields,audio,should,yes,partial,Only fields documented for the exact model are exposed
+Factory EQ presets (22),audio,must,yes,yes,Captured presets on EQ-capable profiles
+Custom graphic EQ (8-band),audio,must,yes,yes,FE FE custom frame; factory-preset-only models keep it disabled
+Save multiple named custom EQ presets,audio,must,yes,no,Play listing names this; no local preset library found in src/ (only generic localStorage helper in store.tsx)
+Enforce feature conflicts (Custom EQ vs Spatial Audio vs Gaming vs LDAC),audio,should,yes,no,Per Soundcore help article; not enforced in UI today - software-only change
+HearID hearing test + personalized EQ,audio,should,yes,no,No audiogram workflow; 03:87 writes deliberately disabled (can overwrite measured profile)
+Spatial audio / 3D surround,audio,should,yes,partial,02:86 on documented models; some modes read-only; 02:86 01 placeholder unverified
+Game mode (low latency),audio,should,yes,yes,01:87 / 10:85 variant
+LDAC high-res,audio,could,yes,yes,01:7F query + 01:FF toggle
+Dual connection (multipoint),connectivity,should,yes,yes,0B:84
+Battery L/R/case,telemetry,must,yes,yes,Case only on 11 documented SKUs
+Per-earbud connection state,telemetry,must,yes,yes,0xFF = not connected
+Touch / button remapping,controls,should,yes,partial,Read-only display; no validated write lifecycle
+Find my earbud,controls,should,yes,no,No such opcode in any surveyed capture; roadmap bans invented opcodes
+Device volume / safe volume,audio,could,yes,partial,Read-only on A3040/A3954/D1202
+Sleep features (Sleep A30 mixer/timer),audio,could,yes,partial,Read-only after-sleep choice; no mixer
+Hearing health report,health,could,yes,no,Needs both buds worn 15+ min with app background; no protocol source here
+Firmware update via app,device,could,yes,no,OTA channels are read-only by project policy
+Firmware version awareness / gating,device,should,yes,no,Roadmap item; 01:05 already returns firmware
+Device discovery / pairing flow,connectivity,must,yes,partial,Uses host-paired devices + connect by address; no in-app pairing
+Support for all current earbuds/headphones,coverage,must,yes,partial,~30 profiles; many catalog-only or read-only
+"Speakers / party products (Motion, Flare, Rave...)",coverage,could,yes,no,Different frame formats (A3116 has no checksum); needs captures
+PowerConf / VR / smart glasses,coverage,could,yes,skip,Different product classes; no public protocol evidence here
+Anka AI assistant,cloud,could,yes,skip,Cloud AI service; out of scope for offline desktop companion
+Insight page (saved conversation summaries),cloud,could,yes,skip,Tied to Anka cloud service and account
+Discover / Content / Community pages,cloud,could,yes,skip,Editorial and social content owned by the original; cannot clone
+Account sign-in and cloud sync,cloud,could,yes,skip,Roadmap: no cloud sync/telemetry by design
+Light/dark theme,ux,could,yes,yes,System/Dark/Light
+In-app update check,ux,could,yes,yes,GitHub Releases API
+Diagnostics / hex console,ux,could,no,yes,Extra beyond original
