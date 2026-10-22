@@ -1152,6 +1152,87 @@ class Handler(BaseHTTPRequestHandler):
             send_ws(sock, json.dumps({"type": "error", "error": str(exc)}).encode())
 
 
+def _guid_text(value: object) -> str:
+    """Normalize a WinRT GUID to the bare uppercase form used in evidence docs."""
+    return str(value).strip().strip("{}").upper()
+
+
+def _winrt_modules() -> tuple[Optional[tuple[object, object]], Optional[str]]:
+    """Import the optional WinRT Bluetooth modules.
+
+    Returns ``(modules, None)`` when available and ``(None, reason)`` otherwise.
+    The import is deliberately lazy and total: the winrt packages are an
+    optional extra, and a packaged build that lacks them must keep working
+    exactly as before rather than failing at startup.
+    """
+    if sys.platform != "win32":
+        return None, f"WinRT RFCOMM discovery is Windows-only (this host is {sys.platform})"
+    try:
+        import winrt.windows.devices.bluetooth as bt  # type: ignore[import-not-found]
+        import winrt.windows.devices.bluetooth.rfcomm as rfcomm  # type: ignore[import-not-found]
+    except Exception as exc:  # noqa: BLE001 - any import failure means "unavailable"
+        return None, (
+            f"optional winrt packages are not installed ({exc.__class__.__name__}). "
+            "Install winrt-Windows.Devices.Bluetooth, winrt-Windows.Devices.Bluetooth.Rfcomm "
+            "and winrt-Windows.Devices.Enumeration to enable discovery."
+        )
+    return (bt, rfcomm), None
+
+
+def rfcomm_services(mac: str) -> dict[str, object]:
+    """List the RFCOMM services Windows advertises for one paired device.
+
+    Read-only by construction: it enumerates services and returns their UUIDs.
+    It never opens a socket, never pairs, and never writes to the device.
+
+    Why this exists: a raw ``AF_BLUETOOTH`` socket on Windows exposes no
+    service metadata, so :meth:`Bridge.connect` has to *probe* the documented
+    DSP channels and keep whichever answers the ``01:01`` handshake. WinRT can
+    instead report which services the device actually advertises, which is the
+    evidence needed to stop guessing. Until a real capture confirms which UUID
+    is the DSP, connect() keeps probing — this helper only gathers facts.
+
+    Returns a dict with ``available``, ``reason`` and ``services``. It never
+    raises: absence of the optional packages or of the device is a normal,
+    reportable state.
+    """
+    normalized = _normalize_mac(mac)
+    if not normalized:
+        return {
+            "available": False,
+            "reason": f"Invalid Bluetooth address {mac!r} — expected 12 hex digits, e.g. AA:BB:CC:DD:EE:FF",
+            "services": [],
+        }
+    modules, reason = _winrt_modules()
+    if modules is None:
+        return {"available": False, "reason": reason, "services": []}
+    bt, _rfcomm = modules
+
+    async def _collect() -> list[object]:
+        address = int(normalized.replace(":", ""), 16)
+        device = await bt.BluetoothDevice.from_bluetooth_address_async(address)
+        if device is None:
+            raise RuntimeError(f"{normalized} is not known to Windows — pair it first")
+        result = await device.get_rfcomm_services_async()
+        return list(getattr(result, "services", []) or [])
+
+    try:
+        import asyncio
+
+        found = asyncio.run(_collect())
+    except Exception as exc:  # noqa: BLE001 - surfaced as a reason, not a crash
+        return {"available": False, "reason": f"{exc.__class__.__name__}: {exc}", "services": []}
+
+    rows = [
+        {
+            "uuid": _guid_text(getattr(service, "service_id", "")),
+            "name": str(getattr(service, "connection_service_name", "") or ""),
+        }
+        for service in found
+    ]
+    return {"available": True, "reason": None, "services": rows}
+
+
 def main() -> None:
     if sys.platform not in ("win32", "linux"):
         raise SystemExit("SoundControl supports Windows and Linux desktop hosts")
@@ -1174,7 +1255,21 @@ def main() -> None:
         help="Refuse to start unless a token is configured (via --token or "
         "SOUNDCONTROL_BRIDGE_TOKEN).",
     )
+    p.add_argument(
+        "--list-services",
+        metavar="MAC",
+        default="",
+        help="Windows only: print the RFCOMM services Windows advertises for this "
+        "paired device as JSON, then exit. Read-only — never connects or pairs. "
+        "Used to identify the DSP service without guessing channels.",
+    )
     args = p.parse_args()
+    if args.list_services:
+        # Discovery runs before any token or socket setup: it opens no listener
+        # and touches no device, so it needs neither.
+        report = rfcomm_services(args.list_services)
+        print(json.dumps(report, indent=2))
+        raise SystemExit(0 if report.get("available") else 1)
     global BRIDGE_TOKEN, TOKEN_SOURCE
     if args.token.strip():
         BRIDGE_TOKEN = args.token.strip()
