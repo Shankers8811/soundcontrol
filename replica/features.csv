@@ -4,7 +4,7 @@ Noise control (ANC / ambient / transparency),audio,must,yes,yes,Real 06:81 frame
 Adaptive ANC / wind-noise / scene fields,audio,should,yes,partial,Only fields documented for the exact model are exposed
 Factory EQ presets (22),audio,must,yes,yes,Captured presets on EQ-capable profiles
 Custom graphic EQ (8-band),audio,must,yes,yes,FE FE custom frame; factory-preset-only models keep it disabled
-Save multiple named custom EQ presets,audio,must,yes,no,Play listing names this; no local preset library found in src/ (only generic localStorage helper in store.tsx)
+Save multiple named custom EQ presets,audio,must,yes,yes,Per-model named library in src/lib/eqPresets.ts, surfaced as "My presets" on the Equalizer page; local-only, no frame sent on save
 Enforce feature conflicts (Custom EQ vs Spatial Audio vs Gaming vs LDAC),audio,should,yes,no,Per Soundcore help article; not enforced in UI today - software-only change
 HearID hearing test + personalized EQ,audio,should,yes,no,No audiogram workflow; 03:87 writes deliberately disabled (can overwrite measured profile)
 Spatial audio / 3D surround,audio,should,yes,partial,02:86 on documented models; some modes read-only; 02:86 01 placeholder unverified

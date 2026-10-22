@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store';
 import { EQ_PRESETS } from '../protocol/presets';
-import { EQ_HZ } from '../types';
+import { EQ_BAND_MAX, EQ_BAND_MIN, EQ_BAND_STEP, EQ_HZ } from '../types';
+import { isForeignPreset } from '../lib/eqPresets';
 import { EqCurve } from '../components/EqCurve';
 import { DeviceSettingsHeader } from '../components/DeviceSettingsHeader';
 import { IconCheck, IconEqualizer } from '../components/Icons';
@@ -309,9 +310,9 @@ function CustomFaders() {
             <input
               className="eq-fader"
               type="range"
-              min={-6}
-              max={6}
-              step={0.5}
+              min={EQ_BAND_MIN}
+              max={EQ_BAND_MAX}
+              step={EQ_BAND_STEP}
               value={db}
               disabled={disabled}
               aria-label={`${EQ_HZ[i] >= 1000 ? `${EQ_HZ[i] / 1000} kHz` : `${EQ_HZ[i]} Hz`} band, ${db} dB`}
@@ -323,14 +324,156 @@ function CustomFaders() {
           </label>
         ))}
       </div>
+      <SavedPresets />
       <p className="mt-2 text-[10px] leading-relaxed text-faint">
         Dragging commits the custom curve (preset id FE FE) to the device after a short debounce;
         the device's own EQ reports keep this view in sync when anything changes from the phone
         app. Use <strong>Export preset</strong> to save your custom curve as a JSON file, and{' '}
-        <strong>Import preset</strong> to load a saved curve. HearID personalisation is deliberately absent: per-model reference writes exist,
+        <strong>Import preset</strong> to load a saved curve. Named curves are also kept
+        locally under <strong>My presets</strong>, per model. HearID personalisation is deliberately absent: per-model reference writes exist,
         but this app has no measured-profile read/verify workflow and will not overwrite a
         hearing profile or invent a hearing test.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Named custom curves kept in local storage — build-order item 1 of the parity
+ * plan (`replica/parity.md`). Saving is local-only and never sends a frame;
+ * applying goes through `applyStoredPreset`, which reuses the guarded custom-EQ
+ * path in the store, so a model without `FE FE` support still refuses it.
+ *
+ * A preset remembers the SKU it was built for. Applying one to a different
+ * model stays possible — the same curve may be wanted on two devices — but the
+ * mismatch is labelled, because EQ byte layouts are model-specific and a
+ * foreign curve should be a decision, never a surprise.
+ */
+function SavedPresets() {
+  const app = useApp();
+  const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const busy = app.busy === 'eq';
+
+  const handleSave = () => {
+    const result = app.saveEqPreset(name);
+    if (!result.ok) {
+      setError(result.error ?? 'Could not save this preset.');
+      setNotice(null);
+      return;
+    }
+    setError(null);
+    setName('');
+    setNotice('Saved to My presets.');
+  };
+
+  const handleRename = (id: string, current: string) => {
+    const next = window.prompt('Rename preset:', current);
+    if (next === null) return;
+    const result = app.renameEqPreset(id, next);
+    setError(result.ok ? null : (result.error ?? 'Could not rename this preset.'));
+  };
+
+  return (
+    <div className="mt-4 border-t border-edge-soft pt-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-mute">
+          <IconEqualizer size={15} className="text-accent" />
+          My presets
+        </p>
+        <span className="font-mono text-[10px] text-faint">{app.eqPresets.length} saved</span>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="min-w-44 flex-1">
+          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-faint">
+            Preset name
+          </span>
+          <input
+            value={name}
+            maxLength={40}
+            placeholder="My curve"
+            onChange={(e) => {
+              setName(e.target.value);
+              setError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSave();
+            }}
+            className="w-full rounded-lg border border-edge bg-sunken px-3 py-2 text-xs text-ink outline-none transition-colors placeholder:text-faint focus:border-accent/60"
+          />
+        </label>
+        <Button size="sm" variant="primary" onClick={handleSave}>
+          Save current curve
+        </Button>
+      </div>
+
+      {error && (
+        <p className="mt-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+          {error}
+        </p>
+      )}
+      {!error && notice && (
+        <p className="mt-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-400">
+          {notice}
+        </p>
+      )}
+
+      {app.eqPresets.length === 0 ? (
+        <p className="mt-3 rounded-xl border border-edge bg-sunken px-4 py-3 text-[11px] leading-relaxed text-mute">
+          No saved presets yet. Move the bands above, give the curve a name, and save it — the
+          library lives in this machine’s local storage, not on the device.
+        </p>
+      ) : (
+        <ul className="mt-3 space-y-1.5">
+          {app.eqPresets.map((preset) => {
+            const foreign = isForeignPreset(preset, app.profile.sku);
+            return (
+              <li
+                key={preset.id}
+                className="flex flex-wrap items-center gap-2 rounded-xl border border-edge bg-sunken px-3 py-2"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    <span className="truncate text-xs font-bold text-ink">{preset.name}</span>
+                    {foreign && (
+                      <span
+                        title={`Saved for ${preset.modelId}; the connected model is ${app.profile.sku}.`}
+                        className="shrink-0 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-amber-400"
+                      >
+                        {preset.modelId}
+                      </span>
+                    )}
+                  </span>
+                  <span className="mt-1 flex h-3 items-end gap-[2px]" aria-hidden>
+                    {preset.bands.map((db, i) => (
+                      <span
+                        key={i}
+                        className="w-full rounded-[1px] bg-[#2c3a58]"
+                        style={{ height: `${Math.max(12, ((db + 6) / 12) * 100)}%` }}
+                      />
+                    ))}
+                  </span>
+                </span>
+                <Button
+                  size="sm"
+                  disabled={!app.connected || busy}
+                  onClick={() => void app.applyStoredPreset(preset.id).catch(() => {})}
+                >
+                  Apply
+                </Button>
+                <Button size="sm" onClick={() => handleRename(preset.id, preset.name)}>
+                  Rename
+                </Button>
+                <Button size="sm" onClick={() => app.deleteEqPreset(preset.id)}>
+                  Delete
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
