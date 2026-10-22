@@ -254,3 +254,13 @@ export interface Transport {
 export const EQ_HZ = [100, 200, 400, 800, 1600, 3200, 6400, 12800] as const;
 
 export const ZERO_BANDS = [0, 0, 0, 0, 0, 0, 0, 0];
+
+/**
+ * The editable range of one custom-EQ band, in dB. Shared by the faders and the
+ * stored-preset validator so a saved curve can never hold a value the UI cannot
+ * represent (and vice versa).
+ */
+export const EQ_BAND_COUNT = EQ_HZ.length;
+export const EQ_BAND_MIN = -6;
+export const EQ_BAND_MAX = 6;
+export const EQ_BAND_STEP = 0.5;
