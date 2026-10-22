@@ -263,6 +263,7 @@ check('this EQ-capable profile shows the preset grid', eq.includes('Soundcore pr
 check('A3949: custom faders are hidden (no custom-curve support)', (eq.match(/class="eq-fader"/g) ?? []).length === 0, `got ${(eq.match(/class="eq-fader"/g) ?? []).length}`);
 check('A3949: honest "not supported" note replaces the editor', eq.includes('Custom curves are not supported by'));
 check('A3949: header states factory presets only', eq.includes('factory presets only'));
+check('A3949: no preset library where custom curves are unsupported', !eq.includes('My presets'));
 check('fader range docs stay for models that do have custom curves (±6 dB, 100 Hz–12.8 kHz)', eq.includes('±6 dB') && eq.includes('100 Hz') && eq.includes('12.8 kHz'));
 check('disabled while not connected', eq.includes('Connect a device to apply presets'));
 
@@ -298,6 +299,10 @@ const eqNc = render(
 );
 check('A3959: every band renders a fader input (custom curves supported)', (eqNc.match(/class="eq-fader"/g) ?? []).length === 8, `got ${(eqNc.match(/class="eq-fader"/g) ?? []).length}`);
 check('A3959: custom curve documents the real FE FE preset id', eqNc.includes('FE FE'));
+check('A3959: named preset library is offered alongside custom curves',
+  eqNc.includes('My presets') && eqNc.includes('Save current curve'));
+check('A3959: an empty library says where curves are stored',
+  eqNc.includes('No saved presets yet') && eqNc.includes('local storage'));
 
 console.log('\n[controls]');
 const controls = render(React.createElement(M.ControlsPage));

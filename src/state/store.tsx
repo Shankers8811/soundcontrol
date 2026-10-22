@@ -27,6 +27,15 @@ import {
   type AncIntent,
 } from '../protocol/packets';
 import { presetById, type EqPreset } from '../protocol/presets';
+import {
+  EQ_PRESET_STORAGE_KEY,
+  addPreset,
+  deletePreset,
+  renamePreset,
+  sanitizePresetList,
+  sortPresets,
+  type StoredEqPreset,
+} from '../lib/eqPresets';
 import { requiredStateLength, validStatePayloadLength, withDeviceBoundary } from '../protocol/modelRegistry';
 import { EMPTY_OBSERVED, parseObservedFeatures, type ObservedFeatures } from '../protocol/observedFeatures';
 import { createSessionGuard, isCurrentTransportSession, parseCaseBatteryStateFrame, parseDeviceToggles } from '../protocol/responses';
@@ -177,6 +186,14 @@ interface AppState {
   setBand: (index: number, db: number) => void;
   commitEq: () => Promise<void>;
   applyBands: (bands: number[]) => Promise<void>;
+  /** Named custom curves from local storage, newest first. */
+  eqPresets: StoredEqPreset[];
+  /** Save the current curve under a name. Local only — no frame is sent. */
+  saveEqPreset: (name: string) => { ok: boolean; error?: string };
+  /** Apply a stored curve through the same guarded path as a manual edit. */
+  applyStoredPreset: (id: string) => Promise<void>;
+  renameEqPreset: (id: string, name: string) => { ok: boolean; error?: string };
+  deleteEqPreset: (id: string) => void;
   inject: (bytes: Uint8Array, note?: string) => Promise<void>;
   clearLog: () => void;
   resetDevice: () => Promise<void>;
@@ -273,6 +290,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [linkInfo, setLinkInfo] = useState<string | null>(null);
   const [eqId, setEqId] = useState('signature');
   const [bands, setBands] = useState<number[]>([...ZERO_BANDS]);
+  // Named custom curves, read once from local storage and then owned by this
+  // provider. Invalid entries are dropped by the library, never repaired here.
+  const [eqPresets, setEqPresets] = useState<StoredEqPreset[]>(() =>
+    sanitizePresetList(load<unknown>(EQ_PRESET_STORAGE_KEY, [])),
+  );
   const [surround, setSurroundState] = useState(false);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -1336,6 +1358,56 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [bands, eqId, profile, pushLog, write],
   );
 
+  /**
+   * Persist the library and mirror it into React state. Storage failure (private
+   * mode, quota) is swallowed by `save`, so the in-memory library stays usable
+   * for the session rather than the whole action throwing.
+   */
+  const persistEqPresets = useCallback((next: StoredEqPreset[]) => {
+    setEqPresets(next);
+    save(EQ_PRESET_STORAGE_KEY, next);
+  }, []);
+
+  const saveEqPreset = useCallback(
+    (name: string) => {
+      const result = addPreset(eqPresets, { name, bands, modelId: profile.sku });
+      if (!result.ok) return { ok: false, error: result.error };
+      persistEqPresets(result.presets);
+      pushLog('sys', '', `Saved EQ preset "${result.preset.name}" for ${profile.name} (${profile.sku}). Local only — no frame was sent.`);
+      return { ok: true };
+    },
+    [bands, eqPresets, persistEqPresets, profile, pushLog],
+  );
+
+  const applyStoredPreset = useCallback(
+    async (id: string) => {
+      const preset = eqPresets.find((p) => p.id === id);
+      if (!preset) return;
+      // Reuse the manual path so the model's custom-EQ gate still applies.
+      await applyBands(preset.bands);
+    },
+    [applyBands, eqPresets],
+  );
+
+  const renameEqPreset = useCallback(
+    (id: string, name: string) => {
+      const result = renamePreset(eqPresets, id, name);
+      if (!result.ok) return { ok: false, error: result.error };
+      persistEqPresets(result.presets);
+      return { ok: true };
+    },
+    [eqPresets, persistEqPresets],
+  );
+
+  const deleteEqPreset = useCallback(
+    (id: string) => {
+      const target = eqPresets.find((p) => p.id === id);
+      persistEqPresets(deletePreset(eqPresets, id));
+      if (target) pushLog('sys', '', `Deleted EQ preset "${target.name}".`);
+    },
+    [eqPresets, persistEqPresets, pushLog],
+  );
+
   const inject = useCallback(
     async (bytes: Uint8Array, note = 'Injected') => {
       await write(bytes, note);
@@ -1513,6 +1585,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBand,
       commitEq,
       applyBands,
+      eqPresets: sortPresets(eqPresets),
+      saveEqPreset,
+      applyStoredPreset,
+      renameEqPreset,
+      deleteEqPreset,
       inject,
       clearLog: () => setLog([]),
       resetDevice,
@@ -1569,6 +1646,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBand,
       commitEq,
       applyBands,
+      eqPresets,
+      saveEqPreset,
+      applyStoredPreset,
+      renameEqPreset,
+      deleteEqPreset,
       inject,
       resetDevice,
     ],
