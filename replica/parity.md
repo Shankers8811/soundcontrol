@@ -14,6 +14,11 @@ Date: 2026-10-12. Source of truth: `features.csv` (this is a feature-level diff 
 2. **Device discovery / pairing flow** (partial). The app uses host-paired devices; an in-app pairing flow is not safe to promise on both OSes.
 3. **Support for all current models** (partial). Needs real captures per model. No guessing opcodes.
 
+> **Update 2026-10-22:** item 1 (named custom EQ preset library) is now implemented —
+> `src/lib/eqPresets.ts`, surfaced as "My presets" on the Equalizer page, with
+> `npm run test:eqpresets`. The 60.4% score above is deliberately unchanged: it is the
+> 2026-10-12 audit, and the other two must-haves are still open.
+
 ## Build order
 
 | # | Item | Size | Why |
