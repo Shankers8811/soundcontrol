@@ -109,6 +109,31 @@ const LIBERTY3PRO_STATE: StateOffsets = {
 };
 
 /**
+ * Life P2 Mini (A3944) — `a3944/packets/inbound/state_update.rs`. Parse chain:
+ * tws(2) battery(4) firmware(10) serial(16) eq<2,10>(22) unknown(1)
+ * buttons(8×2 = 16, TwsLowBits enabled + action) cycle(1)
+ * sound_modes(7) unknown(6) case_battery(1) → sound_modes 126, case 139.
+ * Full equalizer_with_drc_tws with custom preset 0xFEFE support,
+ * button configuration module, and 3D surround sound support.
+ */
+const LIFE_P2_MINI_STATE: StateOffsets = {
+  batteryLeft: 2,
+  batteryRight: 3,
+  batteryChargingLeft: 4,
+  batteryChargingRight: 5,
+  batteryCase: 139,
+  firmware: { at: 6, length: 10 },
+  serial: { at: 16, length: 16 },
+  eqPresetId: 37,
+  eqBands: { at: 39, count: 10 },
+  soundModes: 126,
+  soundModeLength: 7,
+  dualConnections: 121,
+  surround: 125,
+  gaming: 142,
+};
+
+/**
  * Over-ear models report one battery level. The OpenSCQ30 A3004/A3027/
  * A3028/A3035/A3040 state bodies all begin with `BatteryLevel` at offset 0.
  * Firmware and serial still come from the `01:05` request, which every one
@@ -647,6 +672,29 @@ export const DEVICES: DeviceProfile[] = [
     verified: true,
   },
   {
+    id: 'life-p2-mini',
+    name: 'Life P2 Mini',
+    sku: 'A3944',
+    kind: 'earbuds',
+    family: 'tws',
+    gaming: true,
+    ancLevels: true,
+    scenes: true,
+    ldac: false,
+    dual: true,
+    surround: true,
+    wind: true,
+    transparency: false,
+    batteryMax: 5,
+    names: ['Life P2 Mini', 'A3944', 'soundcore Life P2 Mini'],
+    ancLayout: 'tws-p30i',
+    eqCommand: '02:83',
+    customEq: true,
+    state: LIFE_P2_MINI_STATE,
+    source: `${OPENSCQ30} (a3944): a3944_sound_modes, case_battery_level(5), equalizer_with_drc_tws with custom preset 0xFEFE, button configuration module, gaming_mode, dual_connections, surround_sound; 02:83 EQ command with 0xFEFE custom preset support`,
+    verified: true,
+  },
+  {
     id: 'p20i',
     name: 'P20i / P25i / R50i',
     sku: 'A3949',
@@ -696,6 +744,29 @@ export const DEVICES: DeviceProfile[] = [
     customEq: true,
     state: P20I_STATE,
     source: `${OPENSCQ30} (a3948): equalizer_with_drc_tws (common_settings_type_2, custom preset 0xFEFE), dual_battery(5), no gaming mode`,
+    verified: true,
+  },
+  {
+    id: 'a30i',
+    name: 'A30i',
+    sku: 'A3958',
+    kind: 'earbuds',
+    family: 'tws',
+    gaming: false,
+    ancLevels: false,
+    scenes: false,
+    ldac: false,
+    dual: false,
+    surround: false,
+    wind: false,
+    transparency: false,
+    batteryMax: 5,
+    names: ['A30i', 'A3958', 'soundcore A30i'],
+    ancLayout: 'none',
+    eqCommand: '02:83',
+    customEq: true,
+    state: P20I_STATE,
+    source: `${OPENSCQ30} (a3958): dual_battery(5), equalizer_with_drc_tws with custom preset 0xFEFE; faker fixture provides RFCOMM UUID and sample state packet`,
     verified: true,
   },
   {

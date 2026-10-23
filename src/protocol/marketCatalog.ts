@@ -117,6 +117,16 @@ export const MARKET_CATALOG: readonly MarketCatalogEntry[] = [
     protocolStatus: 'implemented', protocolEvidence: `${OPENSCQ30}: A3949 no sound-mode module and 02:83 factory-preset EQ; custom FEFE is explicitly unsupported.`, simulatorCoverage: 'covered', unitTestCoverage: 'covered', physicalValidation: 'pending',
   },
   {
+    sku: 'A3944', name: 'Life P2 Mini', category: 'tws', marketStatus: 'current', regions: ['US', 'EU'],
+    aliases: ['A3944', 'Life P2 Mini', 'soundcore Life P2 Mini'], profileId: 'life-p2-mini',
+    protocolStatus: 'implemented', protocolEvidence: `${OPENSCQ30}: A3944 six-byte sound modes with button configuration module, equalizer_with_drc_tws with custom preset 0xFEFE, surround sound, gaming mode, dual connections; 02:83 EQ command with 0xFEFE custom preset support.`, simulatorCoverage: 'covered', unitTestCoverage: 'covered', physicalValidation: 'pending',
+  },
+  {
+    sku: 'A3958', name: 'A30i', category: 'tws', marketStatus: 'current', regions: ['US', 'EU'],
+    aliases: ['A3958', 'A30i', 'soundcore A30i'], profileId: 'a30i',
+    protocolStatus: 'implemented', protocolEvidence: `${OPENSCQ30}: A3958 dual_battery(5), equalizer_with_drc_tws with custom preset 0xFEFE; faker fixture provides RFCOMM UUID and sample state packet.`, simulatorCoverage: 'covered', unitTestCoverage: 'covered', physicalValidation: 'pending',
+  },
+  {
     sku: 'A3994', name: 'K20i', category: 'tws', marketStatus: 'regional-current', regions: ['EU'],
     aliases: ['A3994', 'K20i', 'soundcore K20i'], profileId: 'k20i',
     protocolStatus: 'unknown', protocolEvidence: GENERIC, simulatorCoverage: 'not-covered', unitTestCoverage: 'not-covered', physicalValidation: 'pending',
