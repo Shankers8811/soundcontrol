@@ -2,7 +2,7 @@
   "name": "soundcontrol",
   "author": "Shankers8811 <154239635+Shankers8811@users.noreply.github.com>",
   "private": true,
-  "version": "1.0.9",
+  "version": "1.0.10",
   "type": "module",
   "description": "Cross-platform Windows and Linux desktop companion for Soundcore devices with evidence-backed Bluetooth control, ANC, transparency, EQ, Game Mode, LDAC, multipoint, spatial audio, battery telemetry and diagnostics.",
   "main": "electron-main.cjs",
