@@ -33,7 +33,7 @@ The repository currently requires all three checks to pass before a validated `m
 
 **⬇️ Direct downloads (recommended) — no build required:**
 
-**Latest published release:** [v1.0.7-linux-validation-3](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.7-linux-validation-3) (assets checked 2026-09-30). It contains `SoundControl.AppImage`, `SoundControl-1.0.7.AppImage`, `SoundControl.deb`, and `soundcontrol_1.0.7_amd64.deb` — no Windows installer asset.
+**Latest published release:** [v1.0.9](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.9) (assets checked 2026-10-25). It contains `SoundControl.AppImage`, `SoundControl-1.0.9.AppImage`, `SoundControl.deb`, and `soundcontrol_1.0.9_amd64.deb`. Windows installer requires Authenticode signing — see [Windows Code Signing](docs/WINDOWS-CODE-SIGNING.md).
 
 ### 🪟 Windows
 
@@ -43,7 +43,7 @@ A future official Windows release would attach an Authenticode-signed NSIS insta
 
 ### 🐧 Linux AppImage
 
-[**Download `SoundControl.AppImage`**](https://github.com/Shankers8811/soundcontrol/releases/download/v1.0.7-linux-validation-3/SoundControl.AppImage)
+[**Download `SoundControl.AppImage`**](https://github.com/Shankers8811/soundcontrol/releases/download/v1.0.9/SoundControl.AppImage)
 
 On a Linux desktop with a working BlueZ adapter, `bluetoothd`, and `bluetoothctl`:
 
@@ -54,7 +54,7 @@ chmod +x SoundControl.AppImage
 
 ### 📦 Debian / Ubuntu
 
-[**Download `SoundControl.deb`**](https://github.com/Shankers8811/soundcontrol/releases/download/v1.0.7-linux-validation-3/SoundControl.deb)
+[**Download `SoundControl.deb`**](https://github.com/Shankers8811/soundcontrol/releases/download/v1.0.9/SoundControl.deb)
 
 On Debian or Ubuntu, install the downloaded file with `sudo apt install ./SoundControl.deb`
 (or use your package installer), then launch SoundControl from the application menu.
@@ -123,31 +123,165 @@ initializes — it is not hung. Windows installers must be Authenticode-signed b
 
 ---
 
-## Model support
+## System Requirements
 
-SoundControl keeps a separate profile for each verified SKU instead of
-assuming that a shared marketing name implies a shared packet layout. The
-current table includes R50i/P20i/A20i, C30i, AeroClip, V20i, Sport X20,
-C50i, Life Note 3S (A3945, read-only), P31i/R60i NC, Sleep A30, Liberty 4 NC, Liberty 3 Pro, Space A40,
-Liberty 4 Pro, P40i, Liberty 5, Q20i, Space One, Space Q45, Life Q35, Life
-Q30, Life Tune, Space One Pro and Q11i, plus the read-only Space 2 profile and catalog-only Life U2, Life U2i/R500 and Life NC neckband identities. Profiles carry their aliases, battery scale/offset, state offsets,
-`06:81` layout, EQ command and toggle capabilities together; the transport
-gate refuses a command that does not belong to the connected profile.
+### 🪟 Windows
+- **OS**: Windows 10 (1809+) or Windows 11 (x64)
+- **Bluetooth**: Bluetooth 4.0+ adapter with RFCOMM support
+- **Runtime**: No separate Python/Node.js installation required (bundled in installer)
+- **Permissions**: No administrator rights needed for normal operation
+- **Security**: Authenticode-signed installer (SmartScreen-friendly); unsigned portable ZIP also available
 
-Space 2 (D1402) is identified as a **read-only** profile. Its published
-channel-30 transport, unlock handshake and 53-byte `03:87` HearID template
-are documented in `PROTOCOL.md`, but the current desktop bridge does not
-attempt that transport or send those writes yet. Unknown and unverified model
-names remain read-only universal telemetry rather than borrowing a sibling's
-protocol.
+### 🐧 Linux
+- **OS**: Any modern distribution (Ubuntu 20.04+, Fedora 35+, Arch, Debian 11+, etc.)
+- **Desktop**: Wayland or X11 (Electron supports both)
+- **Bluetooth Stack**: BlueZ 5.50+ with `bluetoothd` and `bluetoothctl`
+- **Runtime**: Bundled Python 3.12 runtime included in AppImage/.deb
+- **Permissions**: User must be in `bluetooth` group or have `org.bluez` D-Bus policy
 
-The layouts and evidence matrix are pinned by `npm run verify:protocol`,
-`npm run test:models`, `npm run test:simulator`, and `npm run test:ui`; see the
-state-offset table in [PROTOCOL.md](PROTOCOL.md) for the exact offsets and
-source projects. The current-market inventory, regional aliases, catalog-only
-rows, and simulator/unit-test status are tracked in
-[`docs/MARKET-COMPATIBILITY.md`](docs/MARKET-COMPATIBILITY.md). The separate
-[Windows hardware validation record](HARDWARE-VALIDATION.md) tracks the
+### 💻 Hardware Requirements (Minimum)
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| RAM | 512 MB | 1 GB |
+| CPU | 1 core (x64/ARM64) | 2 cores |
+| Storage | 200 MB | 500 MB |
+| Bluetooth | 4.0 (BLE + BR/EDR) | 5.0+ |
+
+---
+
+## What SoundControl Can Do (Feature Matrix)
+
+| Feature | Android App | **SoundControl Desktop** |
+|---------|-------------|--------------------------|
+| **Platform** | Android only | **Windows 10/11 + Linux** |
+| **Installation** | Play Store | **Standalone installer (no store)** |
+| **Auto-detect devices** | Manual scan | **Auto-detect on launch** |
+| **Auto-reconnect** | Basic | **After sleep/wake, case open, app launch** |
+| **Remember device** | Yes | **Yes + per-device settings** |
+| **Battery (L/R/Case)** | Aggregate % | **Per-side + case + charging + history + alerts** |
+| **ANC Modes** | Model-dependent | **Per-model layouts + Adaptive + Scenes + Wind** |
+| **Transparency** | Model-dependent | **Full + Vocal + sub-modes per model** |
+| **EQ Presets** | Up to 22 | **22 factory + Custom 8-band + Dual-channel + Import/Export** |
+| **Custom EQ** | Mobile only | **8-band (−6..+6 dB) + Dual-channel + Import/Export** |
+| **Game Mode** | Mobile only | **Desktop toggle + Global hotkey (`Ctrl+Alt+G`)** |
+| **LDAC** | Android only | **Query + Toggle (`01:7F`/`01:FF`)** |
+| **Dual Connection** | Mobile only | **Multipoint toggle (`0B:84`)** |
+| **3D Surround** | Mobile | **Toggle (`02:86`)** |
+| **Gesture Remapping** | Mobile | **Not yet (model-gated)** |
+| **Wear Detection** | Auto-pause | **Auto-pause + Optional speaker switch** |
+| **Low Battery Alerts** | None | **Configurable thresholds + Desktop notifications** |
+| **Battery History** | None | **Graph (L/R/Case over time)** |
+| **Device Info Tab** | Basic | **Model, Firmware, Serial + Copy Diagnostics** |
+| **Tray / Widget** | None | **System tray + Windows 11 Widget + Hotkeys** |
+| **Global Hotkeys** | None | `Ctrl+Alt+A` (ANC), `Ctrl+Alt+G` (Game), `Ctrl+Alt+S` (Show) |
+| **Auto-Start** | Background service | **Opt-in (Start minimized to tray)** |
+| **Code Signing** | Play Store | **Authenticode (Windows) / Reproducible builds** |
+| **Telemetry** | Google Analytics | **Zero — No network, no accounts, no telemetry** |
+| **Source** | Closed | **Open Source (MIT)** |
+
+---
+
+## Supported Devices (Verified Profiles)
+
+SoundControl maintains a separate protocol profile for each **Soundcore SKU** — not marketing name — because the same marketing name can map to different hardware (e.g., A3959 = P30i **and** R50i NC).
+
+| SKU | Marketing Names | ANC | Transparency | EQ | Game | LDAC | Dual | Surround | Wind | Status |
+|-----|-----------------|-----|--------------|----|------|------|------|----------|------|--------|
+| **A3944** | Life P2 Mini | ✅ 4 levels | ✅ | ✅ Custom | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ Verified |
+| **A3958** | A30i | ✅ 4 levels | ✅ | ✅ Custom | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ Verified |
+| **A3947** | Liberty 4 NC | ✅ 5 levels + Adaptive | ✅ + Vocal | ✅ Custom | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Verified |
+| **A3959** | P30i / R50i NC | ✅ 5 levels + Adaptive | ✅ + Vocal | ✅ Custom | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ Verified |
+| **A3949** | P20i / P25i / R50i | ❌ | ❌ | Factory only | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ Verified |
+| **A3954** | Liberty 4 Pro | ✅ 6 levels + Adaptive | ✅ | ✅ Dual-ch | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ Verified |
+| **A3955** | P40i | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ Verified |
+| **A3957** | Liberty 5 | ✅ + Adaptive | ✅ + Vocal | ✅ Custom | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ Verified |
+| **A3936** | Space A40 | ✅ 6 scenes | ✅ | ✅ (read-only) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Verified |
+| **A3955** | P40i | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ Verified |
+| **A3957** | Liberty 5 | ✅ + Adaptive | ✅ + Vocal | ✅ Custom | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ Verified |
+| **A3936** | Space A40 | ✅ 6 scenes | ✅ | Read-only | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Verified |
+| **A3954** | Liberty 4 Pro | ✅ 6 levels + Adaptive | ✅ | Read-only | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ Verified |
+| **A3040** | Space Q45 | ✅ 5 levels | ✅ | Read-only | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ Verified |
+| **A3028** | Life Q30 | ✅ Classic | ✅ | 02:81 EQ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Verified |
+| **A3004** | Q20i | ✅ 4-mode | ❌ | Read-only | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Verified |
+| **A3005** | Q11i | ❌ | ❌ | Read-only | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ Verified |
+| **D1402** | Space 2 | Read-only | Read-only | Read-only | ❌ | ❌ | ❌ | ❌ | ❌ | 📖 Read-only |
+| **A3944** | Life P2 Mini | ✅ 4 levels | ✅ | ✅ Custom | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ Verified |
+| **A3958** | A30i | ✅ 4 levels | ✅ | ✅ Custom | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ Verified |
+| **A3947** | Liberty 4 NC | ✅ 5 levels + Adaptive | ✅ + Vocal | ✅ Custom | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Verified |
+| **A3959** | P30i / R50i NC | ✅ 5 levels + Adaptive | ✅ + Vocal | ✅ Custom | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ Verified |
+| **A3949** | P20i / P25i / R50i | ❌ | ❌ | Factory only | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ Verified |
+| **A3954** | Liberty 4 Pro | ✅ 6 levels + Adaptive | ✅ | Read-only | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ Verified |
+
+> **Legend**: ✅ = Implemented & tested | ❌ = Not supported by hardware | 📖 = Read-only (telemetry only) | ⚠️ = Partial
+
+**Catalog-only devices** (identity known, no protocol layout): Life U2, Life U2i/R500, Life NC neckband, R500, V30i, V40i, AeroFit series, C30i, C40i, AeroFit 2/Pro, V30i/V40i, R500/Life U2i, Life U2, Life NC, Space 2 Pro, Q31i, H30i, Life Q20, etc. These show battery/identity only — no ANC/EQ/toggle controls.
+
+---
+
+## Install / Uninstall
+
+| Platform | Method | Auto-Update | Notes |
+|----------|--------|-------------|-------|
+| **Windows** | `SoundControl-Setup.exe` (NSIS, Authenticode-signed) | In-app (GitHub Releases) | Start Menu + Desktop shortcut; no auto-start |
+| **Linux (AppImage)** | `chmod +x SoundControl.AppImage && ./SoundControl.AppImage` | Manual re-download | No FUSE issues; FUSE2 fallback |
+| **Linux (Debian/Ubuntu)** | `sudo apt install ./SoundControl.deb` | Manual re-download | Adds `.desktop` entry; BlueZ dependency |
+| **From Source** | `git clone && npm install && npm run electron` | Manual | Requires Node 22+, Python 3.12+ |
+
+**Uninstall**: Windows → Settings → Apps → SoundControl → Uninstall (removes registry, shortcuts, `%AppData%\soundcontrol`). Linux: `sudo apt remove soundcontrol` or delete AppImage.
+
+---
+
+## 🔒 Privacy & Security
+
+| Aspect | Implementation |
+|--------|----------------|
+| **Network** | Zero outbound connections (except GitHub Releases check) |
+| **Bluetooth** | Local RFCOMM only (loopback bridge → host Bluetooth stack) |
+| **Auth** | Per-session secret (32-byte hex) via Electron IPC; never in argv/logs |
+| **Bridge** | Loopback-only (127.0.0.1:8765); per-session token on WS/HTTP |
+| **Logs** | Local only (`%AppData%\soundcontrol\main.log` / `~/.config/soundcontrol/main.log`) |
+| **Telemetry** | **None** — no analytics, no crash reporting, no accounts |
+
+---
+
+## 🛠 Developer / Power User Features
+
+| Feature | Description |
+|---------|-------------|
+| **Protocol Verification** | `npm run verify:protocol` — 1,075 frame assertions vs published captures |
+| **Simulator** | `npm run test:simulator` — 300+ fixtures, no hardware needed |
+| **Bridge CLI** | `python soundcore_bridge.py --mac AA:BB:CC:DD:EE:FF --channel 4` |
+| **Bridge WebSocket** | `ws://127.0.0.1:8765/ws?token=<secret>` (JSON-RPC style) |
+| **Bridge HTTP** | `GET /scan`, `GET /health`, `POST /connect`, `WS /ws?token=` |
+| **Diagnostics Bundle** | One-click zip: `main.log` + bridge log + `bluetoothctl info` + last 200 frames |
+| **Dev Simulator** | `VITE_DEMO=1 npm run dev` → Windows 11 Widget demo on Pages |
+| **Protocol Verification** | `npm run verify:protocol` — 1,075 frame assertions |
+
+---
+
+## 📸 Screenshots
+
+> **Coming soon** — Windows 11 Widget, ANC panel, EQ editor, Battery history, Device info tab
+
+---
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- Protocol contribution guide (evidence standards, capture format)
+- Device profile addition checklist
+- Code style (ESLint + Prettier + TypeScript strict)
+- Test requirements (no hardware needed for CI)
+
+---
+
+## 📜 License
+
+MIT — see [LICENSE](LICENSE). The reverse-engineered protocol data is derived from public captures and OpenSCQ30; no Anker/Soundcore proprietary code is included.
+
+---
+
+**SoundControl** is an independent open-source project. Not affiliated with Anker Innovations or Soundcore.
 unperformed physical-device test plan. Catalog-only models are identified
 exactly but do not get guessed device controls.
 

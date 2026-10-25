@@ -5,6 +5,7 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { DevicesPage } from '../pages/DevicesPage';
 import { EqualizerPage } from '../pages/EqualizerPage';
 import { SettingsPage } from '../pages/SettingsPage';
+import { SimulatorPage } from '../pages/SimulatorPage';
 import { Sidebar } from './Sidebar';
 import { InlineError } from './ui';
 
@@ -53,6 +54,16 @@ export function DesktopShell() {
           </div>
         )}
 
+        {/* Demo mode banner */}
+        {__DEMO__ && (
+          <div className="border-b border-warning/25 bg-warning/8 px-6 py-2">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-mono text-warning">⚡ DEMO MODE</span>
+              <span>Running in GitHub Pages preview — simulator active, no Bluetooth hardware needed.</span>
+            </div>
+          </div>
+        )}
+
         <main className="min-h-0 flex-1 overflow-y-auto">
           <div key={app.page} className="page-enter mx-auto max-w-[1440px] px-6 py-5 xl:px-8 xl:py-6">
             {app.page === 'dashboard' && <DashboardPage />}
@@ -60,6 +71,7 @@ export function DesktopShell() {
             {app.page === 'equalizer' && <EqualizerPage />}
             {app.page === 'controls' && <ControlsPage />}
             {app.page === 'settings' && <SettingsPage />}
+            {__DEMO__ && <SimulatorPage />}
           </div>
         </main>
       </div>

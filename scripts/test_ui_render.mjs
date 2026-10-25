@@ -86,6 +86,8 @@ try {
       // Same build-time globals vite.config.ts injects.
       __REPO_URL__: JSON.stringify('https://github.com/Shankers8811/soundcontrol'),
       __APP_VERSION__: JSON.stringify('0.0.0-test'),
+      // Demo mode is off for production render tests
+      __DEMO__: 'false',
     },
   });
 } catch (err) {

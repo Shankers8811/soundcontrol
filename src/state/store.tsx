@@ -986,7 +986,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // literal at build time, so production bundles constant-fold this
         // whole branch away and Rollup never emits the simulator module:
         // emulated device state cannot leak into the packaged app.
-        if (!import.meta.env.DEV) {
+        // Also allow in __DEMO__ mode (GitHub Pages preview build).
+        if (!import.meta.env.DEV && !__DEMO__) {
           throw new Error('The developer simulator is only available in development builds.');
         }
         const { connectSimulator } = await import('../transports/simulator');

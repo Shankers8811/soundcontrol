@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+         xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+         xmlns:uap11="http://schemas.microsoft.com/appx/manifest/uap/windows10/11"
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+         IgnorableNamespaces="uap uap5 uap10 uap11 rescap">
+
+  <Identity Name="SoundControlWidget"
+            Publisher="CN=SoundControl"
+            Version="1.0.0.0" />
+
+  <Properties>
+    <DisplayName>SoundControl Widget</DisplayName>
+    <PublisherDisplayName>SoundControl</PublisherDisplayName>
+    <Description>Shows battery and ANC status for Soundcore devices</Description>
+    <Logo>Assets/StoreLogo.png</Logo>
+  </Properties>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <Capability Name="internetClientServer" />
+    <Capability Name="privateNetworkClientServer" />
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+
+  <Applications>
+    <Application Id="SoundControlWidget"
+                 Executable="widgetProvider.exe"
+                 EntryPoint="SoundControlWidgetProvider">
+      <uap:VisualElements DisplayName="SoundControl Widget"
+                          Square150x150Logo="Assets/Square150x150Logo.png"
+                          Square44x44Logo="Assets/Square44x44Logo.png"
+                          Description="Shows battery and ANC status for Soundcore devices"
+                          BackgroundColor="#0a0e17">
+        <uap:DefaultTile Wide310x150Logo="Assets/Wide310x150Logo.png" />
+        <uap:SplashScreen Image="Assets/SplashScreen.png" />
+      </uap:VisualElements>
+
+      <Extensions>
+        <uap5:Extension Category="windows.widgetProvider">
+          <uap5:WidgetProvider>
+            <uap5:Widget Id="soundcontrol-widget"
+                         DisplayName="SoundControl"
+                         Description="Shows battery and ANC status for Soundcore devices"
+                         IsSupportedOnLockScreen="false">
+              <uap5:WidgetSize>Medium</uap5:WidgetSize>
+              <uap5:WidgetSize>Large</uap5:WidgetSize>
+            </uap5:Widget>
+          </uap5:WidgetProvider>
+        </uap5:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+</Package>

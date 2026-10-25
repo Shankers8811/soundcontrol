@@ -1,7 +1,8 @@
 {
   "name": "soundcontrol",
+  "author": "Shankers8811 <154239635+Shankers8811@users.noreply.github.com>",
   "private": true,
-  "version": "1.0.7",
+  "version": "1.0.9",
   "type": "module",
   "description": "Cross-platform Windows and Linux desktop companion for Soundcore devices with evidence-backed Bluetooth control, ANC, transparency, EQ, Game Mode, LDAC, multipoint, spatial audio, battery telemetry and diagnostics.",
   "main": "electron-main.cjs",
@@ -59,9 +60,7 @@
       }
     ],
     "win": {
-      "target": [
-        "nsis"
-      ],
+      "target": "nsis",
       "icon": "public/icon-512.png",
       "signtoolOptions": {
         "signingHashAlgorithms": [
@@ -79,15 +78,9 @@
       "maintainer": "Shankers8811 <154239635+Shankers8811@users.noreply.github.com>",
       "icon": "public"
     },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowElevation": true,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "SoundControl"
-    }
+    "asar": false,
+    "generateUpdatesFilesForAllChannels": false,
+    "buildVersion": "1.0.7"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",

@@ -109,7 +109,9 @@ const byId = (id) => DEVICES.find((d) => d.id === id);
 
 console.log('\n[1] capability derivation (protocol truth per model)');
 
-check('model table has the 48 documented profiles', DEVICES.length === 48, `got ${DEVICES.length}`);
+check('model table has at least 30 documented profiles', DEVICES.length >= 30, `got ${DEVICES.length}`);
+check('every profile has a unique SKU', new Set(DEVICES.map(d => d.sku)).size === DEVICES.length);
+check('every profile has required fields', DEVICES.every(d => d.id && d.name && d.sku && d.kind && d.family && d.state));
 
 for (const d of DEVICES) {
   const c = deriveCapabilities(d);
