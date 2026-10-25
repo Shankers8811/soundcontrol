@@ -33,7 +33,7 @@ The repository currently requires all three checks to pass before a validated `m
 
 **⬇️ Direct downloads (recommended) — no build required:**
 
-**Latest published release:** [v1.0.9](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.9) (assets checked 2026-10-25). It contains `SoundControl.AppImage`, `SoundControl-1.0.9.AppImage`, `SoundControl.deb`, and `soundcontrol_1.0.9_amd64.deb`. Windows installer requires Authenticode signing — see [Windows Code Signing](docs/WINDOWS-CODE-SIGNING.md).
+**Latest published release:** [v1.0.10](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.10) (assets checked 2026-10-25). It contains `SoundControl.AppImage`, `SoundControl-1.0.10.AppImage`, `SoundControl.deb`, and `soundcontrol_1.0.10_amd64.deb`. Windows installer requires Authenticode signing — see [Windows Code Signing](docs/WINDOWS-CODE-SIGNING.md).
 
 ### 🪟 Windows
 
@@ -43,7 +43,7 @@ A future official Windows release would attach an Authenticode-signed NSIS insta
 
 ### 🐧 Linux AppImage
 
-[**Download `SoundControl.AppImage`**](https://github.com/Shankers8811/soundcontrol/releases/download/v1.0.9/SoundControl.AppImage)
+[**Download `SoundControl.AppImage`**](https://github.com/Shankers8811/soundcontrol/releases/download/v1.0.10/SoundControl.AppImage)
 
 On a Linux desktop with a working BlueZ adapter, `bluetoothd`, and `bluetoothctl`:
 
@@ -54,7 +54,7 @@ chmod +x SoundControl.AppImage
 
 ### 📦 Debian / Ubuntu
 
-[**Download `SoundControl.deb`**](https://github.com/Shankers8811/soundcontrol/releases/download/v1.0.9/SoundControl.deb)
+[**Download `SoundControl.deb`**](https://github.com/Shankers8811/soundcontrol/releases/download/v1.0.10/SoundControl.deb)
 
 On Debian or Ubuntu, install the downloaded file with `sudo apt install ./SoundControl.deb`
 (or use your package installer), then launch SoundControl from the application menu.
