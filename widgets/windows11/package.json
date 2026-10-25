@@ -1,0 +1,18 @@
+{
+  "name": "soundcontrol-widget",
+  "version": "1.0.0",
+  "description": "Windows 11 Widget for SoundControl - shows battery and ANC status",
+  "main": "src/widgetProvider.js",
+  "scripts": {
+    "build": "webpack --mode production",
+    "dev": "webpack --mode development --watch",
+    "package": "npm run build && msbuild widget.proj /p:Configuration=Release"
+  },
+  "dependencies": {
+    "@microsoft/windows-widgets": "^1.0.0"
+  },
+  "devDependencies": {
+    "webpack": "^5.0.0",
+    "webpack-cli": "^4.0.0"
+  }
+}

@@ -71,6 +71,10 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # Verify version consistency: tag == package.json version
+      - name: Verify release version consistency
+        run: node scripts/check-release-version.mjs ${{ steps.release-tag.outputs.tag }}
+
       # Check if signing credentials are provided
       - name: Check Authenticode signing credentials
         id: check-cert
@@ -160,6 +164,27 @@ jobs:
           echo "Staged release asset:"
           ls -la release-assets/
           test "$(find release-assets -maxdepth 1 -name '*.exe' | wc -l)" -eq 1
+
+      # Resolve release tag (needed for version check and publish)
+      - name: Resolve release tag
+        id: release-tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            VERSION="$(node -p "require('./package.json').version")"
+            echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Resolved tag: $(grep '^tag=' "$GITHUB_OUTPUT" | cut -d= -f2)"
+
+      # Verify version consistency: tag == package.json version
+      - name: Verify release version consistency
+        run: node scripts/check-release-version.mjs ${{ steps.release-tag.outputs.tag }}
+
       # Release gate 3 — verify Authenticode signatures (only when certificate is configured)
       - name: Verify Authenticode signatures (release gate)
         if: steps.check-cert.outputs.has_cert == 'true'
@@ -182,20 +207,24 @@ jobs:
         if: always()
         shell: bash
         run: rm -f cert.p12
-      - name: Resolve release tag
-        id: release-tag
+
+      # Clean up older releases (keep latest 3)
+      - name: Clean up older releases
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-          else
-            VERSION="$(node -p "require('./package.json').version")"
-            echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-          fi
-          echo "Resolved tag: $(grep '^tag=' "$GITHUB_OUTPUT" | cut -d= -f2)"
+          echo "Cleaning up older releases (keeping latest 3)..."
+          # Get all releases except the current one, sort by date, skip first 3
+          # Use awk to skip last 3 lines (more portable than head -n -3)
+          gh release list --limit 100 --json tagName,createdAt --jq '.[] | select(.tagName != "${{ steps.release-tag.outputs.tag }}") | .tagName' | awk 'NR > 3' | while read -r old_tag; do
+            if [ -n "$old_tag" ]; then
+              echo "Deleting old release: $old_tag"
+              gh release delete "$old_tag" --yes || true
+            fi
+          done
+
       # Published only after every signing gate above has passed.
       - name: Publish GitHub Release with the installer
         shell: bash

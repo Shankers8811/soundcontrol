@@ -63,12 +63,14 @@ print(json.dumps({
   }
 
   // Some distributions place libpython or a required shared runtime in the
-  // configured libdir. Copy only matching Python shared objects, never the
-  // whole system library directory.
+  // configured libdir. Copy only matching Python shared objects to the lib directory,
+  // where the relocated interpreter's RUNPATH ($ORIGIN/../lib) expects them.
+  const libDir = path.join(outDir, 'lib');
+  if (!existsSync(libDir)) mkdirSync(libDir, { recursive: true });
   if (info.libdir && existsSync(info.libdir)) {
     for (const name of ['libpython.so', `libpython${info.version}.so`, `libpython${info.version}.so.1.0`]) {
       const source = path.join(info.libdir, name);
-      if (existsSync(source) && lstatSync(source).isFile()) cpSync(source, path.join(outDir, name));
+      if (existsSync(source) && lstatSync(source).isFile()) cpSync(source, path.join(libDir, name));
     }
   }
 

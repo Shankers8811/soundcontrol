@@ -13,11 +13,15 @@ const APP_VERSION: string = JSON.parse(
   readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
 ).version;
 
+// Demo mode for GitHub Pages: enables simulator without Bluetooth hardware
+const IS_DEMO = process.env.VITE_DEMO === '1';
+
 export default defineConfig({
   base: './',
   define: {
     __REPO_URL__: JSON.stringify(REPO_URL),
     __APP_VERSION__: JSON.stringify(APP_VERSION),
+    __DEMO__: IS_DEMO,
   },
   plugins: [react(), tailwindcss()],
   server: {
