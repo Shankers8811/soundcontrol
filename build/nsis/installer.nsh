@@ -112,7 +112,7 @@ Section "Main" SEC_MAIN
     ; Write registry keys for uninstall
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SoundControl" "DisplayName" "SoundControl"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SoundControl" "UninstallString" "$INSTDIR\uninstall.exe"
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SoundControl" "DisplayVersion" "1.0.7"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SoundControl" "DisplayVersion" "1.0.10"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SoundControl" "Publisher" "Shankers8811"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SoundControl" "InstallLocation" "$INSTDIR"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SoundControl" "DisplayIcon" "$INSTDIR\SoundControl.exe"
