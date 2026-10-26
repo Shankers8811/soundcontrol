@@ -78,7 +78,7 @@
       "maintainer": "Shankers8811 <154239635+Shankers8811@users.noreply.github.com>",
       "icon": "public"
     },
-    "asar": false,
+    "asar": true,
     "generateUpdatesFilesForAllChannels": false,
     "buildVersion": "1.0.10"
   },
