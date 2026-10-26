@@ -38,8 +38,8 @@ const REQUIRED = process.env.SOUNDCONTROL_PYTHON_REQUIRED === '1';
 // the helper process could start, but the packaged bridge never became ready
 // on the hosted Windows runner. Upgrade this pin deliberately after validating
 // the new runtime.
-const PINNED = '3.12.10';
-const FALLBACKS = ['3.12.9', '3.12.8', '3.12.7', '3.11.9'];
+const PINNED = '3.12.11';
+const FALLBACKS = ['3.12.10', '3.12.9', '3.12.8', '3.12.7', '3.11.9'];
 
 const log = (msg) => console.log(`[python-embed] ${msg}`);
 const warn = (msg) => console.warn(`[python-embed] ${msg}`);
@@ -70,17 +70,26 @@ function installedVersion() {
   }
 }
 
-async function download(url) {
-  const res = await fetch(url, { signal: AbortSignal.timeout(120_000), redirect: 'follow' });
-  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status} for ${url}`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length < 1_000_000) throw new Error(`suspiciously small download (${buf.length} bytes) from ${url}`);
-  return buf;
+async function download(url, retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(180_000), redirect: 'follow' });
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status} for ${url}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length < 1_000_000) throw new Error(`suspiciously small download (${buf.length} bytes) from ${url}`);
+      return buf;
+    } catch (err) {
+      if (attempt === retries) throw err;
+      const waitMs = attempt * 5000;
+      warn(`download failed (attempt ${attempt}/${retries}): ${err.message}; retrying in ${waitMs}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+  }
 }
 
-/** Newest 3.1x release available on the index, e.g. "3.12.10". */
+/** Newest 3.1x release available on the index, e.g. "3.12.11". */
 async function discoverLatest() {
-  const res = await fetch(INDEX, { signal: AbortSignal.timeout(30_000), redirect: 'follow' });
+  const res = await fetch(INDEX, { signal: AbortSignal.timeout(60_000), redirect: 'follow' });
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${INDEX}`);
   const html = await res.text();
   const versions = [...html.matchAll(/href="(3\.1[1234]\.\d+)\/"/g)].map((m) => m[1]);
