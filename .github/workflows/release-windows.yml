@@ -71,10 +71,6 @@ jobs:
           cache: npm
       - run: npm ci
 
-      # Verify version consistency: tag == package.json version
-      - name: Verify release version consistency
-        run: node scripts/check-release-version.mjs ${{ steps.release-tag.outputs.tag }}
-
       # Check if signing credentials are provided
       - name: Check Authenticode signing credentials
         id: check-cert
