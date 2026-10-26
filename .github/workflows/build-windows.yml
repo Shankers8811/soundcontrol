@@ -87,6 +87,14 @@ jobs:
         shell: bash
         run: rm -f cert.p12
       - run: npm ci
+      # Cache the staged Python embeddable package to avoid re-downloading on every CI run.
+      - name: Cache Python embeddable package
+        uses: actions/cache@v4
+        with:
+          path: python-embed
+          key: python-embed-${{ runner.os }}-${{ hashFiles('scripts/fetch-python-embed.mjs') }}
+          restore-keys: |
+            python-embed-${{ runner.os }}-
       # --publish never: electron-builder auto-detects CI and would
       # otherwise try to publish a GitHub Release on every push.
       #
