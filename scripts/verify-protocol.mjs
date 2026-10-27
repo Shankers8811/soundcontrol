@@ -448,7 +448,7 @@ console.log('  21 TWS sound-mode shape checks');
 /* ----------------------------------------------------------- device table */
 
 const EXPECTED = {
-  A3959: { name: 'P30i / R50i NC', eq: '02:83', anc: 'tws-p30i', batteryMax: 10, gaming: true, ldac: false, dual: true, surround: true, customEq: true },
+  A3959: { name: 'R50i NC', eq: '02:83', anc: 'tws-p30i', batteryMax: 10, gaming: true, ldac: false, dual: true, surround: true, customEq: true },
   A3949: { name: 'P20i / P25i / R50i', eq: '02:83', anc: 'none', batteryMax: 5, gaming: true, ldac: false, dual: false, surround: false, customEq: false },
   A3948: { name: 'A20i', eq: '02:83', anc: 'none', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false, customEq: true },
   A3945: { name: 'Life Note 3S (read-only)', eq: null, anc: 'none', batteryMax: 5, gaming: false, ldac: false, dual: false, surround: false, customEq: false },

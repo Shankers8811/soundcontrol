@@ -650,7 +650,7 @@ export const DEVICES: DeviceProfile[] = [
   },
   {
     id: 'p30i',
-    name: 'P30i / R50i NC',
+    name: 'R50i NC',
     sku: 'A3959',
     kind: 'earbuds',
     family: 'tws',
@@ -663,7 +663,7 @@ export const DEVICES: DeviceProfile[] = [
     wind: true,
     transparency: false,
     batteryMax: 10,
-    names: ['P30i', 'R50i NC', 'A3959', 'soundcore P30i', 'soundcore R50i NC'],
+    names: ['R50i NC', 'P30i', 'A3959', 'soundcore R50i NC', 'soundcore P30i'],
     ancLayout: 'tws-p30i',
     eqCommand: '02:83',
     customEq: true,
