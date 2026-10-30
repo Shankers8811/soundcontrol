@@ -107,6 +107,14 @@ export interface Capabilities {
   supportsSurround: boolean;
   supportsDual: boolean;
   supportsLdac: boolean;
+  /** Model has auto power off setting (`01:86`). */
+  supportsAutoPowerOff: boolean;
+  /** Model has touch/button tone setting (`0B:81`). */
+  supportsTouchTone: boolean;
+  /** Model has wear detection (`01:80`). */
+  supportsWearDetection: boolean;
+  /** Model has low battery prompt setting (`01:7E`). */
+  supportsLowBatteryPrompt: boolean;
   ancSub: AncSubFeatures;
 }
 
@@ -127,6 +135,10 @@ export function deriveCapabilities(profile: DeviceProfile): Capabilities {
     supportsSurround: profile.surround,
     supportsDual: profile.dual,
     supportsLdac: profile.ldac,
+    supportsAutoPowerOff: profile.autoPowerOff === true,
+    supportsTouchTone: profile.touchTone === true,
+    supportsWearDetection: profile.wearDetection === true,
+    supportsLowBatteryPrompt: profile.lowBatteryPrompt === true,
     ancSub:
       profile.ancLayout === 'none'
         ? NO_ANC_SUB

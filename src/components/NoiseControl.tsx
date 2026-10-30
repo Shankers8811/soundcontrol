@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '../state/store';
 import type { AncMode, AncScene } from '../types';
 import { CapabilityGate, Card, Toggle } from './ui';
-import { IconAdaptive, IconAnc, IconNormal, IconTalk, IconTrans, IconWind } from './Icons';
+import { IconAdaptive, IconAnc, IconNormal, IconTalk, IconTrans, IconWind, IconPower, IconTouch, IconEar } from './Icons';
 
 /**
  * Noise control (PART G) — the three ambient modes every ANC-capable
@@ -340,6 +340,74 @@ export function NoiseControl() {
                   checked={app.windNoise}
                   disabled={disabled}
                   onChange={(on) => void app.setWindNoise(on).catch(() => {})}
+                />
+              </div>
+            )}
+
+            {caps.supportsAutoPowerOff && (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-ink">
+                    <IconPower size={14} className="text-accent" /> Auto power off
+                  </p>
+                  <p className="text-[11px] text-mute">Turns off headphones after inactivity</p>
+                </div>
+                <Toggle
+                  label="Auto power off"
+                  checked={app.autoPowerOff}
+                  disabled={disabled}
+                  onChange={(on) => void app.setAutoPowerOff(on).catch(() => {})}
+                />
+              </div>
+            )}
+
+            {caps.supportsTouchTone && (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-ink">
+                    <IconTouch size={14} className="text-accent" /> Touch/button tone
+                  </p>
+                  <p className="text-[11px] text-mute">Audible feedback for button presses</p>
+                </div>
+                <Toggle
+                  label="Touch tone"
+                  checked={app.touchTone}
+                  disabled={disabled}
+                  onChange={(on) => void app.setTouchTone(on).catch(() => {})}
+                />
+              </div>
+            )}
+
+            {caps.supportsWearDetection && (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-ink">
+                    <IconEar size={14} className="text-accent" /> Wear detection
+                  </p>
+                  <p className="text-[11px] text-mute">Auto pause/play when earbuds are removed/worn</p>
+                </div>
+                <Toggle
+                  label="Wear detection"
+                  checked={app.wearDetection}
+                  disabled={disabled}
+                  onChange={(on) => void app.setWearDetection(on).catch(() => {})}
+                />
+              </div>
+            )}
+
+            {caps.supportsLowBatteryPrompt && (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-ink">
+                    <IconPower size={14} className="text-accent" /> Low battery prompt
+                  </p>
+                  <p className="text-[11px] text-mute">Voice prompt when battery is low</p>
+                </div>
+                <Toggle
+                  label="Low battery prompt"
+                  checked={app.lowBatteryPrompt}
+                  disabled={disabled}
+                  onChange={(on) => void app.setLowBatteryPrompt(on).catch(() => {})}
                 />
               </div>
             )}

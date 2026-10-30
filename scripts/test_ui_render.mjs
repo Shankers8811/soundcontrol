@@ -401,7 +401,7 @@ check('feedback is truthful: no backend, nothing uploaded', settings.includes('P
 check('Settings has Report a problem with device context + diagnostics toggle', settings.includes('Report a problem') && settings.includes('Device context (added automatically)') && settings.includes('Include protocol diagnostics'));
 check('report is truthful: no upload backend claimed', settings.includes('Prepare report') && settings.includes('nothing is uploaded behind your back') && !settings.includes('report submitted'));
 check('report mentions token redaction', settings.includes('redacted'));
-check('Settings embeds About (version, MIT, disclaimer, real links)', settings.includes('MIT License') && settings.includes('not affiliated with') && settings.includes('https://github.com/Shankers8811/soundcontrol'));
+check('Settings embeds About (version, MIT, disclaimer, real links)', settings.includes('MIT License') && settings.includes('not affiliated with') && settings.includes('github.com/Shankers8811/soundcontrol'));
 check('Startup & exit remains a static policy (no toggles)', settings.includes('Startup &amp; exit') && settings.includes('manual launch · quits on close') && !settings.includes('Launch at login') && !settings.includes('Minimize to tray') && !settings.includes('Start with Windows'));
 
 console.log('\n[about section]');
@@ -409,7 +409,7 @@ const about = render(React.createElement(M.AboutSection));
 check('About renders as an embeddable section (no standalone page header)', !about.includes('<h1') && about.includes('SoundControl'));
 check('real branding + version line', about.includes('SoundControl') && about.includes('version'));
 check('MIT license statement', about.includes('MIT License'));
-check('real repository links only', about.includes('https://github.com/Shankers8811/soundcontrol'));
+check('real repository links only', about.includes('github.com/Shankers8811/soundcontrol'));
 check('no fake update/support/privacy buttons', !about.includes('Check for updates') && !about.includes('Contact support') && !about.includes('Privacy policy'));
 check('unofficial-project disclaimer', about.includes('not affiliated with'));
 

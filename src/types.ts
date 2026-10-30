@@ -226,6 +226,14 @@ export interface DeviceProfile {
    * note instead of firing an undocumented, destructive frame at hardware.
    */
   factoryReset?: boolean;
+  /** Model has auto power off setting (`01:86`). */
+  autoPowerOff?: boolean;
+  /** Model has touch/button tone setting (`0B:81`). */
+  touchTone?: boolean;
+  /** Model has wear detection (`01:80`). */
+  wearDetection?: boolean;
+  /** Model has low battery prompt setting (`01:7E`). */
+  lowBatteryPrompt?: boolean;
   /**
    * Human-readable provenance for the profile, so a future reader can tell a
    * reverse-engineered layout from a guessed one.

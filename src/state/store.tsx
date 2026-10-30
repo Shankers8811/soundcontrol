@@ -296,6 +296,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sanitizePresetList(load<unknown>(EQ_PRESET_STORAGE_KEY, [])),
   );
   const [surround, setSurroundState] = useState(false);
+  const [autoPowerOff, setAutoPowerOffState] = useState(false);
+  const [touchTone, setTouchToneState] = useState(false);
+  const [wearDetection, setWearDetectionState] = useState(false);
+  const [lowBatteryPrompt, setLowBatteryPromptState] = useState(false);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -1047,6 +1051,82 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [profile, prompts, pushLog, surround, write],
   );
 
+  const setAutoPowerOff = useCallback(
+    async (on: boolean) => {
+      const prev = autoPowerOff;
+      setAutoPowerOffState(on);
+      setBusy('anc');
+      try {
+        await write(buildAutoPowerOff(on), `Auto power off ${on ? 'on' : 'off'}`);
+        pushLog('sys', '', 'Command sent — device confirmation unavailable for this model');
+      } catch (err) {
+        setAutoPowerOffState(prev);
+        throw err;
+      } finally {
+        setBusy(null);
+      }
+      if (prompts) await beep('ok');
+    },
+    [autoPowerOff, prompts, pushLog, write],
+  );
+
+  const setTouchTone = useCallback(
+    async (on: boolean) => {
+      const prev = touchTone;
+      setTouchToneState(on);
+      setBusy('anc');
+      try {
+        await write(buildTouchTone(on), `Touch tone ${on ? 'on' : 'off'}`);
+        pushLog('sys', '', 'Command sent — device confirmation unavailable for this model');
+      } catch (err) {
+        setTouchToneState(prev);
+        throw err;
+      } finally {
+        setBusy(null);
+      }
+      if (prompts) await beep('ok');
+    },
+    [touchTone, prompts, pushLog, write],
+  );
+
+  const setWearDetection = useCallback(
+    async (on: boolean) => {
+      const prev = wearDetection;
+      setWearDetectionState(on);
+      setBusy('anc');
+      try {
+        await write(buildWearDetection(on), `Wear detection ${on ? 'on' : 'off'}`);
+        pushLog('sys', '', 'Command sent — device confirmation unavailable for this model');
+      } catch (err) {
+        setWearDetectionState(prev);
+        throw err;
+      } finally {
+        setBusy(null);
+      }
+      if (prompts) await beep('ok');
+    },
+    [wearDetection, prompts, pushLog, write],
+  );
+
+  const setLowBatteryPrompt = useCallback(
+    async (on: boolean) => {
+      const prev = lowBatteryPrompt;
+      setLowBatteryPromptState(on);
+      setBusy('anc');
+      try {
+        await write(buildLowBatteryPrompt(on), `Low battery prompt ${on ? 'on' : 'off'}`);
+        pushLog('sys', '', 'Command sent — device confirmation unavailable for this model');
+      } catch (err) {
+        setLowBatteryPromptState(prev);
+        throw err;
+      } finally {
+        setBusy(null);
+      }
+      if (prompts) await beep('ok');
+    },
+    [lowBatteryPrompt, prompts, pushLog, write],
+  );
+
   const resetDevice = useCallback(async () => {
     setBusy('reset');
     try {
@@ -1573,6 +1653,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLdac,
       setDual,
       setSurroundSound,
+      setAutoPowerOff,
+      setTouchTone,
+      setWearDetection,
+      setLowBatteryPrompt,
       setPrompts: (on) => {
         setPromptsState(on);
         save('sc.prompts', on);
@@ -1594,6 +1678,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       inject,
       clearLog: () => setLog([]),
       resetDevice,
+      autoPowerOff,
+      touchTone,
+      wearDetection,
+      lowBatteryPrompt,
     }),
     [
       page,

@@ -975,7 +975,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Vary", "Origin")
         if origin:
             # Echo only the renderer/local origin already accepted by _allowed.
-            self.send_header("Access-Control-Allow-Origin", origin)
+            # Sanitize origin to prevent HTTP Response Splitting (CRLF injection).
+            if "\r" in origin or "\n" in origin:
+                # Origin contains CRLF - reject to prevent HTTP Response Splitting
+                pass
+            else:
+                self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Allow-Headers", "content-type, authorization, x-bridge-token")
         self.send_header("Access-Control-Allow-Methods", "GET,OPTIONS")
 
