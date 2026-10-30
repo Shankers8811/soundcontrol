@@ -558,6 +558,46 @@ export function buildResetDevice(): Uint8Array {
   return frame(0x01, 0x85);
 }
 
+/**
+ * Auto Power Off — `01:86`, OpenSCQ30 `SET_AUTO_POWER_OFF_COMMAND`.
+ * Payload: [enabled (0x01/0x00)]
+ */
+export function buildAutoPowerOff(enabled: boolean): Uint8Array {
+  return frame(0x01, 0x86, [enabled ? 0x01 : 0x00]);
+}
+
+/**
+ * Touch Tone / Button Tone — `0B:81` or similar.
+ * Payload: [enabled (0x01/0x00)]
+ */
+export function buildTouchTone(enabled: boolean): Uint8Array {
+  return frame(0x0b, 0x81, [enabled ? 0x01 : 0x00]);
+}
+
+/**
+ * Button Configuration — `04:81` for touch/button remapping.
+ * This is model-specific and requires the full read/verify cycle.
+ */
+export function buildButtonConfig(actionId: number, actionType: number): Uint8Array {
+  return frame(0x04, 0x81, [actionId, actionType]);
+}
+
+/**
+ * Low Battery Prompt — `01:7E` or similar.
+ * Payload: [enabled (0x01/0x00)]
+ */
+export function buildLowBatteryPrompt(enabled: boolean): Uint8Array {
+  return frame(0x01, 0x7e, [enabled ? 0x01 : 0x00]);
+}
+
+/**
+ * Wear Detection — `01:80` or similar.
+ * Payload: [enabled (0x01/0x00)]
+ */
+export function buildWearDetection(enabled: boolean): Uint8Array {
+  return frame(0x01, 0x80, [enabled ? 0x01 : 0x00]);
+}
+
 export function buildDeviceInfoQuery(): Uint8Array {
   return DEVICE_INFO;
 }
@@ -600,5 +640,9 @@ export function describePacket(data: ArrayLike<number>): string {
   if (cat === 0x01 && typ === 0xff) return `${dir} LDAC set`;
   if (cat === 0x01 && typ === 0x86) return `${dir} Auto power off`;
   if (cat === 0x0b && typ === 0x84) return `${dir} Dual connection`;
+  if (cat === 0x0b && typ === 0x81) return `${dir} Touch tone`;
+  if (cat === 0x04 && typ === 0x81) return `${dir} Button config`;
+  if (cat === 0x01 && typ === 0x7e) return `${dir} Low battery prompt`;
+  if (cat === 0x01 && typ === 0x80) return `${dir} Wear detection`;
   return `${dir} cat=${cat.toString(16)} type=${typ.toString(16)}`;
 }
