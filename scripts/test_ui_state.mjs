@@ -739,6 +739,7 @@ eq('unknown model still exposes per-side presence (documented 01:03 layout)', [c
 
 // §2.4/§7: only genuinely universal operations remain for unknown models.
 eq('unknown model claims no ANC/EQ/gaming/surround/dual/LDAC', [capsU.supportsNoiseControl, capsU.supportsEqualizer, capsU.supportsGaming, capsU.supportsSurround, capsU.supportsDual, capsU.supportsLdac], [false, false, false, false, false, false]);
+eq('unknown model new capabilities all false', [capsU.supportsAutoPowerOff, capsU.supportsTouchTone, capsU.supportsWearDetection, capsU.supportsLowBatteryPrompt], [false, false, false, false]);
 eq('unknown model keeps the universal 01:05 firmware read', capsU.supportsFirmwareInfo, true);
 eq('unknown profile sends no sound-mode layout', parseSoundModes(new Uint8Array([0, 0x50]), UNKNOWN_PROFILE.ancLayout), null);
 

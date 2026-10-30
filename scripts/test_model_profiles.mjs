@@ -603,12 +603,14 @@ console.log('\nTasks 6/7/8/9 — capability derivation per model');
   check('R50i A3949: EQ supported but NO custom curves', c49.supportsEqualizer === true && c49.supportsCustomEq === false);
   check('R50i A3949: gaming yes; surround/dual/LDAC no', c49.supportsGaming === true && c49.supportsSurround === false && c49.supportsDual === false && c49.supportsLdac === false);
   check('R50i A3949: no factory reset, no gestures, no volume', c49.supportsFactoryReset === false && c49.supportsGestures === false && c49.supportsVolume === false);
+  check('R50i A3949: auto power off + touch tone + low battery prompt; NO wear detection', c49.supportsAutoPowerOff === true && c49.supportsTouchTone === true && c49.supportsWearDetection === false && c49.supportsLowBatteryPrompt === true);
 
   const c59 = M.deriveCapabilities(A3959);
   check('R50i NC A3959: noise control supported (ANC/transparency/normal)', c59.supportsNoiseControl === true);
   check('R50i NC A3959: EQ supported WITH custom curves', c59.supportsEqualizer === true && c59.supportsCustomEq === true);
   check('R50i NC A3959: gaming + surround + dual; NO LDAC', c59.supportsGaming === true && c59.supportsSurround === true && c59.supportsDual === true && c59.supportsLdac === false);
   check('R50i NC A3959: no factory reset, no gestures, no volume', c59.supportsFactoryReset === false && c59.supportsGestures === false && c59.supportsVolume === false);
+  check('R50i NC A3959: auto power off + touch tone + low battery prompt; NO wear detection', c59.supportsAutoPowerOff === true && c59.supportsTouchTone === true && c59.supportsWearDetection === false && c59.supportsLowBatteryPrompt === true);
 
   const cu = M.deriveCapabilities(UNKNOWN);
   check(
@@ -616,6 +618,10 @@ console.log('\nTasks 6/7/8/9 — capability derivation per model');
     cu.supportsNoiseControl === false && cu.supportsEqualizer === false && cu.supportsCustomEq === false &&
       cu.supportsGaming === false && cu.supportsSurround === false && cu.supportsDual === false &&
       cu.supportsLdac === false && cu.supportsFactoryReset === false && cu.supportsFirmwareInfo === true,
+  );
+  check(
+    'unknown model: new capabilities all false',
+    cu.supportsAutoPowerOff === false && cu.supportsTouchTone === false && cu.supportsWearDetection === false && cu.supportsLowBatteryPrompt === false
   );
   check('volume stays disabled for BOTH target models and unknown (Task 7)', c49.supportsVolume === false && c59.supportsVolume === false && cu.supportsVolume === false);
 
