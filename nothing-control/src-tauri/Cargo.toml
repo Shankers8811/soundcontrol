@@ -36,6 +36,7 @@ tokio = { version = "1", features = ["full", "tracing"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_bytes = "0.11"
+toml = "0.8"
 
 # Error handling
 thiserror = "1"
@@ -61,6 +62,9 @@ base64 = "0.21"
 hex = "0.4"
 bitflags = "2"
 crc = "3.0"
+
+# OpenSCQ30 library - Soundcore protocol implementation
+openscq30-lib = { git = "https://github.com/Oppzippy/OpenSCQ30.git", branch = "master", package = "openscq30-lib" }
 
 # Platform-specific Bluetooth
 [target.'cfg(target_os = "linux")'.dependencies]
