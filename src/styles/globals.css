@@ -1,0 +1,170 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import './tokens.css';
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  html {
+    @apply scroll-smooth;
+  }
+  
+  body {
+    @apply bg-bg text-text font-sans antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-bg;
+  }
+  
+  ::selection {
+    @apply bg-accent/20 text-text;
+  }
+  
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border-input rounded-full;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-text-muted;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-medium rounded-md transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  .btn-primary {
+    @apply btn bg-accent text-on-accent hover:bg-accent-hover active:bg-accent-hover/90 h-10 px-4 text-sm;
+  }
+  
+  .btn-secondary {
+    @apply btn bg-surface text-text border border-border hover:bg-surface/80 active:bg-surface/60 h-10 px-4 text-sm;
+  }
+  
+  .btn-ghost {
+    @apply btn bg-transparent text-text hover:bg-surface active:bg-surface/50 h-10 px-4 text-sm;
+  }
+  
+  .btn-danger {
+    @apply btn bg-danger text-on-accent hover:bg-danger-hover active:bg-danger-hover/90 h-10 px-4 text-sm;
+  }
+  
+  .btn-icon {
+    @apply btn p-2;
+  }
+  
+  .input {
+    @apply w-full bg-bg-elevated border border-border-input text-text placeholder:text-text-muted rounded-md px-3 py-2 text-sm transition-colors duration-150 focus:border-accent focus:ring-1 focus:ring-accent disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  .card {
+    @apply bg-bg-elevated border border-border rounded-lg shadow-sm;
+  }
+  
+  .card-hover {
+    @apply card hover:shadow-md hover:border-accent/50 transition-all duration-150;
+  }
+  
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+  
+  .badge-success {
+    @apply badge bg-success/10 text-success;
+  }
+  
+  .badge-warning {
+    @apply badge bg-warning/10 text-warning;
+  }
+  
+  .badge-danger {
+    @apply badge bg-danger/10 text-danger;
+  }
+  
+  .badge-info {
+    @apply badge bg-accent/10 text-accent;
+  }
+  
+  .toast {
+    @apply fixed bottom-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg animate-slide-up min-w-[280px] max-w-md;
+  }
+  
+  .toast-success {
+    @apply toast bg-success text-white;
+  }
+  
+  .toast-error {
+    @apply toast bg-danger text-white;
+  }
+  
+  .toast-info {
+    @apply toast bg-accent text-white;
+  }
+  
+  .toast-warning {
+    @apply toast bg-warning text-white;
+  }
+}
+
+@layer utilities {
+  .animate-slide-up {
+    animation: slideUp 0.2s ease-out;
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.15s ease-out;
+  }
+  
+  .animate-pulse-soft {
+    animation: pulseSoft 2s ease-in-out infinite;
+  }
+  
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  @keyframes pulseSoft {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+  
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
