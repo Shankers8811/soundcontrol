@@ -4,7 +4,7 @@ Noise control (ANC / ambient / transparency),audio,must,yes,yes,Real 06:81 frame
 Adaptive ANC / wind-noise / scene fields,audio,should,yes,partial,Only fields documented for the exact model are exposed
 Factory EQ presets (22),audio,must,yes,yes,Captured presets on EQ-capable profiles
 Custom graphic EQ (8-band),audio,must,yes,yes,FE FE custom frame; factory-preset-only models keep it disabled
-Save multiple named custom EQ presets,audio,must,yes,yes,Per-model named library in src/lib/eqPresets.ts, surfaced as "My presets" on the Equalizer page; local-only, no frame sent on save
+Save multiple named custom EQ presets,audio,must,yes,yes,Per-model named library with local storage
 Enforce feature conflicts (Custom EQ vs Spatial Audio vs Gaming vs LDAC),audio,should,yes,no,Per Soundcore help article; not enforced in UI today - software-only change
 HearID hearing test + personalized EQ,audio,should,yes,no,No audiogram workflow; 03:87 writes deliberately disabled (can overwrite measured profile)
 Spatial audio / 3D surround,audio,should,yes,partial,02:86 on documented models; some modes read-only; 02:86 01 placeholder unverified
@@ -22,7 +22,7 @@ Firmware update via app,device,could,yes,no,OTA channels are read-only by projec
 Firmware version awareness / gating,device,should,yes,no,Roadmap item; 01:05 already returns firmware
 Device discovery / pairing flow,connectivity,must,yes,partial,Uses host-paired devices + connect by address; no in-app pairing
 Support for all current earbuds/headphones,coverage,must,yes,partial,~30 profiles; many catalog-only or read-only
-"Speakers / party products (Motion, Flare, Rave...)",coverage,could,yes,no,Different frame formats (A3116 has no checksum); needs captures
+Speakers / party products (Motion, Flare, Rave...),coverage,could,yes,no,Different frame formats (A3116 has no checksum); needs captures
 PowerConf / VR / smart glasses,coverage,could,yes,skip,Different product classes; no public protocol evidence here
 Anka AI assistant,cloud,could,yes,skip,Cloud AI service; out of scope for offline desktop companion
 Insight page (saved conversation summaries),cloud,could,yes,skip,Tied to Anka cloud service and account
@@ -31,3 +31,29 @@ Account sign-in and cloud sync,cloud,could,yes,skip,Roadmap: no cloud sync/telem
 Light/dark theme,ux,could,yes,yes,System/Dark/Light
 In-app update check,ux,could,yes,yes,GitHub Releases API
 Diagnostics / hex console,ux,could,no,yes,Extra beyond original
+Tauri v2 + Rust backend rewrite,architecture,must,no,yes,Replace Electron + Python with Tauri v2 + Rust for 10x smaller binary and 5x less RAM
+Native Linux Bluetooth (bluer),bluetooth,must,no,yes,Native BlueZ D-Bus via bluer crate
+Native Windows Bluetooth (WinRT),bluetooth,must,no,yes,Windows.Devices.Bluetooth + RFCOMM via serialport
+SQLite database (rusqlite),database,must,no,yes,Embedded ACID database for settings, presets, history
+Background tasks (Tokio),architecture,must,no,yes,Battery polling, device watch, firmware check, maintenance
+Tauri plugins (tray, hotkeys, notifications, updater),system,must,no,yes,Native system integration without Electron
+Cross-compilation (Windows/Linux),build,must,no,yes,GitHub Actions matrix build for NSIS, AppImage, .deb
+Code signing pipeline,release,should,no,yes,SignPath Foundation or OV/EV cert for Windows SmartScreen
+Rust protocol implementation (01:01, 06:81, 02:81, FE:FE, etc.),protocol,must,no,yes,All frame encode/decode in native Rust
+Per-SKU capability gating (25+ profiles),protocol,must,no,yes,Device profiles as compile-time/runtime capability table
+HotkeyRecorder component,ui,should,no,yes,Global shortcut recording with conflict detection
+EQSlider component (8-band),ui,must,no,yes,Vertical sliders with frequency labels, keyboard support
+ModePill component (ANC modes),ui,must,no,yes,Radio-group style pills with icons, disabled states
+BatteryRing component,ui,must,no,yes,Animated circular progress with charging indicator
+HexFrameInspector component,ui,should,no,yes,Live TX/RX frame display with filtering
+DeviceCard component,ui,must,no,yes,Paired device display with connection status
+Settings page with theme/hotkeys/Bluetooth,ui,must,no,yes,Complete settings management UI
+Equalizer page with custom 8-band editor,ui,must,no,yes,Factory presets + custom curve + import/export
+NoiseControl page with ANC/Transparency/Adaptive,ui,must,no,yes,Model-gated mode selection with sub-modes
+Battery page with history chart + alerts,ui,must,no,yes,24h/7d charts, configurable low-battery threshold
+Diagnostics page with frame log + export,ui,should,no,yes,Live frame log, filtering, ZIP export
+Settings page with theme/hotkeys/updates,ui,must,no,yes,Complete settings management
+AppShell with sidebar navigation,ui,must,no,yes,Responsive layout with collapsible sidebar
+Responsive design (390px to 1440px),ui,must,no,yes,Works on mobile-width and desktop
+Keyboard navigation + focus management,a11y,must,no,yes,Full keyboard support, ARIA attributes
+WCAG AA contrast compliance,a11y,must,no,yes,All color pairs verified for 4.5:1 ratio
