@@ -1,0 +1,106 @@
+[package]
+name = "nothing-control"
+version = "1.0.0"
+edition = "2021"
+description = "Nothing Control - Native Rust Bluetooth backend for Nothing/CMF earbuds"
+authors = ["Shankers8811 <154239635+Shankers8811@users.noreply.github.com>"]
+license = "MIT"
+repository = "https://github.com/Shankers8811/soundcontrol"
+categories = ["gui", "hardware-support", "embedded"]
+keywords = ["tauri", "bluetooth", "nothing", "cmf", "audio"]
+
+[workspace]
+resolver = "2"
+members = []
+
+[dependencies]
+# Tauri v2
+tauri = { version = "2", features = [
+    "macros",
+    "tray-icon",
+    "global-shortcut",
+    "notification",
+    "updater",
+    "shell",
+    "dialog",
+    "fs",
+    "process",
+    "clipboard-manager",
+    "store"
+] }
+
+# Async runtime
+tokio = { version = "1", features = ["full", "tracing"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_bytes = "0.11"
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# UUID & time
+uuid = { version = "1", features = ["v4", "serde", "fast-rng"] }
+chrono = { version = "0.4", features = ["serde", "clock"] }
+
+# Database
+rusqlite = { version = "0.31", features = ["bundled", "vtab", "functions", "blob", "uuid", "chrono"] }
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-rustls", "migrate", "chrono", "uuid", "json"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+tracing-appender = "0.6"
+
+# Utilities
+directories = "5"
+zip = "0.6"
+base64 = "0.21"
+hex = "0.4"
+bitflags = "2"
+crc = "3.0"
+
+# Platform-specific Bluetooth
+[target.'cfg(target_os = "linux")'.dependencies]
+bluer = "0.11"
+zbus = { version = "4", features = ["xml", "names", "export", "futures", "serde"] }
+zbus_names = { version = "4", features = ["serde"] }
+async-trait = "0.1"
+dbus = "0.9"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.58", features = [
+    "Devices_Bluetooth",
+    "Devices_Bluetooth_GenericAttributeProfile",
+    "Devices_Bluetooth_Rfcomm",
+    "Devices_Enumeration",
+    "Foundation",
+    "Storage_Streams",
+    "Devices_Radios",
+    "System",
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_Devices_Bluetooth"
+] }
+serialport = { version = "5", features = ["tokio1"] }
+winreg = "0.11"
+
+# Build dependencies
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+embed-resource = "1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+opt-level = "z"
+
+[profile.dev]
+debug = true
+
+[features]
+default = []
