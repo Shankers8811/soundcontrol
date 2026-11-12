@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0066cc;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00a3ff;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Headphones outline -->
+  <path d="M128 24C85.7 24 52 57.7 52 100c0 30.5 18.2 56.5 44 68.4V232c0 8.8 7.2 16 16 16h32c8.8 0 16-7.2 16-16v-40h48v40c0 8.8 7.2 16 16 16h32c8.8 0 16-7.2 16-16v-63.6c25.8-11.9 44-37.9 44-68.4C204 57.7 170.3 24 128 24zM128 48c16.5 0 30 13.5 30 30s-13.5 30-30 30-30-13.5-30-30 13.5-30 30-30zm0 16c-7.7 0-14 6.3-14 14s6.3 14 14 14 14-6.3 14-14-6.3-14-14-14z" fill="url(#gradient)"/>
+  <!-- Ear cups -->
+  <circle cx="128" cy="100" r="14" fill="#ffffff" opacity="0.2"/>
+  <!-- Sound waves -->
+  <path d="M170 100c0 16.5-13.5 30-30 30s-30-13.5-30-30 13.5-30 30-30 30 13.5 30 30z" fill="none" stroke="url(#gradient)" stroke-width="3" stroke-dasharray="8,8" opacity="0.5"/>
+  <path d="M185 100c0 24.8-20.2 45-45 45s-45-20.2-45-45 20.2-45 45-45 45 20.2 45 45z" fill="none" stroke="url(#gradient)" stroke-width="2" stroke-dasharray="8,8" opacity="0.3"/>
+</svg>
