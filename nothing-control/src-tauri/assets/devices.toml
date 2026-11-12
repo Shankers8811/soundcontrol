@@ -1,6 +1,6 @@
 # Soundcore/CMF Device Profiles
 # Compiled into binary at build time
-# Based on OpenSCQ30 supported devices (50+ models)
+# Based on OpenSCQ30 supported devices (50+ models) + 2024-2025 releases
 # Each entry must match openscq30-lib DeviceModel enum variants
 
 [[device]]
@@ -1088,6 +1088,359 @@ model = "D1402"
 bluetooth_name = "soundcore Space 2"
 display_name = "Soundcore Space 2"
 icon = "space_2.png"
+category = "headphones"
+supports_anc = true
+supports_transparency = true
+supports_adaptive_anc = true
+supports_in_ear_detection = false
+supports_low_latency = true
+supports_gestures = true
+supports_eq = true
+supports_advanced_eq = true
+supports_bass_enhance = true
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_ldac = true
+supports_multipoint = true
+supports_wind_noise = true
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = true
+supports_ldac_codec = true
+has_case_battery = false
+anc_modes = ["off", "anc", "transparency", "adaptive"]
+
+# CMF by Nothing devices
+[[device]]
+model = "CMF_BUDS_PRO"
+bluetooth_name = "CMF Buds Pro"
+display_name = "CMF Buds Pro"
+icon = "cmf_buds_pro.png"
+category = "earbuds"
+supports_anc = true
+supports_transparency = true
+supports_adaptive_anc = true
+supports_in_ear_detection = true
+supports_low_latency = true
+supports_gestures = true
+supports_eq = true
+supports_advanced_eq = false
+supports_bass_enhance = false
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_ldac = false
+supports_multipoint = true
+supports_wind_noise = false
+supports_wearing_detection = true
+supports_easy_chat = false
+supports_auto_power_off = true
+supports_ldac_codec = false
+has_case_battery = true
+anc_modes = ["off", "anc", "transparency", "adaptive"]
+
+[[device]]
+model = "CMF_BUDS_PRO_2"
+bluetooth_name = "CMF Buds Pro 2"
+display_name = "CMF Buds Pro 2"
+icon = "cmf_buds_pro_2.png"
+category = "earbuds"
+supports_anc = true
+supports_transparency = true
+supports_adaptive_anc = true
+supports_in_ear_detection = true
+supports_low_latency = true
+supports_gestures = true
+supports_eq = true
+supports_advanced_eq = true
+supports_bass_enhance = true
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_ldac = true
+supports_multipoint = true
+supports_wind_noise = false
+supports_wearing_detection = true
+supports_easy_chat = false
+supports_auto_power_off = true
+supports_ldac_codec = true
+has_case_battery = true
+anc_modes = ["off", "anc", "transparency", "adaptive"]
+
+[[device]]
+model = "CMF_BUDS"
+bluetooth_name = "CMF Buds"
+display_name = "CMF Buds"
+icon = "cmf_buds.png"
+category = "earbuds"
+supports_anc = true
+supports_transparency = true
+supports_adaptive_anc = true
+supports_in_ear_detection = true
+supports_low_latency = true
+supports_gestures = true
+supports_eq = true
+supports_advanced_eq = false
+supports_bass_enhance = false
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_ldac = false
+supports_multipoint = false
+supports_wind_noise = false
+supports_wearing_detection = true
+supports_easy_chat = false
+supports_auto_power_off = true
+supports_ldac_codec = false
+has_case_battery = true
+anc_modes = ["off", "anc", "transparency", "adaptive"]
+
+[[device]]
+model = "CMF_NECKBAND_PRO"
+bluetooth_name = "CMF Neckband Pro"
+display_name = "CMF Neckband Pro"
+icon = "cmf_neckband_pro.png"
+category = "neckband"
+supports_anc = true
+supports_transparency = true
+supports_adaptive_anc = true
+supports_in_ear_detection = false
+supports_low_latency = true
+supports_gestures = true
+supports_eq = true
+supports_advanced_eq = false
+supports_bass_enhance = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_ldac = false
+supports_multipoint = true
+supports_wind_noise = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = true
+supports_ldac_codec = false
+has_case_battery = false
+anc_modes = ["off", "anc", "transparency", "adaptive"]
+
+[[device]]
+model = "CMF_HEADPHONE_PRO"
+bluetooth_name = "CMF Headphone Pro"
+display_name = "CMF Headphone Pro"
+icon = "cmf_headphone_pro.png"
+category = "headphones"
+supports_anc = true
+supports_transparency = true
+supports_adaptive_anc = true
+supports_in_ear_detection = false
+supports_low_latency = true
+supports_gestures = true
+supports_eq = true
+supports_advanced_eq = true
+supports_bass_enhance = true
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_ldac = false
+supports_multipoint = true
+supports_wind_noise = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = true
+supports_ldac_codec = false
+has_case_battery = false
+anc_modes = ["off", "anc", "transparency", "adaptive"]
+
+[[device]]
+model = "CMF_BUDS_2A"
+bluetooth_name = "CMF Buds 2a"
+display_name = "CMF Buds 2a"
+icon = "cmf_buds_2a.png"
+category = "earbuds"
+supports_anc = true
+supports_transparency = true
+supports_adaptive_anc = true
+supports_in_ear_detection = true
+supports_low_latency = true
+supports_gestures = true
+supports_eq = true
+supports_advanced_eq = false
+supports_bass_enhance = false
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_ldac = false
+supports_multipoint = false
+supports_wind_noise = false
+supports_wearing_detection = true
+supports_easy_chat = false
+supports_auto_power_off = true
+supports_ldac_codec = false
+has_case_battery = true
+anc_modes = ["off", "anc", "transparency", "adaptive"]
+
+[[device]]
+model = "CMF_BUDS_2"
+bluetooth_name = "CMF Buds 2"
+display_name = "CMF Buds 2"
+icon = "cmf_buds_2.png"
+category = "earbuds"
+supports_anc = true
+supports_transparency = true
+supports_adaptive_anc = true
+supports_in_ear_detection = true
+supports_low_latency = true
+supports_gestures = true
+supports_eq = true
+supports_advanced_eq = false
+supports_bass_enhance = false
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_ldac = false
+supports_multipoint = false
+supports_wind_noise = false
+supports_wearing_detection = true
+supports_easy_chat = false
+supports_auto_power_off = true
+supports_ldac_codec = false
+has_case_battery = true
+anc_modes = ["off", "anc", "transparency", "adaptive"]
+
+[[device]]
+model = "CMF_BUDS_2_PLUS"
+bluetooth_name = "CMF Buds 2 Plus"
+display_name = "CMF Buds 2 Plus"
+icon = "cmf_buds_2_plus.png"
+category = "earbuds"
+supports_anc = true
+supports_transparency = true
+supports_adaptive_anc = true
+supports_in_ear_detection = true
+supports_low_latency = true
+supports_gestures = true
+supports_eq = true
+supports_advanced_eq = false
+supports_bass_enhance = false
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_ldac = false
+supports_multipoint = false
+supports_wind_noise = false
+supports_wearing_detection = true
+supports_easy_chat = false
+supports_auto_power_off = true
+supports_ldac_codec = false
+has_case_battery = true
+anc_modes = ["off", "anc", "transparency", "adaptive"]
+
+[[device]]
+model = "CMF_CLIP_PRO"
+bluetooth_name = "CMF Clip Pro"
+display_name = "CMF Clip Pro"
+icon = "cmf_clip_pro.png"
+category = "earbuds"
+supports_anc = false
+supports_transparency = false
+supports_adaptive_anc = false
+supports_in_ear_detection = true
+supports_low_latency = true
+supports_gestures = true
+supports_eq = true
+supports_advanced_eq = false
+supports_bass_enhance = false
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_ldac = false
+supports_multipoint = false
+supports_wind_noise = false
+supports_wearing_detection = true
+supports_easy_chat = false
+supports_auto_power_off = true
+supports_ldac_codec = false
+has_case_battery = true
+anc_modes = []
+
+# 2025 New Releases
+[[device]]
+model = "A3970"
+bluetooth_name = "soundcore Liberty 5 Pro"
+display_name = "Soundcore Liberty 5 Pro"
+icon = "liberty_5_pro.png"
+category = "earbuds"
+supports_anc = true
+supports_transparency = true
+supports_adaptive_anc = true
+supports_in_ear_detection = true
+supports_low_latency = true
+supports_gestures = true
+supports_eq = true
+supports_advanced_eq = true
+supports_bass_enhance = true
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_ldac = true
+supports_multipoint = true
+supports_wind_noise = true
+supports_wearing_detection = true
+supports_easy_chat = true
+supports_auto_power_off = true
+supports_ldac_codec = true
+has_case_battery = true
+anc_modes = ["off", "anc", "transparency", "adaptive"]
+
+[[device]]
+model = "A3971"
+bluetooth_name = "soundcore AeroFit 2"
+display_name = "Soundcore AeroFit 2"
+icon = "aerofit_2.png"
+category = "earbuds"
+supports_anc = false
+supports_transparency = false
+supports_adaptive_anc = false
+supports_in_ear_detection = true
+supports_low_latency = true
+supports_gestures = true
+supports_eq = true
+supports_advanced_eq = false
+supports_bass_enhance = true
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_ldac = true
+supports_multipoint = true
+supports_wind_noise = false
+supports_wearing_detection = true
+supports_easy_chat = false
+supports_auto_power_off = true
+supports_ldac_codec = true
+has_case_battery = true
+anc_modes = []
+
+[[device]]
+model = "A3972"
+bluetooth_name = "soundcore AeroFit Pro 2"
+display_name = "Soundcore AeroFit Pro 2"
+icon = "aerofit_pro_2.png"
+category = "earbuds"
+supports_anc = false
+supports_transparency = false
+supports_adaptive_anc = false
+supports_in_ear_detection = true
+supports_low_latency = true
+supports_gestures = true
+supports_eq = true
+supports_advanced_eq = false
+supports_bass_enhance = true
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_ldac = true
+supports_multipoint = true
+supports_wind_noise = false
+supports_wearing_detection = true
+supports_easy_chat = false
+supports_auto_power_off = true
+supports_ldac_codec = true
+has_case_battery = true
+anc_modes = []
+
+[[device]]
+model = "D1403"
+bluetooth_name = "soundcore Space One Pro 2"
+display_name = "Soundcore Space One Pro 2"
+icon = "space_one_pro_2.png"
 category = "headphones"
 supports_anc = true
 supports_transparency = true
