@@ -77,9 +77,11 @@ Backend (Rust 100%) → Bluetooth → Soundcore CMF Protocol → Device
 ## 📦 Installation
 
 ### Windows
+
 Download the latest `.exe` installer from [Releases](https://github.com/Shankers8811/soundcontrol/releases).
 
 ### Linux
+
 ```bash
 # AppImage
 chmod +x soundcontrol-x86_64.AppImage
@@ -103,9 +105,58 @@ npm run tauri:build
 ```
 
 ### Requirements
+
 - Rust toolchain
 - Node.js 18+
 - Bluetooth enabled on your system
+
+## 🧠 EGM — Spec-Driven Development
+
+SoundControl uses the **Elephant-Goldfish Model (EGM)** for spec-driven development. All new features should follow this workflow:
+
+```text
+/egm-brainstorm  →  /egm-draft  →  /egm-review  →  /egm-resolve  →  implement  →  /egm-drift-report
+```
+
+### EGM Skills
+
+| Skill | Purpose |
+|-------|---------|
+| `egm-bootstrap` | Initialize EGM in the repository |
+| `egm-brainstorm` | Interactive ideation with parallel Goldfish review → `concepts_brief.md` |
+| `egm-draft` | Draft formal design document → `docs/designs/<feature>.md` |
+| `egm-review` | 5-stage Goldfish review (Zoom Out → Comprehension → Design Critic → Intermediate Zoom Out → Implementation Readiness) |
+| `egm-resolve` | Resolve review findings with agent |
+| `egm-review-loop` | Antagonistic review loop for critical sections |
+| `egm-drift-report` | Detect design-to-implementation drift |
+
+### EGM Goldfish Agents
+
+Each agent runs in a **fresh isolated context** (no conversation history):
+
+| Agent | Role |
+|-------|------|
+| `egm-design` | Hostile Design Critic — architecture, scalability, risks |
+| `egm-zoom-out` | Skeptical Architect — YAGNI, simplicity, reuse |
+| `egm-comprehension` | Comprehension Test — can a fresh reader understand? |
+| `egm-structural` | Structural Review — document organization and consistency |
+| `egm-style` | Style Review — plain English, no flattery |
+| `egm-implementation-readiness` | Can this actually be implemented? |
+| `egm-codebase-details` | Verify against actual codebase specifics |
+| `egm-inventive-catalyst` | Resolve contradictions, find transforms |
+| `egm-synthesizer` | Orchestrate parallel reviews, consolidate findings |
+
+### Directory Structure
+
+```
+.claude-plugin/     # EGM plugin manifest and metadata
+skills/             # EGM skill definitions
+agents/             # Goldfish agent personas
+docs/designs/       # Approved design documents
+AGENTS.md           # Agent guidelines
+```
+
+See [AGENTS.md](AGENTS.md) for full EGM workflow guidelines and [docs/designs/](docs/designs/) for existing design documents.
 
 ## 🤝 Contributing
 
@@ -128,9 +179,6 @@ See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - [OpenSCQ30](https://github.com/Oppzippy/OpenSCQ30) - Device protocol research
 - [Tauri](https://tauri.app/) - Rust desktop framework
 - [bluer](https://gitlab.bareos.com/bluer/bluer) - Linux Bluetooth library
+- [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model) - Spec-driven development framework
 
----
-
-**Soundcore/Anker devices only — no CMF/Nothing support.**
-
-Made with ❤️ by Shankers8811
+---\n\n**Soundcore/Anker devices only — no CMF/Nothing support.**\n\nMade with ❤️ by Shankers8811
