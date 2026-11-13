@@ -1,0 +1,30 @@
+{
+  "name": "soundcontrol-egm",
+  "displayName": "Elephant-Goldfish Model for SoundControl",
+  "description": "Spec-driven development with Goldfish reviewer agents for SoundControl - Anker/Soundcore desktop companion",
+  "version": "0.1.0",
+  "license": "MIT",
+  "author": "Shankers8811",
+  "skills": [
+    "egm-bootstrap",
+    "egm-brainstorm",
+    "egm-draft",
+    "egm-review",
+    "egm-resolve",
+    "egm-review-loop",
+    "egm-drift-report"
+  ],
+  "agents": [
+    "egm-design",
+    "egm-zoom-out",
+    "egm-comprehension",
+    "egm-structural",
+    "egm-style",
+    "egm-implementation-readiness",
+    "egm-codebase-details",
+    "egm-inventive-catalyst",
+    "egm-synthesizer"
+  ],
+  "repository": "https://github.com/Shankers8811/soundcontrol",
+  "homepage": "https://github.com/Shankers8811/soundcontrol#egm"
+}
