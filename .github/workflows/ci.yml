@@ -30,6 +30,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "tauri-build"
+
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version 2
 
