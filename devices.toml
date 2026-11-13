@@ -1,7 +1,198 @@
 [devices]
+# ============ LIBERTY SERIES (Flagship Earbuds) ============
+
 [[devices]]
-name = "Soundcore Life P2"
-model = "A3921"
+name = "Soundcore Liberty 5"
+model = "A3957"
+anc_modes = ["Off", "Normal", "ANC", "Adaptive", "Transparency"]
+supports_transparency = true
+supports_adaptive = true
+supports_wind_noise = true
+supports_game_mode = true
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = true
+supports_wearing_detection = true
+supports_easy_chat = true
+supports_auto_power_off = true
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_custom_gestures = true
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Liberty 5 Pro"
+model = "D1203"
+anc_modes = ["Off", "Normal", "ANC", "Adaptive", "Transparency"]
+supports_transparency = true
+supports_adaptive = true
+supports_wind_noise = true
+supports_game_mode = true
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = true
+supports_wearing_detection = true
+supports_easy_chat = true
+supports_auto_power_off = true
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_custom_gestures = true
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Liberty 5 Pro Max"
+model = "D1204"
+anc_modes = ["Off", "Normal", "ANC", "Adaptive", "Transparency"]
+supports_transparency = true
+supports_adaptive = true
+supports_wind_noise = true
+supports_game_mode = true
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = true
+supports_wearing_detection = true
+supports_easy_chat = true
+supports_auto_power_off = true
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_custom_gestures = true
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Liberty 4 Pro"
+model = "A3954"
+anc_modes = ["Off", "Normal", "ANC", "Adaptive", "Transparency"]
+supports_transparency = true
+supports_adaptive = true
+supports_wind_noise = true
+supports_game_mode = true
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = true
+supports_wearing_detection = true
+supports_easy_chat = true
+supports_auto_power_off = true
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_custom_gestures = true
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Liberty 4"
+model = "A3953"
+anc_modes = ["Off", "Normal", "ANC", "Adaptive", "Transparency"]
+supports_transparency = true
+supports_adaptive = true
+supports_wind_noise = true
+supports_game_mode = true
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = true
+supports_wearing_detection = true
+supports_easy_chat = true
+supports_auto_power_off = true
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_custom_gestures = true
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Liberty 4 NC"
+model = "A3947"
+anc_modes = ["Off", "Normal", "ANC", "Adaptive", "Transparency"]
+supports_transparency = true
+supports_adaptive = true
+supports_wind_noise = true
+supports_game_mode = true
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = true
+supports_wearing_detection = true
+supports_easy_chat = true
+supports_auto_power_off = true
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_custom_gestures = true
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Liberty 3 Pro"
+model = "A3952"
+anc_modes = ["Off", "Normal", "ANC", "Transparency"]
+supports_transparency = true
+supports_adaptive = true
+supports_wind_noise = true
+supports_game_mode = true
+supports_ldac = true
+supports_multipoint = false
+supports_bass_enhance = true
+supports_wearing_detection = true
+supports_easy_chat = true
+supports_auto_power_off = true
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_custom_gestures = true
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Liberty 2 Pro"
+model = "A3909"
+anc_modes = ["Off", "Normal", "ANC"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = true
+supports_multipoint = false
+supports_bass_enhance = true
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Liberty Air 2 Pro"
+model = "A3951"
+anc_modes = ["Off", "Normal", "ANC"]
+supports_transparency = true
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = true
+supports_multipoint = false
+supports_bass_enhance = true
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Liberty Air 2"
+model = "A3919"
 anc_modes = ["Off", "Normal"]
 supports_transparency = false
 supports_adaptive = false
@@ -21,8 +212,8 @@ eq_bands = 8
 rfcomm_channel = 15
 
 [[devices]]
-name = "Soundcore Life P2 Mini"
-model = "A3924"
+name = "Soundcore Liberty Neo 2"
+model = "A3919"
 anc_modes = ["Off", "Normal"]
 supports_transparency = false
 supports_adaptive = false
@@ -40,6 +231,29 @@ supports_custom_gestures = false
 battery_count = 3
 eq_bands = 8
 rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Liberty Buds"
+model = "D1200"
+anc_modes = ["Off", "Normal", "ANC"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = true
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+# ============ LIFE SERIES (Everyday Earbuds) ============
 
 [[devices]]
 name = "Soundcore Life P3"
@@ -147,71 +361,50 @@ eq_bands = 8
 rfcomm_channel = 15
 
 [[devices]]
-name = "Soundcore Liberty 3 Pro"
-model = "A3933"
-anc_modes = ["Off", "Normal", "ANC", "Transparency"]
-supports_transparency = true
-supports_adaptive = true
-supports_wind_noise = true
-supports_game_mode = true
-supports_ldac = true
+name = "Soundcore Life P2"
+model = "A3921"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
 supports_multipoint = false
-supports_bass_enhance = true
-supports_wearing_detection = true
-supports_easy_chat = true
-supports_auto_power_off = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
 supports_find_buds = true
-supports_ear_tip_test = true
-supports_custom_gestures = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
 battery_count = 3
 eq_bands = 8
 rfcomm_channel = 15
 
 [[devices]]
-name = "Soundcore Liberty 4"
-model = "A3947"
-anc_modes = ["Off", "Normal", "ANC", "Adaptive", "Transparency"]
-supports_transparency = true
-supports_adaptive = true
-supports_wind_noise = true
-supports_game_mode = true
+name = "Soundcore Life P2 Mini"
+model = "A3944"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
 supports_ldac = false
-supports_multipoint = true
-supports_bass_enhance = true
-supports_wearing_detection = true
-supports_easy_chat = true
-supports_auto_power_off = true
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
 supports_find_buds = true
-supports_ear_tip_test = true
-supports_custom_gestures = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
 battery_count = 3
 eq_bands = 8
 rfcomm_channel = 15
 
 [[devices]]
-name = "Soundcore Liberty 4 NC"
-model = "A3948"
-anc_modes = ["Off", "Normal", "ANC", "Adaptive", "Transparency"]
-supports_transparency = true
-supports_adaptive = true
-supports_wind_noise = true
-supports_game_mode = true
-supports_ldac = false
-supports_multipoint = true
-supports_bass_enhance = true
-supports_wearing_detection = true
-supports_easy_chat = true
-supports_auto_power_off = true
-supports_find_buds = true
-supports_ear_tip_test = true
-supports_custom_gestures = true
-battery_count = 3
-eq_bands = 8
-rfcomm_channel = 15
-
-[[devices]]
-name = "Soundcore Liberty Air 2"
-model = "A3919"
+name = "Soundcore Life P2i"
+model = "A3991"
 anc_modes = ["Off", "Normal"]
 supports_transparency = false
 supports_adaptive = false
@@ -273,8 +466,29 @@ eq_bands = 8
 rfcomm_channel = 15
 
 [[devices]]
-name = "Soundcore AeroFit"
-model = "A3861"
+name = "Soundcore Life Note 3"
+model = "A3933"
+anc_modes = ["Off", "Normal", "ANC"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Life Note 3S"
+model = "A3945"
 anc_modes = ["Off", "Normal"]
 supports_transparency = false
 supports_adaptive = false
@@ -294,8 +508,8 @@ eq_bands = 8
 rfcomm_channel = 15
 
 [[devices]]
-name = "Soundcore AeroFit Pro"
-model = "A3862"
+name = "Soundcore Life Dot 2"
+model = "A3931"
 anc_modes = ["Off", "Normal"]
 supports_transparency = false
 supports_adaptive = false
@@ -315,9 +529,9 @@ eq_bands = 8
 rfcomm_channel = 15
 
 [[devices]]
-name = "Soundcore V30i"
-model = "A3951"
-anc_modes = ["Off", "Normal"]
+name = "Soundcore Life Dot 2 NC"
+model = "A3931"
+anc_modes = ["Off", "Normal", "ANC"]
 supports_transparency = false
 supports_adaptive = false
 supports_wind_noise = false
@@ -336,7 +550,7 @@ eq_bands = 8
 rfcomm_channel = 15
 
 [[devices]]
-name = "Soundcore Sport X10"
+name = "Soundcore Life Dot 2S"
 model = "A3926"
 anc_modes = ["Off", "Normal"]
 supports_transparency = false
@@ -345,7 +559,7 @@ supports_wind_noise = false
 supports_game_mode = false
 supports_ldac = false
 supports_multipoint = false
-supports_bass_enhance = true
+supports_bass_enhance = false
 supports_wearing_detection = false
 supports_easy_chat = false
 supports_auto_power_off = false
@@ -357,17 +571,229 @@ eq_bands = 8
 rfcomm_channel = 15
 
 [[devices]]
-name = "Soundcore Sport X20"
-model = "A3927"
+name = "Soundcore Life Dot 2 XR"
+model = "A3931"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Life Q30"
+model = "A3028"
 anc_modes = ["Off", "Normal", "ANC"]
 supports_transparency = true
 supports_adaptive = false
 supports_wind_noise = false
-supports_game_mode = true
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Life Q35"
+model = "A3027"
+anc_modes = ["Off", "Normal", "ANC"]
+supports_transparency = true
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Life Q20+"
+model = "A3028"
+anc_modes = ["Off", "Normal", "ANC"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
 supports_ldac = false
 supports_multipoint = false
-supports_bass_enhance = true
+supports_bass_enhance = false
 supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Life Q20i"
+model = "A3004"
+anc_modes = ["Off", "Normal", "ANC"]
+supports_transparency = true
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Life Q10i"
+model = "A3004"
+anc_modes = ["Off", "Normal", "ANC"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+# ============ SPACE SERIES (Premium Headphones) ============
+
+[[devices]]
+name = "Soundcore Space Q45"
+model = "A3040"
+anc_modes = ["Off", "Normal", "ANC", "Adaptive"]
+supports_transparency = true
+supports_adaptive = true
+supports_wind_noise = true
+supports_game_mode = false
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Space One"
+model = "A3035"
+anc_modes = ["Off", "Normal", "ANC", "Adaptive"]
+supports_transparency = true
+supports_adaptive = true
+supports_wind_noise = true
+supports_game_mode = false
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Space One Pro"
+model = "A3062"
+anc_modes = ["Off", "Normal", "ANC", "Adaptive"]
+supports_transparency = true
+supports_adaptive = true
+supports_wind_noise = true
+supports_game_mode = false
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Space 2"
+model = "D1402"
+anc_modes = ["Off", "Normal", "ANC", "Adaptive"]
+supports_transparency = true
+supports_adaptive = true
+supports_wind_noise = true
+supports_game_mode = false
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Space A40"
+model = "A3936"
+anc_modes = ["Off", "Normal", "ANC", "Adaptive"]
+supports_transparency = true
+supports_adaptive = true
+supports_wind_noise = true
+supports_game_mode = true
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = true
+supports_wearing_detection = true
 supports_easy_chat = false
 supports_auto_power_off = true
 supports_find_buds = true
@@ -376,6 +802,29 @@ supports_custom_gestures = false
 battery_count = 3
 eq_bands = 8
 rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Space A40 NC"
+model = "A3940"
+anc_modes = ["Off", "Normal", "ANC", "Adaptive"]
+supports_transparency = true
+supports_adaptive = true
+supports_wind_noise = true
+supports_game_mode = true
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = true
+supports_wearing_detection = true
+supports_easy_chat = false
+supports_auto_power_off = true
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+# ============ P SERIES (Compact Earbuds) ============
 
 [[devices]]
 name = "Soundcore P20i"
@@ -399,8 +848,29 @@ eq_bands = 8
 rfcomm_channel = 15
 
 [[devices]]
+name = "Soundcore P25i"
+model = "A3949"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
 name = "Soundcore P30i"
-model = "A3942"
+model = "A3959"
 anc_modes = ["Off", "Normal", "ANC"]
 supports_transparency = true
 supports_adaptive = false
@@ -420,8 +890,29 @@ eq_bands = 8
 rfcomm_channel = 15
 
 [[devices]]
+name = "Soundcore P31i"
+model = "D1202"
+anc_modes = ["Off", "Normal", "ANC"]
+supports_transparency = true
+supports_adaptive = true
+supports_wind_noise = false
+supports_game_mode = true
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = true
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = true
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
 name = "Soundcore P40i"
-model = "A3945"
+model = "A3955"
 anc_modes = ["Off", "Normal", "ANC", "Adaptive"]
 supports_transparency = true
 supports_adaptive = true
@@ -441,8 +932,52 @@ eq_bands = 8
 rfcomm_channel = 15
 
 [[devices]]
+name = "Soundcore P41i"
+model = "A3937"
+anc_modes = ["Off", "Normal", "ANC", "Adaptive"]
+supports_transparency = true
+supports_adaptive = true
+supports_wind_noise = true
+supports_game_mode = true
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = true
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = true
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore P42i"
+model = "D1205"
+anc_modes = ["Off", "Normal", "ANC", "Adaptive"]
+supports_transparency = true
+supports_adaptive = true
+supports_wind_noise = true
+supports_game_mode = true
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = true
+supports_wearing_detection = true
+supports_easy_chat = true
+supports_auto_power_off = true
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_custom_gestures = true
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+# ============ R SERIES (Budget Earbuds) ============
+
+[[devices]]
 name = "Soundcore R50i"
-model = "A3911"
+model = "A3949"
 anc_modes = ["Off", "Normal"]
 supports_transparency = false
 supports_adaptive = false
@@ -463,7 +998,28 @@ rfcomm_channel = 15
 
 [[devices]]
 name = "Soundcore R50i NC"
-model = "A3912"
+model = "A3959"
+anc_modes = ["Off", "Normal", "ANC"]
+supports_transparency = true
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore R60i NC"
+model = "D1202"
 anc_modes = ["Off", "Normal", "ANC"]
 supports_transparency = true
 supports_adaptive = false
@@ -566,9 +1122,55 @@ battery_count = 3
 eq_bands = 8
 rfcomm_channel = 15
 
+# ============ SPORT SERIES (Workout Earbuds) ============
+
 [[devices]]
-name = "Soundcore Vortex"
-model = "A3938"
+name = "Soundcore Sport X10"
+model = "A3926"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = true
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Sport X20"
+model = "A3927"
+anc_modes = ["Off", "Normal", "ANC"]
+supports_transparency = true
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = true
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = true
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = true
+supports_find_buds = true
+supports_ear_tip_test = true
+supports_custom_gestures = true
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+# ============ AEROFIT SERIES (Open-Ear) ============
+
+[[devices]]
+name = "Soundcore AeroFit"
+model = "A3872"
 anc_modes = ["Off", "Normal"]
 supports_transparency = false
 supports_adaptive = false
@@ -588,8 +1190,306 @@ eq_bands = 8
 rfcomm_channel = 15
 
 [[devices]]
+name = "Soundcore AeroFit Pro"
+model = "A3871"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore AeroFit 2"
+model = "A3874"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore AeroFit 2 Pro"
+model = "A3874"
+anc_modes = ["Off", "Normal", "ANC"]
+supports_transparency = true
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore AeroFit 2 AI Assistant"
+model = "A3874"
+anc_modes = ["Off", "Normal", "ANC"]
+supports_transparency = true
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = true
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore AeroClip"
+model = "A3388"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+# ============ AEROCLIP / C SERIES (Clip-On) ============
+
+[[devices]]
+name = "Soundcore C30i"
+model = "A3330"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore C40i"
+model = "A3331"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore C50i"
+model = "D1101"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore V20i"
+model = "A3876"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore V30i"
+model = "A3951"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore V40i"
+model = "A3951"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore A30i"
+model = "A3951"
+anc_modes = ["Off", "Normal", "ANC"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore A20i"
+model = "A3948"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore A25i"
+model = "A3948"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = true
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 3
+eq_bands = 8
+rfcomm_channel = 15
+
+# ============ SLEEP SERIES (Sleep Earbuds) ============
+
+[[devices]]
 name = "Soundcore Sleep A10"
-model = "A3916"
+model = "A6610"
 anc_modes = ["Off", "Normal"]
 supports_transparency = false
 supports_adaptive = false
@@ -610,7 +1510,7 @@ rfcomm_channel = 15
 
 [[devices]]
 name = "Soundcore Sleep A20"
-model = "A3917"
+model = "A6611"
 anc_modes = ["Off", "Normal", "ANC"]
 supports_transparency = false
 supports_adaptive = false
@@ -630,51 +1530,9 @@ eq_bands = 8
 rfcomm_channel = 15
 
 [[devices]]
-name = "Soundcore Space A40"
-model = "A3939"
-anc_modes = ["Off", "Normal", "ANC", "Adaptive"]
-supports_transparency = true
-supports_adaptive = true
-supports_wind_noise = true
-supports_game_mode = true
-supports_ldac = false
-supports_multipoint = true
-supports_bass_enhance = true
-supports_wearing_detection = true
-supports_easy_chat = false
-supports_auto_power_off = true
-supports_find_buds = true
-supports_ear_tip_test = false
-supports_custom_gestures = false
-battery_count = 3
-eq_bands = 8
-rfcomm_channel = 15
-
-[[devices]]
-name = "Soundcore Space A40 NC"
-model = "A3940"
-anc_modes = ["Off", "Normal", "ANC", "Adaptive"]
-supports_transparency = true
-supports_adaptive = true
-supports_wind_noise = true
-supports_game_mode = true
-supports_ldac = false
-supports_multipoint = true
-supports_bass_enhance = true
-supports_wearing_detection = true
-supports_easy_chat = false
-supports_auto_power_off = true
-supports_find_buds = true
-supports_ear_tip_test = false
-supports_custom_gestures = false
-battery_count = 3
-eq_bands = 8
-rfcomm_channel = 15
-
-[[devices]]
-name = "Soundcore Dot 2"
-model = "A3925"
-anc_modes = ["Off", "Normal"]
+name = "Soundcore Sleep A30"
+model = "D1301"
+anc_modes = ["Off", "Normal", "ANC"]
 supports_transparency = false
 supports_adaptive = false
 supports_wind_noise = false
@@ -692,14 +1550,16 @@ battery_count = 3
 eq_bands = 8
 rfcomm_channel = 15
 
+# ============ VR / GAMING ============
+
 [[devices]]
-name = "Soundcore Dot R"
-model = "A3928"
+name = "Soundcore VR P10"
+model = "A3919"
 anc_modes = ["Off", "Normal"]
 supports_transparency = false
 supports_adaptive = false
 supports_wind_noise = false
-supports_game_mode = false
+supports_game_mode = true
 supports_ldac = false
 supports_multipoint = false
 supports_bass_enhance = false
@@ -712,17 +1572,19 @@ supports_custom_gestures = false
 battery_count = 3
 eq_bands = 8
 rfcomm_channel = 15
+
+# ============ SPEAKERS ============
 
 [[devices]]
 name = "Soundcore Motion+"
-model = "A3101"
+model = "A3116"
 anc_modes = ["Off", "Normal"]
 supports_transparency = false
 supports_adaptive = false
 supports_wind_noise = false
 supports_game_mode = false
 supports_ldac = true
-supports_multipoint = false
+supports_multipoint = true
 supports_bass_enhance = false
 supports_wearing_detection = false
 supports_easy_chat = false
@@ -736,7 +1598,133 @@ rfcomm_channel = 15
 
 [[devices]]
 name = "Soundcore Motion Boom"
-model = "A3102"
+model = "A3118"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Motion Boom Plus"
+model = "A3134"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Motion Boom 2"
+model = "A3138"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Motion Boom 2 Plus"
+model = "A3134"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Motion Boom 2 SE"
+model = "A3138"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Motion Boom Go 3i"
+model = "D5103"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Motion Boom 3i"
+model = "D5100"
 anc_modes = ["Off", "Normal"]
 supports_transparency = false
 supports_adaptive = false
@@ -757,7 +1745,7 @@ rfcomm_channel = 15
 
 [[devices]]
 name = "Soundcore Motion X600"
-model = "A3103"
+model = "A3130"
 anc_modes = ["Off", "Normal"]
 supports_transparency = false
 supports_adaptive = false
@@ -778,7 +1766,7 @@ rfcomm_channel = 15
 
 [[devices]]
 name = "Soundcore Motion X500"
-model = "A3104"
+model = "A3131"
 anc_modes = ["Off", "Normal"]
 supports_transparency = false
 supports_adaptive = false
@@ -799,7 +1787,532 @@ rfcomm_channel = 15
 
 [[devices]]
 name = "Soundcore Motion X300"
-model = "A3105"
+model = "A3131"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Motion 300"
+model = "A3135"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Motion 100"
+model = "A3133"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Flare"
+model = "A3163"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Flare 2"
+model = "A3163"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Flare S+"
+model = "A3163"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Flare Mini"
+model = "A3163"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Soundcore 3"
+model = "A3117"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Soundcore 2"
+model = "A3101"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Mini 3"
+model = "A3119"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Mini 3 Pro"
+model = "A3127"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Select 2"
+model = "A3125"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Select 4 Go"
+model = "A31X1"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Select Pro"
+model = "A3126"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Glow"
+model = "A3166"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Glow Mini"
+model = "A3136"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Rave"
+model = "A3391"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Rave+"
+model = "A3391"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Rave Mini"
+model = "A3390"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Rave Neo"
+model = "A3395"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Rave Neo 2"
+model = "A33A1"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = true
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Rave 3S"
+model = "A3399"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Wakey"
+model = "A3391"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Model Zero"
+model = "A3391"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Model Zero+"
+model = "A3391"
+anc_modes = ["Off", "Normal"]
+supports_transparency = false
+supports_adaptive = false
+supports_wind_noise = false
+supports_game_mode = false
+supports_ldac = false
+supports_multipoint = false
+supports_bass_enhance = false
+supports_wearing_detection = false
+supports_easy_chat = false
+supports_auto_power_off = false
+supports_find_buds = false
+supports_ear_tip_test = false
+supports_custom_gestures = false
+battery_count = 1
+eq_bands = 8
+rfcomm_channel = 15
+
+[[devices]]
+name = "Soundcore Infini Pro"
+model = "A3391"
 anc_modes = ["Off", "Normal"]
 supports_transparency = false
 supports_adaptive = false
