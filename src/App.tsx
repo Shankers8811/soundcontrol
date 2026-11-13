@@ -12,6 +12,7 @@ import { HearIDPage } from './pages/HearID';
 import { RelaxingSoundsPage } from './pages/RelaxingSounds';
 import { TouchControlsPage } from './pages/TouchControls';
 import { FirmwareUpdatePage } from './pages/FirmwareUpdate';
+import { SpeakerLightingPage } from './pages/SpeakerLighting';
 import { useDevicesStore } from './stores/devices';
 import { useSettingsStore } from './stores/settings';
 import { useUIStore } from './stores/ui';
@@ -66,6 +67,7 @@ function App() {
           <Route path="/relaxing-sounds" element={<RelaxingSoundsPage />} />
           <Route path="/touch-controls" element={<TouchControlsPage />} />
           <Route path="/firmware" element={<FirmwareUpdatePage />} />
+          <Route path="/speaker-lighting" element={<SpeakerLightingPage />} />
         </Routes>
       </AppShell>
     </BrowserRouter>
