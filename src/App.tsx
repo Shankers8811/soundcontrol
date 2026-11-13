@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { invoke } from '@tauri-apps/api/core';
 import { AppShell } from './components/AppShell';
 import { DevicesPage } from './pages/Devices';
@@ -8,13 +8,16 @@ import { EqualizerPage } from './pages/Equalizer';
 import { BatteryPage } from './pages/Battery';
 import { DiagnosticsPage } from './pages/Diagnostics';
 import { SettingsPage } from './pages/Settings';
+import { HearIDPage } from './pages/HearID';
+import { RelaxingSoundsPage } from './pages/RelaxingSounds';
+import { TouchControlsPage } from './pages/TouchControls';
+import { FirmwareUpdatePage } from './pages/FirmwareUpdate';
 import { useDevicesStore } from './stores/devices';
 import { useSettingsStore } from './stores/settings';
 import { useUIStore } from './stores/ui';
 
 function App() {
   const [initialized, setInitialized] = useState(false);
-  const navigate = useNavigate();
   const { loadDevices, devices } = useDevicesStore();
   const { loadSettings } = useSettingsStore();
   const { showToast } = useUIStore();
@@ -59,6 +62,10 @@ function App() {
           <Route path="/battery" element={<BatteryPage />} />
           <Route path="/diagnostics" element={<DiagnosticsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/hearid" element={<HearIDPage />} />
+          <Route path="/relaxing-sounds" element={<RelaxingSoundsPage />} />
+          <Route path="/touch-controls" element={<TouchControlsPage />} />
+          <Route path="/firmware" element={<FirmwareUpdatePage />} />
         </Routes>
       </AppShell>
     </BrowserRouter>

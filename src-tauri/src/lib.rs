@@ -24,14 +24,3 @@ impl AppState {
         }
     }
 }
-
-pub fn run_app() {
-    tauri::Builder::default()
-        .manage(AppState::new(
-            db::Database::new().expect("Failed to init database"),
-            bluetooth::BluetoothManager::new(),
-            protocol::ProtocolHandler::new(),
-        ))
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
-}

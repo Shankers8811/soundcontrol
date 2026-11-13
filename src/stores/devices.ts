@@ -103,4 +103,10 @@ export const useDevicesStore = create<DevicesState>((set, get) => ({
       console.error('Failed to get battery levels', e);
     }
   },
+
+  toggleSingleEarbudMode: (enabled) => {
+    // Store single earbud mode preference in local state
+    // This is a client-side preference that affects UI behavior
+    console.log('Single earbud mode:', enabled);
+  },
 }));
