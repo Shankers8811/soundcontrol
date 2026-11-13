@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useUIStore } from '../stores/ui';
-import { Devices, Activity, BarChart3, Battery, Settings, LayoutDashboard } from 'lucide-react';
+import { Devices, Activity, BarChart3, Battery, Settings, LayoutDashboard, Ear, Moon, Settings2, ShieldAlert } from 'lucide-react';
 
 const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Devices' },
@@ -10,6 +10,10 @@ const navItems = [
   { path: '/battery', icon: Battery, label: 'Battery' },
   { path: '/diagnostics', icon: Devices, label: 'Diagnostics' },
   { path: '/settings', icon: Settings, label: 'Settings' },
+  { path: '/hearid', icon: Ear, label: 'HearID' },
+  { path: '/relaxing-sounds', icon: Moon, label: 'Relaxing Sounds' },
+  { path: '/touch-controls', icon: Settings2, label: 'Touch Controls' },
+  { path: '/firmware', icon: ShieldAlert, label: 'Firmware' },
 ];
 
 export const Sidebar: React.FC = () => {
