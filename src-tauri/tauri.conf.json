@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.shankers8811.soundcontrol",
   "build": {
-    "frontendDist": "../src-tauri/src/frontend/dist",
+    "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
     "devCommand": "npm run dev",
     "beforeDevCommand": "npm run dev",
