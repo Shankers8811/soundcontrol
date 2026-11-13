@@ -1,0 +1,97 @@
+{
+  "$schema": "https://apps.tauri.dev/schema.json",
+  "productName": "SoundControl",
+  "version": "0.1.0",
+  "identifier": "com.shankers8811.soundcontrol",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "devCommand": "npm run dev",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "useMultipleTargets": true
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "SoundControl",
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "skipTaskbar": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "appimage", "deb"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128x128.png",
+      "icons/icns.icns",
+      "icons/ico.ico"
+    ],
+    "longDescription": "Native desktop companion for Anker/Soundcore devices. ANC, EQ, battery monitoring, diagnostics.",
+    "shortDescription": "SoundControl - Anker/Soundcore Desktop Companion",
+    "copyright": "Copyright (c) 2026 Shankers8811",
+    "category": "Utility",
+    "externalBin": [],
+    "resources": [],
+    "linux": {
+      "deb": {
+        "depends": ["libgtk-3-0", "libbluetooth3", "libdbus-1-3"]
+      },
+      "appimage": {
+        "category": "Utility"
+      }
+    },
+    "macos": {
+      "frameworks": []
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com",
+      "nsis": {
+        "displayLanguageSelector": true,
+        "menuCategory": true,
+        "switchToInstallerLanguage": true,
+        "installMode": "perUser",
+        "createDesktopShortcut": true,
+        "createStartMenuShortcut": true,
+        "shortcutName": "SoundControl",
+        "artifactName": "soundcontrol-setup-${version}.exe",
+        "language": "2057",
+        "include": null,
+        "preScript": null,
+        "postScript": null,
+        "uninstall": null,
+        "customConfig": null
+      },
+      "webviewInstallMode": "fixedRuntime",
+      "webviewInstallLanguage": "en-US",
+      "webviewInstallArchitecture": "x64"
+    }
+  },
+  "plugins": {
+    "log": {
+      "level": "debug",
+      "rotation": {
+        "maxSize": 1048576,
+        "maxFiles": 5
+      }
+    },
+    "store": {
+      "defaultFilename": "settings.bin"
+    }
+  }
+}

@@ -1,0 +1,94 @@
+use super::models::*;
+use super::BluetoothManager;
+use crate::protocol::{DeviceInfo, DeviceProfile};
+use bluer::Adapter;
+use std::collections::HashMap;
+
+pub struct LinuxBluetooth {
+    adapter: Option<bluer::Adapter>,
+    device_cache: std::sync::Mutex<HashMap<String, DeviceProfile>>,
+}
+
+impl LinuxBluetooth {
+    pub fn new() -> Self {
+        Self {
+            adapter: None,
+            device_cache: std::sync::Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub async fn scan(&self) -> Result<Vec<KnownDevice>, String> {
+        let session = bluer::Session::new()
+            .map_err(|e| format!("Failed to create BlueZ session: {}", e))?;
+        let adapter = session.default_adapter()
+            .map_err(|e| format!("No Bluetooth adapter: {}", e))?;
+        adapter.set_powered(true)
+            .map_err(|e| format!("Failed to power on adapter: {}", e))?;
+        adapter.start_discovery()
+            .map_err(|e| format!("Failed to start discovery: {}", e))?;
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        adapter.stop_discovery()
+            .map_err(|e| format!("Failed to stop discovery: {}", e))?;
+        let devices = adapter.devices()
+            .map_err(|e| format!("Failed to get devices: {}", e))?;
+        let mut result = Vec::new();
+        for device in devices {
+            if let Ok(name) = device.name() {
+                if let Some(name_str) = name {
+                    if name_str.to_lowercase().contains("soundcore")
+                        || name_str.to_lowercase().contains("anker")
+                        || name_str.to_lowercase().contains("life")
+                        || name_str.to_lowercase().contains("liberty")
+                        || name_str.to_lowercase().contains("dot")
+                        || name_str.to_lowercase().contains("vortex")
+                    {
+                        let address = device.address().to_string();
+                        result.push(KnownDevice {
+                            address: address.clone(),
+                            name: name_str,
+                            profile: None,
+                            connected: device.connected().unwrap_or(false),
+                        });
+                    }
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    pub async fn connect(&self, address: &str) -> Result<(), String> {
+        let session = bluer::Session::new()
+            .map_err(|e| format!("Failed to create BlueZ session: {}", e))?;
+        let adapter = session.default_adapter()
+            .map_err(|e| format!("No Bluetooth adapter: {}", e))?;
+        let device = adapter.device(address)
+            .map_err(|e| format!("Device not found: {}", e))?;
+        device.connect()
+            .map_err(|e| format!("Failed to connect: {}", e))?;
+        Ok(())
+    }
+
+    pub async fn disconnect(&self, address: &str) -> Result<(), String> {
+        let session = bluer::Session::new()
+            .map_err(|e| format!("Failed to create BlueZ session: {}", e))?;
+        let adapter = session.default_adapter()
+            .map_err(|e| format!("No Bluetooth adapter: {}", e))?;
+        let device = adapter.device(address)
+            .map_err(|e| format!("Device not found: {}", e))?;
+        device.disconnect()
+            .map_err(|e| format!("Failed to disconnect: {}", e))?;
+        Ok(())
+    }
+
+    pub async fn get_state(&self) -> Result<String, String> {
+        let session = bluer::Session::new()
+            .map_err(|e| format!("Failed to create BlueZ session: {}", e))?;
+        let adapter = session.default_adapter()
+            .map_err(|e| format!("No Bluetooth adapter: {}", e))?;
+        if adapter.powered().unwrap_or(false) {
+            Ok("powered_on".to_string())
+        } else {
+            Ok("powered_off".to_string())
+        }
+    }
+}
