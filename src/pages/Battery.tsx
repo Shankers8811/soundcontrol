@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useDevicesStore } from '../stores/devices';
 import { useUIStore } from '../stores/ui';
 import { Card } from '../components/Card';
+import { Button } from '../components/Button';
 import { BatteryRing } from '../components/BatteryRing';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
-import { Battery, Ear, EarOff, RefreshCw, Plug, Zap } from 'lucide-react';
+import { Battery, Ear, RefreshCw, Zap } from 'lucide-react';
 import { getBatteryLevels } from '../api/tauri';
 import type { BatteryLevel } from '../types';
 
@@ -77,15 +78,15 @@ export const BatteryPage: React.FC = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
         {[
-          { label: 'Left Earbud', value: battery?.left, charging: battery?.left_charging, icon: <Ear className="w-6 h-6" /> },
-          { label: 'Right Earbud', value: battery?.right, charging: battery?.right_charging, icon: <Ear className="w-6 h-6" /> },
-          { label: 'Charging Case', value: battery?.case, charging: battery?.case_charging, icon: <Zap className="w-6 h-6" /> },
+          { label: 'Left Earbud', value: battery?.left ?? null, charging: battery?.left_charging ?? false, icon: <Ear className="w-6 h-6" /> },
+          { label: 'Right Earbud', value: battery?.right ?? null, charging: battery?.right_charging ?? false, icon: <Ear className="w-6 h-6" /> },
+          { label: 'Charging Case', value: battery?.case ?? null, charging: battery?.case_charging ?? false, icon: <Zap className="w-6 h-6" /> },
         ].map((item, index) => (
           <Card key={index} padding="md">
             <BatteryRing
               level={item.value}
               label={item.label}
-              charging={item.charging ?? false}
+              charging={item.charging}
               size="lg"
             />
           </Card>
