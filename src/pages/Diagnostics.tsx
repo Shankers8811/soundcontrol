@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useUIStore } from '../stores/ui';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
-import { Download, RefreshCw, ShieldAlert, Terminal, FileText } from 'lucide-react';
+import { Download, RefreshCw, ShieldAlert, Terminal } from 'lucide-react';
 import { getFrameLog, exportDiagnostics, checkFirmwareUpdate } from '../api/tauri';
 import type { FrameLogEntry } from '../types';
 
