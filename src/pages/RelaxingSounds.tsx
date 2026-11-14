@@ -4,12 +4,12 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
 import { useDevicesStore } from '../stores/devices';
-import { Moon, Wind, Droplets, Flame, Forest, Music2, RefreshCw, Volume2 } from 'lucide-react';
+import { Moon, Wind, Droplets, Flame, TreePine, Music2, RefreshCw, Volume2 } from 'lucide-react';
 
 const sounds = [
   { id: 'rain', name: 'Rain', icon: Droplets, description: 'Gentle rain for relaxation and sleep' },
   { id: 'ocean', name: 'Ocean Waves', icon: Wind, description: 'Calm ocean waves for meditation' },
-  { id: 'forest', name: 'Forest', icon: Forest, description: 'Birds and rustling leaves in the woods' },
+  { id: 'forest', name: 'Forest', icon: TreePine, description: 'Birds and rustling leaves in the woods' },
   { id: 'fireplace', name: 'Fireplace', icon: Flame, description: 'Cozy fireplace crackling sounds' },
   { id: 'white-noise', name: 'White Noise', icon: Music2, description: 'Masking noise for focus and sleep' },
   { id: 'lullaby', name: 'Lullaby', icon: RefreshCw, description: 'Soothing lullaby melodies' },
