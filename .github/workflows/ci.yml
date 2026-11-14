@@ -36,7 +36,7 @@ jobs:
           shared-key: "tauri-build"
 
       - name: Install Tauri CLI
-        run: cargo install tauri-cli --version 2
+        run: cargo install tauri-cli --version 2.0.0
 
       - name: Install Node.js
         uses: actions/setup-node@v4
@@ -67,7 +67,7 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}
           path: |
-            src-tauri/target/release/bundle/**
+            src-tauri/target/release/bundle/**/
           retention-days: 30
 
   release:
