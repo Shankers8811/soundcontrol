@@ -25,7 +25,12 @@ export const SpeakerLightingPage: React.FC = () => {
 
   useEffect(() => {
     if (connectedDevice?.address) {
-      getDeviceInfo(connectedDevice.address).then(() => {}).catch(() => {});
+      getDeviceInfo(connectedDevice.address)
+        .then(() => {})
+        .catch((e) => {
+          console.error('Failed to load device info', e);
+          showToast('Failed to load device info', 'error');
+        });
     }
   }, [connectedDevice]);
 
