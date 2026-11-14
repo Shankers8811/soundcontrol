@@ -4,7 +4,7 @@ import { useUIStore } from '../stores/ui';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { ToggleSwitch } from '../components/ToggleSwitch';
-import { Sun, Moon, Bell, Globe, Keyboard, RefreshCw, ShieldAlert, AlertTriangle } from 'lucide-react';
+import { Sun, Moon, Bell, Globe, RefreshCw, ShieldAlert, AlertTriangle } from 'lucide-react';
 import { getHotkeys, registerHotkey } from '../api/tauri';
 
 export const SettingsPage: React.FC = () => {
