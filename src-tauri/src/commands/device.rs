@@ -65,113 +65,179 @@ pub fn get_device_info(state: State<'_, AppState>, address: String) -> Result<se
 
 #[command]
 pub fn set_anc_mode(state: State<'_, AppState>, address: String, mode: String) -> Result<(), String> {
+    if mode.is_empty() {
+        return Err("ANC mode cannot be empty".to_string());
+    }
     let protocol = &state.protocol;
     let bluetooth = &state.bluetooth;
-    
-    // Check if device supports ANC
-    // The device info would have been loaded earlier; we check via the protocol
+
     let anc_cmd = protocol.encode_frame(0x0101, 0xF0, &[mode.as_bytes()[0]]);
-    
-    // Send via Bluetooth if connected
-    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}", e))?;
-    // In a real implementation, we'd send the frame via the Bluetooth connection
-    let _ = bt;
-    
-    // Log the frame
+
+    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}\", e))?;
+    bt.send_frame(&anc_cmd).map_err(|e| e.to_string())?;
+
     let db = &state.db;
-    let _ = db.log_frame("out", &anc_cmd);
-    
+    db.log_frame("out", &anc_cmd)?;
+
     Ok(())
 }
 
 #[command]
 pub fn set_transparency(state: State<'_, AppState>, address: String, enabled: bool) -> Result<(), String> {
     let protocol = &state.protocol;
-    let _ = protocol.encode_frame(0x0106, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let frame = protocol.encode_frame(0x0106, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let bluetooth = &state.bluetooth;
+    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}", e))?;
+    bt.send_frame(&frame).map_err(|e| e.to_string())?;
+    let db = &state.db;
+    db.log_frame("out", &frame)?;
     Ok(())
 }
 
 #[command]
 pub fn set_adaptive_noise(state: State<'_, AppState>, address: String, enabled: bool) -> Result<(), String> {
     let protocol = &state.protocol;
-    let _ = protocol.encode_frame(0x0107, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let frame = protocol.encode_frame(0x0107, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let bluetooth = &state.bluetooth;
+    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}", e))?;
+    bt.send_frame(&frame).map_err(|e| e.to_string())?;
+    let db = &state.db;
+    db.log_frame("out", &frame)?;
     Ok(())
 }
 
 #[command]
 pub fn set_wind_noise(state: State<'_, AppState>, address: String, enabled: bool) -> Result<(), String> {
     let protocol = &state.protocol;
-    let _ = protocol.encode_frame(0x0108, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let frame = protocol.encode_frame(0x0108, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let bluetooth = &state.bluetooth;
+    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}", e))?;
+    bt.send_frame(&frame).map_err(|e| e.to_string())?;
+    let db = &state.db;
+    db.log_frame("out", &frame)?;
     Ok(())
 }
 
 #[command]
 pub fn set_game_mode(state: State<'_, AppState>, address: String, enabled: bool) -> Result<(), String> {
     let protocol = &state.protocol;
-    let _ = protocol.encode_frame(0x0103, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let frame = protocol.encode_frame(0x0103, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let bluetooth = &state.bluetooth;
+    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}", e))?;
+    bt.send_frame(&frame).map_err(|e| e.to_string())?;
+    let db = &state.db;
+    db.log_frame("out", &frame)?;
     Ok(())
 }
 
 #[command]
 pub fn set_ldac(state: State<'_, AppState>, address: String, enabled: bool) -> Result<(), String> {
     let protocol = &state.protocol;
-    let _ = protocol.encode_frame(0x0104, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let frame = protocol.encode_frame(0x0104, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let bluetooth = &state.bluetooth;
+    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}", e))?;
+    bt.send_frame(&frame).map_err(|e| e.to_string())?;
+    let db = &state.db;
+    db.log_frame("out", &frame)?;
     Ok(())
 }
 
 #[command]
 pub fn set_multipoint(state: State<'_, AppState>, address: String, enabled: bool) -> Result<(), String> {
     let protocol = &state.protocol;
-    let _ = protocol.encode_frame(0x0105, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let frame = protocol.encode_frame(0x0105, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let bluetooth = &state.bluetooth;
+    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}", e))?;
+    bt.send_frame(&frame).map_err(|e| e.to_string())?;
+    let db = &state.db;
+    db.log_frame("out", &frame)?;
     Ok(())
 }
 
 #[command]
 pub fn set_bass_enhance(state: State<'_, AppState>, address: String, enabled: bool) -> Result<(), String> {
     let protocol = &state.protocol;
-    let _ = protocol.encode_frame(0x0109, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let frame = protocol.encode_frame(0x0109, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let bluetooth = &state.bluetooth;
+    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}", e))?;
+    bt.send_frame(&frame).map_err(|e| e.to_string())?;
+    let db = &state.db;
+    db.log_frame("out", &frame)?;
     Ok(())
 }
 
 #[command]
 pub fn set_wearing_detection(state: State<'_, AppState>, address: String, enabled: bool) -> Result<(), String> {
     let protocol = &state.protocol;
-    let _ = protocol.encode_frame(0x010A, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let frame = protocol.encode_frame(0x010A, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let bluetooth = &state.bluetooth;
+    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}", e))?;
+    bt.send_frame(&frame).map_err(|e| e.to_string())?;
+    let db = &state.db;
+    db.log_frame("out", &frame)?;
     Ok(())
 }
 
 #[command]
 pub fn set_easy_chat(state: State<'_, AppState>, address: String, enabled: bool) -> Result<(), String> {
     let protocol = &state.protocol;
-    let _ = protocol.encode_frame(0x010B, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let frame = protocol.encode_frame(0x010B, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let bluetooth = &state.bluetooth;
+    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}", e))?;
+    bt.send_frame(&frame).map_err(|e| e.to_string())?;
+    let db = &state.db;
+    db.log_frame("out", &frame)?;
     Ok(())
 }
 
 #[command]
 pub fn set_auto_power_off(state: State<'_, AppState>, address: String, enabled: bool) -> Result<(), String> {
     let protocol = &state.protocol;
-    let _ = protocol.encode_frame(0x010C, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let frame = protocol.encode_frame(0x010C, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let bluetooth = &state.bluetooth;
+    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}", e))?;
+    bt.send_frame(&frame).map_err(|e| e.to_string())?;
+    let db = &state.db;
+    db.log_frame("out", &frame)?;
     Ok(())
 }
 
 #[command]
 pub fn set_find_buds(state: State<'_, AppState>, address: String, enabled: bool) -> Result<(), String> {
     let protocol = &state.protocol;
-    let _ = protocol.encode_frame(0x010D, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let frame = protocol.encode_frame(0x010D, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let bluetooth = &state.bluetooth;
+    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}", e))?;
+    bt.send_frame(&frame).map_err(|e| e.to_string())?;
+    let db = &state.db;
+    db.log_frame("out", &frame)?;
     Ok(())
 }
 
 #[command]
 pub fn set_ear_tip_test(state: State<'_, AppState>, address: String, enabled: bool) -> Result<(), String> {
     let protocol = &state.protocol;
-    let _ = protocol.encode_frame(0x010E, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let frame = protocol.encode_frame(0x010E, 0xF0, &[if enabled { 0x01 } else { 0x00 }]);
+    let bluetooth = &state.bluetooth;
+    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}", e))?;
+    bt.send_frame(&frame).map_err(|e| e.to_string())?;
+    let db = &state.db;
+    db.log_frame("out", &frame)?;
     Ok(())
 }
 
 #[command]
 pub fn set_gestures(state: State<'_, AppState>, address: String, left_gesture: String, right_gesture: String) -> Result<(), String> {
+    if left_gesture.is_empty() || right_gesture.is_empty() {
+        return Err("Gesture cannot be empty".to_string());
+    }
     let protocol = &state.protocol;
-    let _ = protocol.encode_frame(0x010F, 0xF0, &[0x01, left_gesture.as_bytes()[0], right_gesture.as_bytes()[0]]);
+    let frame = protocol.encode_frame(0x010F, 0xF0, &[0x01, left_gesture.as_bytes()[0], right_gesture.as_bytes()[0]]);
+    let bluetooth = &state.bluetooth;
+    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}", e))?;
+    bt.send_frame(&frame).map_err(|e| e.to_string())?;
+    let db = &state.db;
+    db.log_frame("out", &frame)?;
     Ok(())
 }
 
@@ -180,13 +246,15 @@ pub fn get_battery_levels(state: State<'_, AppState>, address: String) -> Result
     let db = &state.db;
     let protocol = &state.protocol;
     let battery_cmd = protocol.get_battery_cmd();
-    let _ = db.log_frame("out", &battery_cmd);
-    
-    // Check device state for single earbud mode
+    db.log_frame("out", &battery_cmd)?;
+
+    let bluetooth = &state.bluetooth;
+    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}", e))?;
+    bt.send_frame(&battery_cmd).map_err(|e| e.to_string())?;
+
     let device_state = db.get_device_state(&address).unwrap_or_default();
     let single_earbud_mode = device_state.as_deref() == Some("single_earbud");
-    
-    // Return mock structure - in real app this would come from Bluetooth response
+
     Ok(serde_json::json!({
         "address": address,
         "left": null,
