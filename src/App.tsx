@@ -54,21 +54,20 @@ function App() {
 
   return (
     <BrowserRouter>
-      <AppShell>
-        <Routes>
-          <Route path="/" element={<DevicesPage />} />
-          <Route path="/noise-control" element={<NoiseControlPage />} />
-          <Route path="/equalizer" element={<EqualizerPage />} />
-          <Route path="/battery" element={<BatteryPage />} />
-          <Route path="/diagnostics" element={<DiagnosticsPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/hearid" element={<HearIDPage />} />
-          <Route path="/relaxing-sounds" element={<RelaxingSoundsPage />} />
-          <Route path="/touch-controls" element={<TouchControlsPage />} />
-          <Route path="/firmware" element={<FirmwareUpdatePage />} />
-          <Route path="/speaker-lighting" element={<SpeakerLightingPage />} />
-        </Routes>
-      </AppShell>
+      <AppShell />
+      <Routes>
+        <Route path="/" element={<DevicesPage />} />
+        <Route path="/noise-control" element={<NoiseControlPage />} />
+        <Route path="/equalizer" element={<EqualizerPage />} />
+        <Route path="/battery" element={<BatteryPage />} />
+        <Route path="/diagnostics" element={<DiagnosticsPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/hearid" element={<HearIDPage />} />
+        <Route path="/relaxing-sounds" element={<RelaxingSoundsPage />} />
+        <Route path="/touch-controls" element={<TouchControlsPage />} />
+        <Route path="/firmware" element={<FirmwareUpdatePage />} />
+        <Route path="/speaker-lighting" element={<SpeakerLightingPage />} />
+      </Routes>
     </BrowserRouter>
   );
 }
