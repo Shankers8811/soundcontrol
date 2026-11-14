@@ -73,7 +73,7 @@ pub fn set_anc_mode(state: State<'_, AppState>, address: String, mode: String) -
 
     let anc_cmd = protocol.encode_frame(0x0101, 0xF0, &[mode.as_bytes()[0]]);
 
-    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}\", e))?;
+    let bt = bluetooth.try_read().map_err(|e| format!("Bluetooth lock error: {}", e))?;
     bt.send_frame(&anc_cmd).map_err(|e| e.to_string())?;
 
     let db = &state.db;
@@ -266,4 +266,3 @@ pub fn get_battery_levels(state: State<'_, AppState>, address: String) -> Result
         "single_earbud_mode": single_earbud_mode,
     }))
 }
-
