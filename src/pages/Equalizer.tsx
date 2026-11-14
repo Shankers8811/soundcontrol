@@ -6,7 +6,7 @@ import { Button } from '../components/Button';
 import { EQSlider } from '../components/EQSlider';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
 import { Save, Trash2, Loader2, Music, ShieldAlert } from 'lucide-react';
-import { getDeviceInfo, getEQPresets, saveEQPreset, deleteEQPreset, applyEQPreset, setEQBand } from '../api/tauri';
+import { getEQPresets, saveEQPreset, deleteEQPreset, applyEQPreset, setEQBand } from '../api/tauri';
 
 interface EQPresetItem {
   name: string;
