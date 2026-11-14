@@ -20,7 +20,7 @@ function App() {
   const [initialized, setInitialized] = useState(false);
   const { loadDevices } = useDevicesStore();
   const { loadSettings } = useSettingsStore();
-  const { showToast } = useUIStore();
+  useUIStore();
 
   useEffect(() => {
     const init = async () => {
