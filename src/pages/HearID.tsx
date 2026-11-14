@@ -26,15 +26,13 @@ export const HearIDPage: React.FC = () => {
     setCurrentFrequency(0);
   };
 
-  const testFrequency = async (ear: 'left' | 'right') => {
+  const testFrequency = async () => {
     if (currentFrequency >= frequencies.length) {
       setTestStage('results');
       return;
     }
     // Simulate playing test tone
     await new Promise(r => setTimeout(r, 1500));
-    // User would tap when they hear the tone
-    const heard = Math.random() > 0.3; // Simulate user response
     setCurrentFrequency(currentFrequency + 1);
   };
 
@@ -100,10 +98,10 @@ export const HearIDPage: React.FC = () => {
                   Tap when you hear the tone
                 </p>
                 <div className="flex justify-center gap-4">
-                  <Button variant="outline" onClick={() => testFrequency('left')} size="lg">
+                  <Button variant="outline" onClick={testFrequency} size="lg">
                     <Ear className="w-5 h-5 mr-2" /> Left Earbud
                   </Button>
-                  <Button variant="outline" onClick={() => testFrequency('right')} size="lg">
+                  <Button variant="outline" onClick={testFrequency} size="lg">
                     <Ear className="w-5 h-5 mr-2" /> Right Earbud
                   </Button>
                 </div>
