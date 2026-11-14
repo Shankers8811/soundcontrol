@@ -6,7 +6,6 @@ import { Button } from '../components/Button';
 import { ToggleSwitch } from '../components/ToggleSwitch';
 import { Sun, Moon, Bell, Globe, RefreshCw, ShieldAlert, AlertTriangle } from 'lucide-react';
 import { getHotkeys, registerHotkey } from '../api/tauri';
-import type { HotkeyInfo } from '../types';
 
 interface HotkeysState {
   anc: string;
