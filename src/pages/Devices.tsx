@@ -4,7 +4,7 @@ import { useUIStore } from '../stores/ui';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
-import { Search, RefreshCw, Wifi, BluetoothOff, Bluetooth, Ear } from 'lucide-react';
+import { Search, RefreshCw, Wifi, BluetoothOff, Ear } from 'lucide-react';
 import { isSoundcoreDevice } from '../utils/helpers';
 
 export const DevicesPage: React.FC = () => {
