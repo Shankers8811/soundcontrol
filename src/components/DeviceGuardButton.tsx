@@ -36,7 +36,7 @@ export const DeviceGuardButton: React.FC<DeviceGuardButtonProps> = ({
       title={!supported ? `Your device does not support ${feature}` : undefined}
       {...props}
     >
-      {!supported && <ShieldAlert className="w-4 h-4 mr-2 opacity-50" />}}
+      {!supported && <ShieldAlert className="w-4 h-4 mr-2 opacity-50" />}
       {children}
       {!supported && <span className="text-xs opacity-70 ml-1">(unsupported)</span>}
     </Button>
