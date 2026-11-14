@@ -24,9 +24,9 @@ export function formatBattery(level: number | null): string {
   return level === null ? "N/A" : `${level}%`;
 }
 
-export function getFeatureStatusText(supported: boolean, featureName: string): string {
+export function getFeatureStatusText(supported: boolean): string {
   if (supported) {
     return "Supported";
   }
-  return `Not supported on this device`;
+  return "Not supported on this device";
 }
