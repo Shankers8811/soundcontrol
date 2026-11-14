@@ -102,17 +102,17 @@ impl BluetoothManager {
         Err("Bluetooth not supported on this platform".to_string())
     }
 
-    pub fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
+    pub async fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
         #[cfg(target_os = "linux")]
         {
             if let Some(linux) = &self.linux {
-                return linux.send_frame(frame);
+                return linux.send_frame(frame).await;
             }
         }
         #[cfg(target_os = "windows")]
         {
             if let Some(windows) = &self.windows {
-                return windows.send_frame(frame);
+                return windows.send_frame(frame).await;
             }
         }
         Err("Bluetooth not supported on this platform".to_string())
@@ -126,6 +126,3 @@ impl BluetoothManager {
         self.known_devices.lock().unwrap().clone()
     }
 }
-
-
-
