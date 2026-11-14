@@ -3,6 +3,7 @@ use super::BluetoothManager;
 use bluer::{Address, rfcomm::{Socket, SocketAddr, Stream}};
 use std::collections::HashMap;
 use std::sync::Mutex;
+use tokio::io::AsyncWriteExt;
 
 pub struct LinuxBluetooth {
     device_cache: Mutex<HashMap<String, DeviceProfile>>,
@@ -73,10 +74,10 @@ impl LinuxBluetooth {
         Ok(())
     }
 
-    pub fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
-        let stream = self.connected_stream.lock().unwrap();
-        let stream = stream.as_ref().ok_or("No connected Bluetooth device")?;
-        futures::executor::block_on(stream.write_all(frame))
+    pub async fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
+        let mut stream_guard = self.connected_stream.lock().unwrap();
+        let stream = stream_guard.as_mut().ok_or("No connected Bluetooth device")?;
+        stream.write_all(frame).await
             .map_err(|e| format!("Failed to send frame over Bluetooth: {}", e))?;
         Ok(())
     }

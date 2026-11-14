@@ -1,14 +1,6 @@
-mod models;
-mod linux;
-mod windows;
-
-pub use models::*;
-#[cfg(target_os = "linux")]
-pub use linux::*;
-#[cfg(target_os = "windows")]
-pub use windows::*;
-
+use super::models::*;
 use crate::protocol::DeviceProfile;
+use tokio::task;
 
 #[derive(Debug)]
 pub struct BluetoothManager {
@@ -102,17 +94,20 @@ impl BluetoothManager {
         Err("Bluetooth not supported on this platform".to_string())
     }
 
-    pub fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
+    pub async fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
         #[cfg(target_os = "linux")]
         {
             if let Some(linux) = &self.linux {
-                return linux.send_frame(frame);
+                return linux.send_frame(frame).await;
             }
         }
         #[cfg(target_os = "windows")]
         {
             if let Some(windows) = &self.windows {
-                return windows.send_frame(frame);
+                let frame = frame.to_vec();
+                return task::spawn_blocking(move || windows.send_frame(&frame))
+                    .await
+                    .map_err(|e| format!("Task join error: {}", e))?;
             }
         }
         Err("Bluetooth not supported on this platform".to_string())
@@ -126,6 +121,3 @@ impl BluetoothManager {
         self.known_devices.lock().unwrap().clone()
     }
 }
-
-
-

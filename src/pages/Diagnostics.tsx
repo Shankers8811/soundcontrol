@@ -6,10 +6,16 @@ import { Download, RefreshCw, ShieldAlert, Terminal } from 'lucide-react';
 import { getFrameLog, exportDiagnostics, checkFirmwareUpdate } from '../api/tauri';
 import type { FrameLogEntry } from '../types';
 
+interface FirmwareCache {
+  version: string;
+  download_url: string | null;
+  checksum: string | null;
+}
+
 interface FirmwareInfo {
   model: string;
   update_available: boolean;
-  cached: any;
+  cached: FirmwareCache | null;
 }
 
 export const DiagnosticsPage: React.FC = () => {
@@ -116,7 +122,7 @@ export const DiagnosticsPage: React.FC = () => {
                   </span>
                 ) : (
                   <>
-                    <Download className="w-4 h-4 mr-2" /> Export ZIP
+                    <Download className="w-4 h-4 mr-2" /> Export Diagnostics
                   </>
                 )}
               </Button>
@@ -143,6 +149,12 @@ export const DiagnosticsPage: React.FC = () => {
                     {firmwareInfo.update_available ? 'Yes' : 'No'}
                   </span>
                 </div>
+                {firmwareInfo.cached && (
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Cached Version</span>
+                    <span className="text-sm font-mono">{firmwareInfo.cached.version}</span>
+                  </div>
+                )}
               </div>
             </Card>
           )}

@@ -6,7 +6,6 @@ import { Button } from '../components/Button';
 import { DeviceGuardButton } from '../components/DeviceGuardButton';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
 import { ShieldAlert, Zap } from 'lucide-react';
-import { getDeviceInfo } from '../api/tauri';
 
 const lightingModes = [
   { id: 'off', name: 'Off', color: '#6b7280' },
@@ -22,17 +21,6 @@ export const SpeakerLightingPage: React.FC = () => {
   const { showToast } = useUIStore();
   const [selectedMode, setSelectedMode] = useState('off');
   const [brightness, setBrightness] = useState(70);
-
-  useEffect(() => {
-    if (connectedDevice?.address) {
-      getDeviceInfo(connectedDevice.address)
-        .then(() => {})
-        .catch((e) => {
-          console.error('Failed to load device info', e);
-          showToast('Failed to load device info', 'error');
-        });
-    }
-  }, [connectedDevice]);
 
   const isSpeaker = connectedDevice?.profile?.model?.startsWith('A31') ||
                     connectedDevice?.profile?.model?.startsWith('A39') ||
