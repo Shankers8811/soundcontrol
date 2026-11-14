@@ -9,7 +9,7 @@ import { DeviceGuardButton } from '../components/DeviceGuardButton';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
 import {
   Wind, Volume2, Smartphone,
-  Ear, ShieldAlert, AlertTriangle, RefreshCw, EarOff
+  ShieldAlert, RefreshCw, EarOff
 } from 'lucide-react';
 import { getDeviceInfo, setAncMode, setTransparency, setAdaptiveNoise, setWindNoise, setGameMode, setLDAC } from '../api/tauri';
 import type { DeviceFeatures } from '../types';
