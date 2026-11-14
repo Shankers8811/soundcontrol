@@ -8,6 +8,7 @@ interface DevicesState {
   isScanning: boolean;
   bluetoothState: string;
   batteryLevels: Record<string, BatteryLevel>;
+  singleEarbudMode: boolean;
   loadDevices: () => Promise<void>;
   scan: () => Promise<void>;
   connect: (address: string) => Promise<void>;
@@ -15,7 +16,7 @@ interface DevicesState {
   setConnectedDevice: (device: DiscoveredDevice | null) => void;
   refreshBluetoothState: () => Promise<void>;
   refreshBattery: (address: string) => Promise<void>;
-  toggleSingleEarbudMode: (enabled: boolean) => void;
+  toggleSingleEarbudMode: () => void;
 }
 
 export const useDevicesStore = create<DevicesState>((set, get) => ({
@@ -24,6 +25,7 @@ export const useDevicesStore = create<DevicesState>((set, get) => ({
   isScanning: false,
   bluetoothState: 'unknown',
   batteryLevels: {},
+  singleEarbudMode: false,
 
   loadDevices: async () => {
     try {
@@ -104,9 +106,7 @@ export const useDevicesStore = create<DevicesState>((set, get) => ({
     }
   },
 
-  toggleSingleEarbudMode: (enabled: boolean) => {
-    // Store single earbud mode preference in local state
-    // This is a client-side preference that affects UI behavior
-    console.log('Single earbud mode:', enabled);
+  toggleSingleEarbudMode: () => {
+    set((state) => ({ singleEarbudMode: !state.singleEarbudMode }));
   },
 }));
