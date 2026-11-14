@@ -8,6 +8,7 @@ import { DeviceGuardButton } from '../components/DeviceGuardButton';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
 import { BarChart3, Save, Trash2, Loader2, Music, ShieldAlert } from 'lucide-react';
 import { getDeviceInfo, getEQPresets, saveEQPreset, deleteEQPreset, applyEQPreset, setEQBand } from '../api/tauri';
+import type { DeviceFeatures, EQPreset as EQPresetType } from '../types';
 
 interface EQPresetItem {
   name: string;
@@ -20,7 +21,7 @@ export const EqualizerPage: React.FC = () => {
   const [eqBands, setEqBands] = useState<number[]>(Array(8).fill(0));
   const [presets, setPresets] = useState<EQPresetItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [deviceFeatures, setDeviceFeatures] = useState<any>(null);
+  const [deviceFeatures, setDeviceFeatures] = useState<DeviceFeatures | null>(null);
 
   useEffect(() => {
     if (connectedDevice?.address) {
@@ -55,7 +56,7 @@ export const EqualizerPage: React.FC = () => {
     const newBands = [...eqBands];
     newBands[band] = gain;
     setEqBands(newBands);
-    
+
     if (connectedDevice?.address) {
       try {
         await setEQBand(connectedDevice.address, band, gain);
@@ -139,14 +140,14 @@ export const EqualizerPage: React.FC = () => {
                 <Save className="w-4 h-4 mr-2" /> Save Preset
               </Button>
             </div>
-            
+
             {deviceFeatures?.eq_bands ? (
               <div className="grid grid-cols-1 sm:grid-cols-4 lg:grid-cols-8 gap-4">
                 {Array.from({ length: deviceFeatures.eq_bands }).map((_, i) => (
                   <div key={i} className="flex flex-col items-center">
                     <EQSlider
                       band={i}
-                      gain={eqBands[i]}
+                      gain={eqBands[i] ?? 0}
                       onChange={(gain) => handleBandChange(i, gain)}
                       disabled={!deviceFeatures?.eq_bands}
                     />
@@ -198,7 +199,10 @@ export const EqualizerPage: React.FC = () => {
                     setEqBands(bands);
                     if (connectedDevice?.address) {
                       bands.forEach((gain, i) => {
-                        setEQBand(connectedDevice.address, i, gain).catch(() => {});
+                        setEQBand(connectedDevice.address, i, gain).catch((e) => {
+                          showToast('Failed to apply preset band', 'error');
+                          console.error(e);
+                        });
                       });
                     }
                   }}
