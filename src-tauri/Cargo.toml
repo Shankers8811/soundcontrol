@@ -13,19 +13,6 @@ rusqlite = { version = "0.33", features = ["bundled"] }
 uuid = { version = "1.19", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 toml = "0.8"
-bluer = { version = "0.23", optional = true }
-windows = { version = "0.58", optional = true, features = [
-    "Win32_Devices_Bluetooth",
-    "Win32_Devices_HumanInterfaceDevice",
-    "Win32_Foundation",
-    "Win32_System_Diagnostics_Debug",
-    "Win32_System_SystemServices",
-    "Win32_UI_Input_Ime",
-    "Win32_UI_Input_KeyboardAndMouse",
-    "Win32_UI_Shell",
-    "Win32_UI_WindowsAndMessaging",
-] }
-serialport = { version = "4.1", optional = true }
 anyhow = "1.0"
 thiserror = "1.0"
 tokio = { version = "1.0", features = ["full"] }
