@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tauri = { version = "2.0", features = ["cli"] }
+tauri = { version = "2.0" }
 tauri-plugin-log = "2.0"
 tauri-plugin-store = "2.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -45,3 +45,4 @@ opt-level = 3
 lto = true
 codegen-units = 1
 panic = "abort"
+

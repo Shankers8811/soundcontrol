@@ -1,6 +1,5 @@
-"node_modules/"  
-"package-lock.json"  
-"dist/"  
-"target/"  
-".env"  
-".tauri/" 
+node_modules/
+dist/
+target/
+.env
+.tauri/
