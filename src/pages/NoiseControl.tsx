@@ -8,17 +8,13 @@ import { ModePill } from '../components/ModePill';
 import { DeviceGuardButton } from '../components/DeviceGuardButton';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
 import {
-  Wind, Volume2, Headphones, Timer, Smartphone,
-  Ear, ShieldAlert, AlertTriangle, RefreshCw
+  Wind, Volume2, Smartphone,
+  Ear, ShieldAlert, AlertTriangle, RefreshCw, EarOff
 } from 'lucide-react';
 import { getDeviceInfo, setAncMode, setTransparency, setAdaptiveNoise, setWindNoise, setGameMode, setLDAC } from '../api/tauri';
 import type { DeviceFeatures } from '../types';
 
-interface NoiseControlPageProps {
-  deviceAddress?: string;
-}
-
-export const NoiseControlPage: React.FC<NoiseControlPageProps> = ({ deviceAddress }) => {
+export const NoiseControlPage: React.FC = () => {
   const { connectedDevice, refreshBattery } = useDevicesStore();
   const { showToast } = useUIStore();
   const [features, setFeatures] = useState<DeviceFeatures | null>(null);
@@ -28,7 +24,6 @@ export const NoiseControlPage: React.FC<NoiseControlPageProps> = ({ deviceAddres
   const [windNoise, setWindNoiseState] = useState(false);
   const [gameMode, setGameModeState] = useState(false);
   const [ldac, setLDACState] = useState(false);
-  const [loading, setLoading] = useState(false);
 
   const device = connectedDevice;
 
@@ -41,13 +36,10 @@ export const NoiseControlPage: React.FC<NoiseControlPageProps> = ({ deviceAddres
   const loadDeviceInfo = async () => {
     if (!device?.address) return;
     try {
-      setLoading(true);
       const info = await getDeviceInfo(device.address);
       setFeatures(info.features);
     } catch (e) {
       showToast('Failed to load device info', 'error');
-    } finally {
-      setLoading(false);
     }
   };
 
