@@ -1,6 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { invoke } from '@tauri-apps/api/core';
 import { AppShell } from './components/AppShell';
 import { DevicesPage } from './pages/Devices';
 import { NoiseControlPage } from './pages/NoiseControl';
@@ -19,7 +18,7 @@ import { useUIStore } from './stores/ui';
 
 function App() {
   const [initialized, setInitialized] = useState(false);
-  const { loadDevices, devices } = useDevicesStore();
+  const { loadDevices } = useDevicesStore();
   const { loadSettings } = useSettingsStore();
   const { showToast } = useUIStore();
 
