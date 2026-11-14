@@ -42,17 +42,18 @@ export const HotkeyRecorder: React.FC<HotkeyRecorderProps> = ({
     ? 'bg-blue-600 border-blue-500 text-white'
     : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700';
 
+  const icon = isRecording ? '●' : 'keyboard';
+  const label = isRecording ? 'Recording...' : '';
+
   return (
     <button
       onClick={startRecording}
       disabled={isRecording}
       className={`${baseClasses} ${recordingClasses}`}
     >
-      {isRecording ? (
-        <span className="animate-pulse">●</span> Recording...
-      ) : (
-        <span>⌨</span>
-      )}
+      {isRecording && <span className="animate-pulse">●</span>}
+      {!isRecording && <span>⌨</span>}
+      {label && <span className="ml-2">{label}</span>}
       <span className="text-sm">{current}</span>
     </button>
   );
