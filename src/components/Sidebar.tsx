@@ -1,4 +1,4 @@
-import React from 'react';
+import type React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useUIStore } from '../stores/ui';
 import { Activity, BarChart3, Battery, Settings, LayoutDashboard, Ear, Moon, Settings2, ShieldAlert, Lightbulb, Monitor } from 'lucide-react';
@@ -18,7 +18,7 @@ const navItems = [
 ];
 
 export const Sidebar: React.FC = () => {
-  const { sidebarOpen, toggleSidebar, activePage, setActivePage } = useUIStore();
+  const { sidebarOpen, toggleSidebar, setActivePage } = useUIStore();
 
   return (
     <aside className={`fixed left-0 top-0 bottom-0 w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 transform transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} z-50 sm:relative sm:translate-x-0 sm:w-64 sm:border-r-0 sm:border-b sm:border-gray-200 dark:sm:border-gray-800`}>
