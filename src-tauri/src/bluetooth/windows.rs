@@ -52,7 +52,7 @@ impl WindowsBluetooth {
         Ok(())
     }
 
-    pub fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
+    pub async fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
         let mut port = self.port.lock().unwrap();
         let port = port.as_mut().ok_or("No connected Bluetooth device")?;
         port.write_all(frame)
