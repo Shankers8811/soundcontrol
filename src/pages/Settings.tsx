@@ -93,7 +93,7 @@ export const SettingsPage: React.FC = () => {
                   </div>
                   <div>
                     <p className="text-sm font-medium">Dark Mode</p>
-                    <p class="text-xs text-gray-500">Dark theme for nighttime</p>
+                    <p className="text-xs text-gray-500">Dark theme for nighttime</p>
                   </div>
                 </div>
                 <button
