@@ -34,6 +34,7 @@ export interface BatteryLevel {
   left_charging: boolean;
   right_charging: boolean;
   case_charging: boolean;
+  single_earbud_mode: boolean;
 }
 
 export interface DeviceFeatures {
