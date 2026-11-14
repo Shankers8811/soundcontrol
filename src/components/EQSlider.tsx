@@ -17,6 +17,11 @@ export const EQSlider: React.FC<EQSliderProps> = ({
     onChange(parseInt(e.target.value, 10));
   };
 
+  const sliderStyle: React.CSSProperties = {
+    writingMode: 'vertical-lr',
+    WebkitAppearance: 'slider-vertical',
+  };
+
   return (
     <div className="flex flex-col items-center gap-2">
       <span className="text-xs text-gray-500 dark:text-gray-400">{band + 1}</span>
@@ -29,7 +34,7 @@ export const EQSlider: React.FC<EQSliderProps> = ({
           onChange={handleChange}
           disabled={disabled}
           className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-soundcore-600"
-          style={{ writingMode: 'bt-lr', WebkitAppearance: 'slider-vertical' }}
+          style={sliderStyle}
         />
         <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2">
           <span className={`text-xs font-bold ${gain >= 0 ? 'text-soundcore-600' : 'text-red-500'}`}>{gain > 0 ? `+${gain}` : gain}</span>
