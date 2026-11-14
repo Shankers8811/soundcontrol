@@ -3,17 +3,20 @@ use super::BluetoothManager;
 use crate::protocol::{DeviceInfo, DeviceProfile};
 use bluer::Adapter;
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 pub struct LinuxBluetooth {
     adapter: Option<bluer::Adapter>,
-    device_cache: std::sync::Mutex<HashMap<String, DeviceProfile>>,
+    device_cache: Mutex<HashMap<String, DeviceProfile>>,
+    connected_device: Mutex<Option<bluer::Device>>,
 }
 
 impl LinuxBluetooth {
     pub fn new() -> Self {
         Self {
             adapter: None,
-            device_cache: std::sync::Mutex::new(HashMap::new()),
+            device_cache: Mutex::new(HashMap::new()),
+            connected_device: Mutex::new(None),
         }
     }
 
@@ -65,18 +68,22 @@ impl LinuxBluetooth {
             .map_err(|e| format!("Device not found: {}", e))?;
         device.connect()
             .map_err(|e| format!("Failed to connect: {}", e))?;
+        *self.connected_device.lock().unwrap() = Some(device);
         Ok(())
     }
 
     pub async fn disconnect(&self, address: &str) -> Result<(), String> {
-        let session = bluer::Session::new()
-            .map_err(|e| format!("Failed to create BlueZ session: {}", e))?;
-        let adapter = session.default_adapter()
-            .map_err(|e| format!("No Bluetooth adapter: {}", e))?;
-        let device = adapter.device(address)
-            .map_err(|e| format!("Device not found: {}", e))?;
-        device.disconnect()
-            .map_err(|e| format!("Failed to disconnect: {}", e))?;
+        *self.connected_device.lock().unwrap() = None;
+        Ok(())
+    }
+
+    pub async fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
+        let device = self.connected_device.lock().unwrap().clone();
+        let device = device.ok_or("No connected Bluetooth device")?;
+        // Write to the device's RFCOMM channel or GATT characteristic
+        // For Soundcore CMF protocol, we write to the appropriate characteristic
+        device.write(&frame)
+            .map_err(|e| format!("Failed to send frame over Bluetooth: {}", e))?;
         Ok(())
     }
 
