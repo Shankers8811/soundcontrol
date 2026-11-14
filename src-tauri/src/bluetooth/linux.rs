@@ -1,4 +1,4 @@
-use super::models::*;
+﻿use super::models::*;
 use super::BluetoothManager;
 use crate::protocol::{DeviceInfo, DeviceProfile};
 use bluer::Adapter;
@@ -78,7 +78,7 @@ impl LinuxBluetooth {
     pub fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
         let device = self.connected_device.lock().unwrap().clone();
         let device = device.ok_or("No connected Bluetooth device")?;
-        futures::executor::block_on(device.write(frame))
+        device.write(frame)
             .map_err(|e| format!("Failed to send frame over Bluetooth: {}", e))?;
         Ok(())
     }
