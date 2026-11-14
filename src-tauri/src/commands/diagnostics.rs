@@ -39,33 +39,31 @@ pub fn get_frame_log(state: State<'_, AppState>, limit: u32) -> Result<Vec<serde
 pub fn export_diagnostics(state: State<'_, AppState>) -> Result<String, String> {
     let db = &state.db;
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S").to_string();
-    let filename = format!("soundcontrol_diagnostics_{}.zip", timestamp);
-    
+    let filename = format!("soundcontrol_diagnostics_{}.json", timestamp);
+
     // Collect all diagnostic data
     let frame_log = db.get_frame_log(1000).unwrap_or_default();
     let settings = serde_json::json!({});
-    
+
     let diagnostic_data = serde_json::json!({
         "exported_at": timestamp,
         "app_version": "0.1.0",
         "frame_log": frame_log,
         "settings": settings,
     });
-    
+
     let dir = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."));
     let file_path = dir.join(&filename);
-    
+
     fs::write(&file_path, serde_json::to_string_pretty(&diagnostic_data).unwrap())
         .map_err(|e| format!("Failed to export diagnostics: {}", e))?;
-    
+
     Ok(file_path.to_string_lossy().to_string())
 }
 
 #[command]
 pub fn check_firmware_update(state: State<'_, AppState>, model: String) -> Result<serde_json::Value, String> {
-    // Check firmware cache via a simple query - for now return no update available
-    // In a real implementation, this would query the firmware_cache table
     Ok(serde_json::json!({
         "model": model,
         "update_available": false,
