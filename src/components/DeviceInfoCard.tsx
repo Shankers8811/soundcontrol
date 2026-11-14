@@ -1,5 +1,5 @@
-import React from 'react';
-import { Bluetooth, Battery, Wifi, ShieldCheck } from 'lucide-react';
+import type React from 'react';
+import { Bluetooth, Battery, ShieldCheck } from 'lucide-react';
 import { Card } from './Card';
 
 interface DeviceInfoCardProps {
