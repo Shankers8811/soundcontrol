@@ -56,7 +56,9 @@ pub fn export_diagnostics(state: State<'_, AppState>) -> Result<String, String> 
         .unwrap_or_else(|| PathBuf::from("."));
     let file_path = dir.join(&filename);
 
-    fs::write(&file_path, serde_json::to_string_pretty(&diagnostic_data).unwrap())
+    let json_content = serde_json::to_string_pretty(&diagnostic_data)
+        .map_err(|e| format!("Failed to serialize diagnostics: {}", e))?;
+    fs::write(&file_path, json_content)
         .map_err(|e| format!("Failed to export diagnostics: {}", e))?;
 
     Ok(file_path.to_string_lossy().to_string())
