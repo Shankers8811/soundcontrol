@@ -39,7 +39,6 @@ SoundControl follows these security practices:
 - No user data is sent to external servers (local-only)
 - SQLite database stores data locally on your device
 - No account creation or cloud sync
-- CodeQL security scanning on every push
 - Rust backend with memory safety guarantees
 
 ## Responsible Disclosure
