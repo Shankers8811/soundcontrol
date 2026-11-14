@@ -18,7 +18,7 @@ export const useUIStore = create<UIState>((set) => ({
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 
   showToast: (message, type = 'info') => {
-    const id = Date.now().toString();
+    const id = crypto.randomUUID();
     set((state) => ({
       toasts: [...state.toasts, { id, message, type }],
     }));
