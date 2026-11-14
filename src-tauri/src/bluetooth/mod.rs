@@ -1,4 +1,4 @@
-﻿mod models;
+mod models;
 mod linux;
 mod windows;
 
@@ -10,7 +10,7 @@ pub use windows::*;
 
 use crate::protocol::DeviceProfile;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct BluetoothManager {
     #[cfg(target_os = "linux")]
     linux: Option<linux::LinuxBluetooth>,
@@ -126,3 +126,5 @@ impl BluetoothManager {
         self.known_devices.lock().unwrap().clone()
     }
 }
+
+
