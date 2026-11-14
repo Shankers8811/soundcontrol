@@ -4,11 +4,18 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Devices, Download, RefreshCw, ShieldAlert, Terminal, FileText } from 'lucide-react';
 import { getFrameLog, exportDiagnostics, checkFirmwareUpdate } from '../api/tauri';
+import type { FrameLogEntry } from '../types';
+
+interface FirmwareInfo {
+  model: string;
+  update_available: boolean;
+  cached: any;
+}
 
 export const DiagnosticsPage: React.FC = () => {
   const { showToast } = useUIStore();
-  const [frameLog, setFrameLog] = useState<any[]>([]);
-  const [firmwareInfo, setFirmwareInfo] = useState<any>(null);
+  const [frameLog, setFrameLog] = useState<FrameLogEntry[]>([]);
+  const [firmwareInfo, setFirmwareInfo] = useState<FirmwareInfo | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -40,7 +47,7 @@ export const DiagnosticsPage: React.FC = () => {
     try {
       setLoading(true);
       const info = await checkFirmwareUpdate('unknown');
-      setFirmwareInfo(info);
+      setFirmwareInfo(info as FirmwareInfo);
     } catch (e) {
       showToast('Failed to check firmware', 'error');
     } finally {
@@ -60,7 +67,11 @@ export const DiagnosticsPage: React.FC = () => {
             <RefreshCw className="w-4 h-4 mr-2" /> Refresh
           </Button>
           <Button onClick={handleExport} disabled={loading}>
-            {loading ? 'Exporting...' : <><Download className="w-4 h-4 mr-2" /> Export Diagnostics</>}
+            {loading ? 'Exporting...' : (
+              <>
+                <Download className="w-4 h-4 mr-2" /> Export Diagnostics
+              </>
+            )}
           </Button>
         </div>
       </div>
@@ -98,7 +109,16 @@ export const DiagnosticsPage: React.FC = () => {
             <h3 className="text-lg font-semibold mb-4">Actions</h3>
             <div className="space-y-3">
               <Button onClick={handleExport} disabled={loading} className="w-full">
-                {loading ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> Exporting</span> : <><Download className="w-4 h-4 mr-2" /> Export ZIP</>}</>
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    Exporting
+                  </span>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" /> Export ZIP
+                  </>
+                )}
               </Button>
               <Button variant="outline" onClick={handleFirmwareCheck} className="w-full">
                 <ShieldAlert className="w-4 h-4 mr-2" /> Check Firmware
