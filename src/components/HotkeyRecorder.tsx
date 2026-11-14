@@ -1,4 +1,4 @@
-import React from 'react';
+import type React from 'react';
 
 interface HotkeyRecorderProps {
   current: string;
@@ -42,7 +42,6 @@ export const HotkeyRecorder: React.FC<HotkeyRecorderProps> = ({
     ? 'bg-blue-600 border-blue-500 text-white'
     : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700';
 
-  const icon = isRecording ? '●' : 'keyboard';
   const label = isRecording ? 'Recording...' : '';
 
   return (
