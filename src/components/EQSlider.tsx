@@ -29,7 +29,7 @@ export const EQSlider: React.FC<EQSliderProps> = ({
           onChange={handleChange}
           disabled={disabled}
           className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-soundcore-600"
-          orient="vertical"
+          style={{ transform: 'rotate(-90deg)' }}
         />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
           <span className={`text-xs font-bold ${gain >= 0 ? 'text-soundcore-600' : 'text-red-500'}`}>{gain > 0 ? `+${gain}` : gain}</span>
