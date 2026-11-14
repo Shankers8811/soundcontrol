@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useDevicesStore } from '../stores/devices';
-import { useUIStore } from '../stores/ui';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
-import { DeviceGuardButton } from '../components/DeviceGuardButton';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
 import { Ear, ShieldAlert, Headphones, Activity, Play, RefreshCw } from 'lucide-react';
 import { getDeviceInfo } from '../api/tauri';
@@ -11,12 +9,9 @@ import type { DeviceFeatures } from '../types';
 
 export const HearIDPage: React.FC = () => {
   const { connectedDevice } = useDevicesStore();
-  const { showToast } = useUIStore();
   const [features, setFeatures] = useState<DeviceFeatures | null>(null);
   const [testStage, setTestStage] = useState<'intro' | 'testing' | 'results' | null>(null);
   const [currentFrequency, setCurrentFrequency] = useState(0);
-  const [results, setResults] = useState<{ left: number[]; right: number[] }>({ left: [], right: [] });
-  const [isPlaying, setIsPlaying] = useState(false);
 
   const frequencies = [250, 500, 1000, 2000, 4000, 8000];
 
@@ -29,7 +24,6 @@ export const HearIDPage: React.FC = () => {
   const startTest = () => {
     setTestStage('testing');
     setCurrentFrequency(0);
-    setResults({ left: [], right: [] });
   };
 
   const testFrequency = async (ear: 'left' | 'right') => {
@@ -37,16 +31,10 @@ export const HearIDPage: React.FC = () => {
       setTestStage('results');
       return;
     }
-    setIsPlaying(true);
     // Simulate playing test tone
     await new Promise(r => setTimeout(r, 1500));
-    setIsPlaying(false);
     // User would tap when they hear the tone
     const heard = Math.random() > 0.3; // Simulate user response
-    setResults(prev => ({
-      ...prev,
-      [ear]: [...prev[ear], heard ? frequencies[currentFrequency] : -1],
-    }));
     setCurrentFrequency(currentFrequency + 1);
   };
 
@@ -94,7 +82,7 @@ export const HearIDPage: React.FC = () => {
                 <Ear className="w-24 h-24 text-soundcore-600 mb-6" />
                 <h3 className="text-xl font-semibold mb-3">Analyze Your Hearing</h3>
                 <p className="text-gray-600 dark:text-gray-400 mb-6">
-                  HearID analyzes your hearing ability and creates a personalized sound profile 
+                  HearID analyzes your hearing ability and creates a personalized sound profile
                   that compensates for imbalances or age-related hearing loss.
                 </p>
                 <Button onClick={startTest} className="w-full">
