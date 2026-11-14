@@ -3,20 +3,20 @@ use crate::protocol::{DeviceInfo, DeviceProfile};
 use serialport::SerialPort;
 use std::io::{Read, Write};
 use std::time::Duration;
+use std::sync::Mutex;
 
 pub struct WindowsBluetooth {
-    port: std::sync::Mutex<Option<Box<dyn SerialPort>>>,
+    port: Mutex<Option<Box<dyn SerialPort>>>,
 }
 
 impl WindowsBluetooth {
     pub fn new() -> Self {
         Self {
-            port: std::sync::Mutex::new(None),
+            port: Mutex::new(None),
         }
     }
 
     pub async fn scan(&self) -> Result<Vec<super::models::KnownDevice>, String> {
-        // Windows RFCOMM scanning via WinRT
         let ports = serialport::available_ports()
             .map_err(|e| format!("Failed to list serial ports: {}", e))?;
         let mut result = Vec::new();
@@ -49,6 +49,14 @@ impl WindowsBluetooth {
 
     pub async fn disconnect(&self, address: &str) -> Result<(), String> {
         self.port.lock().unwrap().take();
+        Ok(())
+    }
+
+    pub async fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
+        let mut port = self.port.lock().unwrap();
+        let port = port.as_mut().ok_or("No connected Bluetooth device")?;
+        port.write_all(frame)
+            .map_err(|e| format!("Failed to send frame over Bluetooth: {}", e))?;
         Ok(())
     }
 
