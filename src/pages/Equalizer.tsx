@@ -4,9 +4,8 @@ import { useUIStore } from '../stores/ui';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { EQSlider } from '../components/EQSlider';
-import { DeviceGuardButton } from '../components/DeviceGuardButton';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
-import { BarChart3, Save, Trash2, Loader2, Music, ShieldAlert } from 'lucide-react';
+import { Save, Trash2, Loader2, Music, ShieldAlert } from 'lucide-react';
 import { getDeviceInfo, getEQPresets, saveEQPreset, deleteEQPreset, applyEQPreset, setEQBand } from '../api/tauri';
 import type { DeviceFeatures, EQPreset as EQPresetType } from '../types';
 
@@ -114,12 +113,14 @@ export const EqualizerPage: React.FC = () => {
     );
   }
 
+  const eqBandCount = connectedDevice.profile?.eq_bands ?? 8;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Equalizer</h1>
-          <p className="text-gray-500 dark:text-gray-400">Customize your sound with 8-band EQ</p>
+          <p className="text-gray-500 dark:text-gray-400">Customize your sound with EQ bands</p>
         </div>
       </div>
 
@@ -141,25 +142,17 @@ export const EqualizerPage: React.FC = () => {
               </Button>
             </div>
 
-            {deviceFeatures?.eq_bands ? (
-              <div className="grid grid-cols-1 sm:grid-cols-4 lg:grid-cols-8 gap-4">
-                {Array.from({ length: deviceFeatures.eq_bands }).map((_, i) => (
-                  <div key={i} className="flex flex-col items-center">
-                    <EQSlider
-                      band={i}
-                      gain={eqBands[i] ?? 0}
-                      onChange={(gain) => handleBandChange(i, gain)}
-                      disabled={!deviceFeatures?.eq_bands}
-                    />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="py-8 text-center">
-                <ShieldAlert className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-sm text-gray-500">Your device does not support custom EQ</p>
-              </div>
-            )}
+            <div className="grid grid-cols-1 sm:grid-cols-4 lg:grid-cols-8 gap-4">
+              {Array.from({ length: eqBandCount }).map((_, i) => (
+                <div key={i} className="flex flex-col items-center">
+                  <EQSlider
+                    band={i}
+                    gain={eqBands[i] ?? 0}
+                    onChange={(gain) => handleBandChange(i, gain)}
+                  />
+                </div>
+              ))}
+            </div>
           </Card>
         </div>
 
