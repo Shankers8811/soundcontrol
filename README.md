@@ -4,7 +4,6 @@
 [![GitHub last commit](https://img.shields.io/github/last-commit/Shankers8811/soundcontrol)](https://github.com/Shankers8811/soundcontrol/commits/main)
 [![GitHub issues](https://img.shields.io/github/issues/Shankers8811/soundcontrol)](https://github.com/Shankers8811/soundcontrol/issues)
 [![GitHub license](https://img.shields.io/github/license/Shankers8811/soundcontrol)](LICENSE)
-[![CodeQL](https://github.com/Shankers8811/soundcontrol/actions/workflows/codeql.yml/badge.svg)](https://github.com/Shankers8811/soundcontrol/actions/workflows/codeql.yml)
 [![CI/CD](https://github.com/Shankers8811/soundcontrol/actions/workflows/ci.yml/badge.svg)](https://github.com/Shankers8811/soundcontrol/actions/workflows/ci.yml)
 
 Native desktop companion app for **Anker/Soundcore** devices. Built with **Rust + Tauri v2** for Windows and Linux.
