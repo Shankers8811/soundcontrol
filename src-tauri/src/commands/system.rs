@@ -12,8 +12,7 @@ pub fn register_hotkey(state: State<'_, AppState>, key_combo: String, action: St
 pub fn unregister_hotkey(state: State<'_, AppState>, action: String) -> Result<(), String> {
     let db = &state.db;
     let key = format!("hotkey_{}", action);
-    // In a real implementation, we'd remove the setting
-    Ok(())
+    db.remove_setting(&key).map_err(|e| e.to_string())
 }
 
 #[command]
@@ -22,7 +21,7 @@ pub fn get_hotkeys(state: State<'_, AppState>) -> Result<serde_json::Value, Stri
     let anc = db.get_setting("hotkey_anc").unwrap_or_default().unwrap_or_else(|| "Ctrl+Alt+N".to_string());
     let game = db.get_setting("hotkey_game").unwrap_or_default().unwrap_or_else(|| "Ctrl+Alt+G".to_string());
     let eq = db.get_setting("hotkey_eq").unwrap_or_default().unwrap_or_else(|| "Ctrl+Alt+E".to_string());
-    
+
     Ok(serde_json::json!({
         "anc": anc,
         "game_mode": game,
@@ -53,7 +52,6 @@ pub fn quit_app(app: AppHandle) -> Result<(), String> {
 
 #[command]
 pub fn check_for_updates(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    // Check for updates from GitHub releases
     Ok(serde_json::json!({
         "current_version": "0.1.0",
         "update_available": false,
