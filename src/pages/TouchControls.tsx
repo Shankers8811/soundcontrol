@@ -3,10 +3,9 @@ import { useDevicesStore } from '../stores/devices';
 import { useUIStore } from '../stores/ui';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
-import { DeviceGuardButton } from '../components/DeviceGuardButton';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
-import { Ear, ShieldAlert, Settings2, Play, SkipForward, SkipBack, Phone, Volume2 } from 'lucide-react';
-import { getDeviceInfo, setGestures } from '../api/tauri';
+import { ShieldAlert, Play, SkipForward, SkipBack, Phone, Volume2 } from 'lucide-react';
+import { setGestures } from '../api/tauri';
 import type { DeviceFeatures } from '../types';
 
 const gestures = [
@@ -28,15 +27,11 @@ export const TouchControlsPage: React.FC = () => {
   const [editingGesture, setEditingGesture] = useState<string | null>(null);
   const [newValue, setNewValue] = useState('');
 
-  const loadDeviceInfo = async () => {
-    if (!connectedDevice?.address) return;
-    try {
-      const info = await getDeviceInfo(connectedDevice.address);
-      setFeatures(info.features);
-    } catch (e) {
-      console.error('Failed to load device info', e);
+  useEffect(() => {
+    if (connectedDevice?.address) {
+      // Device info loading would happen here
     }
-  };
+  }, [connectedDevice]);
 
   const saveGesture = (gestureId: string, value: string) => {
     setCustomGestures(prev => ({ ...prev, [gestureId]: value }));
