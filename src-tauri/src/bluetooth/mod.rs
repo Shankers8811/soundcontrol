@@ -58,7 +58,7 @@ impl BluetoothManager {
         #[cfg(target_os = "linux")]
         {
             if let Some(linux) = &self.linux {
-                return linux.connect(address).await;
+                return linux.connect(address, 15).await;
             }
         }
         #[cfg(target_os = "windows")]
@@ -126,5 +126,6 @@ impl BluetoothManager {
         self.known_devices.lock().unwrap().clone()
     }
 }
+
 
 

@@ -1,20 +1,19 @@
 use super::models::*;
 use super::BluetoothManager;
-use crate::protocol::{DeviceInfo, DeviceProfile};
-use bluer::Adapter;
+use bluer::{Address, rfcomm::{Socket, SocketAddr, Stream}};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
 pub struct LinuxBluetooth {
     device_cache: Mutex<HashMap<String, DeviceProfile>>,
-    connected_device: Mutex<Option<bluer::Device>>,
+    connected_stream: Mutex<Option<Stream>>,
 }
 
 impl LinuxBluetooth {
     pub fn new() -> Self {
         Self {
             device_cache: Mutex::new(HashMap::new()),
-            connected_device: Mutex::new(None),
+            connected_stream: Mutex::new(None),
         }
     }
 
@@ -44,12 +43,11 @@ impl LinuxBluetooth {
                         || name_str.to_lowercase().contains("vortex")
                     {
                         let address = device.address().to_string();
-                        let connected = device.connected().await.unwrap_or(false);
                         result.push(KnownDevice {
                             address: address.clone(),
                             name: name_str,
                             profile: None,
-                            connected: connected,
+                            connected: false,
                         });
                     }
                 }
@@ -58,43 +56,36 @@ impl LinuxBluetooth {
         Ok(result)
     }
 
-    pub async fn connect(&self, address: &str) -> Result<(), String> {
-        let session = bluer::Session::new().await
-            .map_err(|e| format!("Failed to create BlueZ session: {}", e))?;
-        let adapter = session.default_adapter().await
-            .map_err(|e| format!("No Bluetooth adapter: {}", e))?;
-        let device = adapter.device(address)
-            .map_err(|e| format!("Device not found: {}", e))?;
-        device.connect().await
-            .map_err(|e| format!("Failed to connect: {}", e))?;
-        *self.connected_device.lock().unwrap() = Some(device);
+    pub async fn connect(&self, address: &str, channel: u8) -> Result<(), String> {
+        let addr: Address = address.parse()
+            .map_err(|e| format!("Invalid Bluetooth address: {}", e))?;
+        let sa = SocketAddr::new(addr, channel);
+        let socket = Socket::new()
+            .map_err(|e| format!("Failed to create RFCOMM socket: {}", e))?;
+        let stream = socket.connect(sa).await
+            .map_err(|e| format!("Failed to connect RFCOMM: {}", e))?;
+        *self.connected_stream.lock().unwrap() = Some(stream);
         Ok(())
     }
 
     pub async fn disconnect(&self, address: &str) -> Result<(), String> {
-        *self.connected_device.lock().unwrap() = None;
+        *self.connected_stream.lock().unwrap() = None;
         Ok(())
     }
 
     pub fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
-        let device = self.connected_device.lock().unwrap();
-        let device = device.as_ref().ok_or("No connected Bluetooth device")?;
-        futures::executor::block_on(device.write(frame))
+        let stream = self.connected_stream.lock().unwrap();
+        let stream = stream.as_ref().ok_or("No connected Bluetooth device")?;
+        futures::executor::block_on(stream.write_all(frame))
             .map_err(|e| format!("Failed to send frame over Bluetooth: {}", e))?;
         Ok(())
     }
 
     pub async fn get_state(&self) -> Result<String, String> {
-        let session = bluer::Session::new().await
-            .map_err(|e| format!("Failed to create BlueZ session: {}", e))?;
-        let adapter = session.default_adapter().await
-            .map_err(|e| format!("No Bluetooth adapter: {}", e))?;
-        if adapter.powered().await.unwrap_or(false) {
+        if self.connected_stream.lock().unwrap().is_some() {
             Ok("powered_on".to_string())
         } else {
             Ok("powered_off".to_string())
         }
     }
 }
-
-
