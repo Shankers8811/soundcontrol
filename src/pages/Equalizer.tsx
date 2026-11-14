@@ -7,7 +7,6 @@ import { EQSlider } from '../components/EQSlider';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
 import { Save, Trash2, Loader2, Music, ShieldAlert } from 'lucide-react';
 import { getDeviceInfo, getEQPresets, saveEQPreset, deleteEQPreset, applyEQPreset, setEQBand } from '../api/tauri';
-import type { DeviceFeatures, EQPreset as EQPresetType } from '../types';
 
 interface EQPresetItem {
   name: string;
@@ -20,23 +19,10 @@ export const EqualizerPage: React.FC = () => {
   const [eqBands, setEqBands] = useState<number[]>(Array(8).fill(0));
   const [presets, setPresets] = useState<EQPresetItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [deviceFeatures, setDeviceFeatures] = useState<DeviceFeatures | null>(null);
 
   useEffect(() => {
-    if (connectedDevice?.address) {
-      loadDeviceInfo();
-    }
-  }, [connectedDevice]);
-
-  const loadDeviceInfo = async () => {
-    if (!connectedDevice?.address) return;
-    try {
-      const info = await getDeviceInfo(connectedDevice.address);
-      setDeviceFeatures(info.features);
-    } catch (e) {
-      console.error('Failed to load device info', e);
-    }
-  };
+    loadPresets();
+  }, []);
 
   const loadPresets = async () => {
     try {
@@ -46,10 +32,6 @@ export const EqualizerPage: React.FC = () => {
       console.error('Failed to load presets', e);
     }
   };
-
-  useEffect(() => {
-    loadPresets();
-  }, []);
 
   const handleBandChange = async (band: number, gain: number) => {
     const newBands = [...eqBands];
