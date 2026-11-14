@@ -28,7 +28,7 @@ impl LinuxBluetooth {
     }
 
     pub async fn scan(&self) -> Result<Vec<KnownDevice>, String> {
-        let session = self.session.lock().unwrap().clone().ok_or("No Bluetooth session")?;
+        let session = self.session.lock().unwrap().as_ref().ok_or("No Bluetooth session")?;
         let adapter = session.default_adapter()
             .map_err(|e| format!("No Bluetooth adapter: {}", e))?;
         adapter.set_powered(true)
@@ -66,7 +66,7 @@ impl LinuxBluetooth {
     }
 
     pub async fn connect(&self, address: &str) -> Result<(), String> {
-        let adapter = self.adapter.lock().unwrap().clone().ok_or("No Bluetooth adapter")?;
+        let adapter = self.adapter.lock().unwrap().as_ref().ok_or("No Bluetooth adapter")?;
         let device = adapter.device(address)
             .map_err(|e| format!("Device not found: {}", e))?;
         device.connect()
@@ -89,7 +89,7 @@ impl LinuxBluetooth {
     }
 
     pub async fn get_state(&self) -> Result<String, String> {
-        let adapter = self.adapter.lock().unwrap().clone().ok_or("No Bluetooth adapter")?;
+        let adapter = self.adapter.lock().unwrap().as_ref().ok_or("No Bluetooth adapter")?;
         if adapter.powered().unwrap_or(false) {
             Ok("powered_on".to_string())
         } else {
