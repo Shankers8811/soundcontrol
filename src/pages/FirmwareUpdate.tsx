@@ -4,7 +4,7 @@ import { useUIStore } from '../stores/ui';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
-import { ShieldAlert, RefreshCw, Download, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { ShieldAlert, RefreshCw, Download, CheckCircle2 } from 'lucide-react';
 import { checkFirmwareUpdate } from '../api/tauri';
 
 interface FirmwareInfo {
