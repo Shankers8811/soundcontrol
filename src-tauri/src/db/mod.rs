@@ -20,7 +20,7 @@ impl Database {
     }
 
     fn run_migrations(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
-        conn.execute_batch(include_str!("../../../migrations.sql"))?;
+        conn.execute_batch(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../migrations.sql")))?;
         Ok(())
     }
 
@@ -107,6 +107,14 @@ impl Database {
         self.conn.lock().unwrap().execute(
             "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?1, ?2, datetime('now'))",
             params![key, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_setting(&self, key: &str) -> Result<(), rusqlite::Error> {
+        self.conn.lock().unwrap().execute(
+            "DELETE FROM settings WHERE key = ?1",
+            params![key],
         )?;
         Ok(())
     }
