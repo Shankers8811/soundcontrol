@@ -1,14 +1,14 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useUIStore } from '../stores/ui';
-import { Devices, Activity, BarChart3, Battery, Settings, LayoutDashboard, Ear, Moon, Settings2, ShieldAlert, Lightbulb } from 'lucide-react';
+import { Activity, BarChart3, Battery, Settings, LayoutDashboard, Ear, Moon, Settings2, ShieldAlert, Lightbulb, Monitor } from 'lucide-react';
 
 const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Devices' },
   { path: '/noise-control', icon: Activity, label: 'Noise Control' },
   { path: '/equalizer', icon: BarChart3, label: 'Equalizer' },
   { path: '/battery', icon: Battery, label: 'Battery' },
-  { path: '/diagnostics', icon: Devices, label: 'Diagnostics' },
+  { path: '/diagnostics', icon: Monitor, label: 'Diagnostics' },
   { path: '/settings', icon: Settings, label: 'Settings' },
   { path: '/hearid', icon: Ear, label: 'HearID' },
   { path: '/relaxing-sounds', icon: Moon, label: 'Relaxing Sounds' },
@@ -36,7 +36,7 @@ export const Sidebar: React.FC = () => {
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
           </button>
         </div>
-        
+
         <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -63,7 +63,7 @@ export const Sidebar: React.FC = () => {
             );
           })}
         </nav>
-        
+
         <div className="p-4 border-t border-gray-200 dark:border-gray-800">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-800 flex items-center justify-center">
