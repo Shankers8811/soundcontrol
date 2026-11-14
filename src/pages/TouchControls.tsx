@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDevicesStore } from '../stores/devices';
 import { useUIStore } from '../stores/ui';
 import { Card } from '../components/Card';
@@ -32,13 +32,6 @@ export const TouchControlsPage: React.FC = () => {
       // Device info loading would happen here
     }
   }, [connectedDevice]);
-
-  const saveGesture = (gestureId: string, value: string) => {
-    setCustomGestures(prev => ({ ...prev, [gestureId]: value }));
-    setEditingGesture(null);
-    setNewValue('');
-    showToast(`Updated ${gestures.find(g => g.id === gestureId)?.name}`, 'success');
-  };
 
   if (!connectedDevice) {
     return (
