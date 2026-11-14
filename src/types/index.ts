@@ -1,12 +1,21 @@
 export type {
   DeviceProfile,
   DiscoveredDevice,
-  BatteryLevel,
   DeviceFeatures,
   AppSettings,
   EQPreset,
   FrameLogEntry,
 } from '../types';
+
+export interface BatteryLevel {
+  left: number | null;
+  right: number | null;
+  case: number | null;
+  left_charging: boolean;
+  right_charging: boolean;
+  case_charging: boolean;
+  single_earbud_mode: boolean;
+}
 
 export interface DeviceInfo {
   name: string;
