@@ -1,13 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDevicesStore } from '../stores/devices';
 import { useUIStore } from '../stores/ui';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { DeviceGuardButton } from '../components/DeviceGuardButton';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
-import { ShieldAlert, Lightbulb, Zap, RefreshCw } from 'lucide-react';
+import { ShieldAlert, Zap } from 'lucide-react';
 import { getDeviceInfo } from '../api/tauri';
-import type { DeviceFeatures } from '../types';
 
 const lightingModes = [
   { id: 'off', name: 'Off', color: '#6b7280' },
@@ -21,13 +20,12 @@ const lightingModes = [
 export const SpeakerLightingPage: React.FC = () => {
   const { connectedDevice } = useDevicesStore();
   const { showToast } = useUIStore();
-  const [features, setFeatures] = useState<DeviceFeatures | null>(null);
   const [selectedMode, setSelectedMode] = useState('off');
   const [brightness, setBrightness] = useState(70);
 
   useEffect(() => {
     if (connectedDevice?.address) {
-      getDeviceInfo(connectedDevice.address).then(info => setFeatures(info.features)).catch(() => {});
+      getDeviceInfo(connectedDevice.address).then(() => {}).catch(() => {});
     }
   }, [connectedDevice]);
 
