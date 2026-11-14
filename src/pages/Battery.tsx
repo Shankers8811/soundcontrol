@@ -52,7 +52,17 @@ export const BatteryPage: React.FC = () => {
           <p className="text-gray-500 dark:text-gray-400">Monitor battery levels for your earbuds</p>
         </div>
         <Button onClick={() => { refreshBattery(connectedDevice.address); loadBattery(); }} disabled={loading}>
-          {loading ? <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> Loading</span> : <><RefreshCw className="w-4 h-4 mr-2" /> Refresh</>}</>
+          {loading ? (
+            <span className="flex items-center gap-2">
+              <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              Loading
+            </span>
+          ) : (
+            <>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </>
+          )}
         </Button>
       </div>
 
