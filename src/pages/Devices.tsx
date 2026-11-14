@@ -4,11 +4,11 @@ import { useUIStore } from '../stores/ui';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
-import { Search, Plus, RefreshCw, Wifi, BluetoothOff, Bluetooth, Ear, EarOff } from 'lucide-react';
+import { Search, RefreshCw, Wifi, BluetoothOff, Bluetooth, Ear } from 'lucide-react';
 import { isSoundcoreDevice } from '../utils/helpers';
 
 export const DevicesPage: React.FC = () => {
-  const { devices, connectedDevice, isScanning, scan, connect, disconnect, setConnectedDevice, bluetoothState } = useDevicesStore();
+  const { devices, connectedDevice, isScanning, scan, connect, disconnect, bluetoothState } = useDevicesStore();
   const { showToast } = useUIStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [singleEarbudMode, setSingleEarbudMode] = useState(false);
@@ -17,7 +17,7 @@ export const DevicesPage: React.FC = () => {
     scan();
   }, []);
 
-  const filteredDevices = devices.filter(d => 
+  const filteredDevices = devices.filter(d =>
     d.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -97,7 +97,7 @@ export const DevicesPage: React.FC = () => {
             </Card>
           </div>
         )}
-        
+
         <div className="lg:col-span-3">
           <Card padding="md">
             <div className="flex items-center justify-between mb-4">
@@ -106,7 +106,7 @@ export const DevicesPage: React.FC = () => {
                 {bluetoothState === 'powered_on' ? 'Bluetooth On' : 'Bluetooth Off'}
               </span>
             </div>
-            
+
             {soundcoreDevices.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-3">
@@ -128,8 +128,8 @@ export const DevicesPage: React.FC = () => {
                         <p className="text-xs text-gray-500">{device.profile?.model || 'Soundcore Device'}</p>
                       </div>
                     </div>
-                    <Button 
-                      variant="primary" 
+                    <Button
+                      variant="primary"
                       size="sm"
                       onClick={() => handleConnect(device.address)}
                       disabled={device.connected}
