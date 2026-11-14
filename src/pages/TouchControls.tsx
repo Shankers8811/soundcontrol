@@ -6,7 +6,6 @@ import { Button } from '../components/Button';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
 import { ShieldAlert, Play, SkipForward, SkipBack, Phone, Volume2 } from 'lucide-react';
 import { setGestures } from '../api/tauri';
-import type { DeviceFeatures } from '../types';
 
 const gestures = [
   { id: 'left_single', name: 'Left - Single Tap', icon: Play, default: 'Play / Pause' },
@@ -21,9 +20,6 @@ const gestures = [
 export const TouchControlsPage: React.FC = () => {
   const { connectedDevice } = useDevicesStore();
   const { showToast } = useUIStore();
-  const [features, setFeatures] = useState<DeviceFeatures | null>(null);
-  const [customGestures, setCustomGestures] = useState<Record<string, string>>({});
-
   const [editingGesture, setEditingGesture] = useState<string | null>(null);
   const [newValue, setNewValue] = useState('');
 
@@ -65,68 +61,14 @@ export const TouchControlsPage: React.FC = () => {
           <Card padding="md">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold">Gesture Customization</h3>
-              <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                features?.custom_gestures ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-400' : 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500'
-              }`}>
-                {features?.custom_gestures ? 'Supported' : 'Not Supported'}
+              <span className="text-xs font-medium px-2 py-1 rounded-full bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500">
+                Not Supported
               </span>
             </div>
-
-            {features?.custom_gestures ? (
-              <div className="space-y-3">
-                {gestures.map((g) => (
-                  <div key={g.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                    <div className="flex items-center gap-3">
-                      <g.icon className="w-5 h-5 text-gray-500" />
-                      <div>
-                        <p className="text-sm font-medium">{g.name}</p>
-                        <p className="text-xs text-gray-500">Default: {g.default}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">
-                        {customGestures[g.id] || g.default}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={editingGesture !== null && editingGesture !== g.id}
-                        onClick={() => setEditingGesture(g.id)}
-                      >
-                        {editingGesture === g.id ? 'Save' : 'Edit'}
-                      </Button>
-                      {editingGesture === g.id && (
-                        <input
-                          type="text"
-                          value={newValue}
-                          onChange={(e) => setNewValue(e.target.value)}
-                          placeholder="New action..."
-                          className="flex-1 text-sm bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-soundcore-500"
-                        />
-                      )}
-                    </div>
-                  </div>
-                ))}
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    // Save all custom gestures to device
-                    const leftTap = customGestures['left_single'] || 'Play / Pause';
-                    const leftHold = customGestures['left_hold'] || 'Volume Down';
-                    setGestures(connectedDevice.address, leftTap, leftHold).then(() => {
-                      showToast('Gesture settings saved to device', 'success');
-                    }).catch(() => showToast('Failed to save gestures', 'error'));
-                  }}
-                >
-                  Apply to Device
-                </Button>
-              </div>
-            ) : (
-              <div className="py-8 text-center">
-                <ShieldAlert className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-sm text-gray-500">Your device does not support touch control customization</p>
-              </div>
-            )}
+            <div className="py-8 text-center">
+              <ShieldAlert className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+              <p className="text-sm text-gray-500">Your device does not support touch control customization</p>
+            </div>
           </Card>
         </div>
 
