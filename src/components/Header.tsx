@@ -1,9 +1,9 @@
-import React from 'react';
+import type React from 'react';
 import { useUIStore } from '../stores/ui';
 import { Sun, Moon, Bell, Menu, User } from 'lucide-react';
 
 export const Header: React.FC = () => {
-  const { sidebarOpen, toggleSidebar } = useUIStore();
+  const { toggleSidebar } = useUIStore();
 
   return (
     <header className="h-16 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-6">
