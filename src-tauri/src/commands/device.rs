@@ -266,3 +266,4 @@ pub fn get_battery_levels(state: State<'_, AppState>, address: String) -> Result
         "single_earbud_mode": single_earbud_mode,
     }))
 }
+
