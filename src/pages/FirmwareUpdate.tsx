@@ -7,16 +7,26 @@ import { DeviceInfoCard } from '../components/DeviceInfoCard';
 import { ShieldAlert, RefreshCw, Download, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { checkFirmwareUpdate } from '../api/tauri';
 
+interface FirmwareInfo {
+  model: string;
+  update_available: boolean;
+  cached: { version: string } | null;
+}
+
 export const FirmwareUpdatePage: React.FC = () => {
   const { connectedDevice } = useDevicesStore();
   const { showToast } = useUIStore();
-  const [firmwareInfo, setFirmwareInfo] = useState<any>(null);
+  const [firmwareInfo, setFirmwareInfo] = useState<FirmwareInfo | null>(null);
   const [checking, setChecking] = useState(false);
-  [true]; // placeholder to avoid unused var warning
 
   useEffect(() => {
     if (connectedDevice?.address && connectedDevice.profile?.model) {
-      checkFirmwareUpdate(connectedDevice.profile.model).then(setFirmwareInfo).catch(() => {});
+      checkFirmwareUpdate(connectedDevice.profile.model)
+        .then(setFirmwareInfo)
+        .catch((e) => {
+          console.error('Failed to check firmware', e);
+          showToast('Failed to check firmware', 'error');
+        });
     }
   }, [connectedDevice]);
 
@@ -25,7 +35,7 @@ export const FirmwareUpdatePage: React.FC = () => {
     try {
       if (connectedDevice?.profile?.model) {
         const info = await checkFirmwareUpdate(connectedDevice.profile.model);
-        setFirmwareInfo(info);
+        setFirmwareInfo(info as FirmwareInfo);
       }
     } catch (e) {
       showToast('Failed to check for updates', 'error');
@@ -57,7 +67,17 @@ export const FirmwareUpdatePage: React.FC = () => {
           <p className="text-gray-500 dark:text-gray-400">Keep your Soundcore device up to date</p>
         </div>
         <Button onClick={checkForUpdates} disabled={checking}>
-          {checking ? <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> Checking</span> : <><RefreshCw className="w-4 h-4 mr-2" /> Check Updates</>}</>
+          {checking ? (
+            <span className="flex items-center gap-2">
+              <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              Checking
+            </span>
+          ) : (
+            <>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Check Updates
+            </>
+          )}
         </Button>
       </div>
 
