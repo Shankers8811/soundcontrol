@@ -7,9 +7,9 @@ import { ToggleSwitch } from '../components/ToggleSwitch';
 import { ModePill } from '../components/ModePill';
 import { DeviceGuardButton } from '../components/DeviceGuardButton';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
-import { 
-  Wind, Volume2, Headphones, Timer, Smartphone, 
-  Ear, ShieldAlert, AlertTriangle, RefreshCw 
+import {
+  Wind, Volume2, Headphones, Timer, Smartphone,
+  Ear, ShieldAlert, AlertTriangle, RefreshCw
 } from 'lucide-react';
 import { getDeviceInfo, setAncMode, setTransparency, setAdaptiveNoise, setWindNoise, setGameMode, setLDAC } from '../api/tauri';
 import type { DeviceFeatures } from '../types';
@@ -30,7 +30,7 @@ export const NoiseControlPage: React.FC<NoiseControlPageProps> = ({ deviceAddres
   const [ldac, setLDACState] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const device = connectedDevice || (deviceAddress ? { address: deviceAddress, name: 'Unknown', profile: null, connected: false } : null);
+  const device = connectedDevice;
 
   useEffect(() => {
     if (device?.address) {
@@ -75,12 +75,12 @@ export const NoiseControlPage: React.FC<NoiseControlPageProps> = ({ deviceAddres
       game_mode: 'game_mode',
       ldac: 'ldac',
     };
-    
+
     if (!features?.[featureMap[feature]]) {
       showToast(`Your device does not support ${feature.replace('_', ' ')}`, 'error');
       return;
     }
-    
+
     try {
       switch (feature) {
         case 'transparency':
@@ -146,7 +146,7 @@ export const NoiseControlPage: React.FC<NoiseControlPageProps> = ({ deviceAddres
                 {features?.anc ? 'Supported' : 'Not Supported'}
               </span>
             </div>
-            
+
             {features?.anc ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {['off', 'low', 'mid', 'high', 'adaptive'].map((mode) => (
@@ -171,7 +171,7 @@ export const NoiseControlPage: React.FC<NoiseControlPageProps> = ({ deviceAddres
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold">Transparency & Adaptive</h3>
             </div>
-            
+
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -242,7 +242,7 @@ export const NoiseControlPage: React.FC<NoiseControlPageProps> = ({ deviceAddres
               >
                 {gameMode ? 'Disable' : 'Enable'} Game Mode
               </DeviceGuardButton>
-              
+
               <DeviceGuardButton
                 feature="LDAC"
                 supported={features?.ldac ?? false}
@@ -251,7 +251,7 @@ export const NoiseControlPage: React.FC<NoiseControlPageProps> = ({ deviceAddres
               >
                 {ldac ? 'Disable' : 'Enable'} LDAC
               </DeviceGuardButton>
-              
+
               <Button variant="outline" onClick={() => refreshBattery(device.address)}>
                 <RefreshCw className="w-4 h-4 mr-2" /> Refresh Battery
               </Button>
