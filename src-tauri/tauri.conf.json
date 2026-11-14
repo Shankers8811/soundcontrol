@@ -31,13 +31,6 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "appimage", "deb"],
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128x128.png",
-      "icons/icns.icns",
-      "icons/ico.ico"
-    ],
     "longDescription": "Native desktop companion for Anker/Soundcore devices. ANC, EQ, battery monitoring, diagnostics.",
     "shortDescription": "SoundControl - Anker/Soundcore Desktop Companion",
     "copyright": "Copyright (c) 2026 Shankers8811",
