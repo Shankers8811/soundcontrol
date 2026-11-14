@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import { scanDevices, connectDevice, disconnectDevice, getBluetoothState, getDeviceInfo, getBatteryLevels } from '../api/tauri';
 import type { DiscoveredDevice, BatteryLevel } from '../types';
 
