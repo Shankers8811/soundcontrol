@@ -6,9 +6,11 @@ import { DeviceInfoCard } from '../components/DeviceInfoCard';
 import { Ear, ShieldAlert, Headphones, Activity, Play, RefreshCw } from 'lucide-react';
 import { getDeviceInfo } from '../api/tauri';
 import type { DeviceFeatures } from '../types';
+import { useUIStore } from '../stores/ui';
 
 export const HearIDPage: React.FC = () => {
   const { connectedDevice } = useDevicesStore();
+  const { showToast } = useUIStore();
   const [features, setFeatures] = useState<DeviceFeatures | null>(null);
   const [testStage, setTestStage] = useState<'intro' | 'testing' | 'results' | null>(null);
   const [currentFrequency, setCurrentFrequency] = useState(0);
@@ -17,7 +19,12 @@ export const HearIDPage: React.FC = () => {
 
   useEffect(() => {
     if (connectedDevice?.address) {
-      getDeviceInfo(connectedDevice.address).then(info => setFeatures(info.features)).catch(() => {});
+      getDeviceInfo(connectedDevice.address)
+        .then(info => setFeatures(info.features))
+        .catch((e) => {
+          console.error('Failed to load device info', e);
+          showToast('Failed to load device info', 'error');
+        });
     }
   }, [connectedDevice]);
 
