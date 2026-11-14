@@ -1,3 +1,4 @@
+import type { AppSettings, DiscoveredDevice, DeviceProfile, DeviceFeatures, BatteryLevel, EQPreset, FrameLogEntry } from '../types';
 import { invoke } from '@tauri-apps/api/core';
 
 export async function getSettings() {
