@@ -6,10 +6,8 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
-    "devCommand": "npm run dev",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build",
-    "useMultipleTargets": true
+    "beforeBuildCommand": "npm run build"
   },
   "app": {
     "windows": [
@@ -54,9 +52,6 @@
         "category": "Utility"
       }
     },
-    "macos": {
-      "frameworks": []
-    },
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
@@ -76,10 +71,7 @@
         "postScript": null,
         "uninstall": null,
         "customConfig": null
-      },
-      "webviewInstallMode": "fixedRuntime",
-      "webviewInstallLanguage": "en-US",
-      "webviewInstallArchitecture": "x64"
+      }
     }
   },
   "plugins": {
