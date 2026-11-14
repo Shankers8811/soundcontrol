@@ -100,7 +100,7 @@ export const BatteryPage: React.FC = () => {
             <div className="flex items-center justify-between py-2">
               <span className="text-sm text-gray-600 dark:text-gray-400">Combined Level</span>
               <span className="text-sm font-mono font-bold">
-                {battery?.left !== null && battery?.right !== null
+                {battery != null && battery.left !== null && battery.right !== null
                   ? Math.round((battery.left + battery.right) / 2) + '%'
                   : '--'}
               </span>
