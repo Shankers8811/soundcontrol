@@ -1,15 +1,8 @@
-import React from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 
-interface AppShellProps {
-  children: React.ReactNode;
-}
-
-export const AppShell: React.FC<AppShellProps> = ({ children }) => {
-  const navigate = useNavigate();
-
+export const AppShell: React.FC = () => {
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       <Sidebar />
