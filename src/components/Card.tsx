@@ -4,12 +4,14 @@ interface CardProps {
   children: React.ReactNode;
   className?: string;
   padding?: 'none' | 'sm' | 'md' | 'lg';
+  onClick?: () => void;
 }
 
 export const Card: React.FC<CardProps> = ({
   children,
   className = '',
   padding = 'md',
+  onClick,
 }) => {
   const paddingStyles = {
     none: '',
@@ -19,7 +21,10 @@ export const Card: React.FC<CardProps> = ({
   };
 
   return (
-    <div className={`bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm ${paddingStyles[padding]} ${className}`}>
+    <div
+      onClick={onClick}
+      className={`bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm ${paddingStyles[padding]} ${className}`}
+    >
       {children}
     </div>
   );
