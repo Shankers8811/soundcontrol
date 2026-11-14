@@ -5,7 +5,7 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { DeviceGuardButton } from '../components/DeviceGuardButton';
 import { DeviceInfoCard } from '../components/DeviceInfoCard';
-import { ShieldAlert, Lightbulb, Zap, RefreshCw, ShieldAlert as AlertIcon } from 'lucide-react';
+import { ShieldAlert, Lightbulb, Zap, RefreshCw } from 'lucide-react';
 import { getDeviceInfo } from '../api/tauri';
 import type { DeviceFeatures } from '../types';
 
@@ -31,7 +31,7 @@ export const SpeakerLightingPage: React.FC = () => {
     }
   }, [connectedDevice]);
 
-  const isSpeaker = connectedDevice?.profile?.model?.startsWith('A31') || 
+  const isSpeaker = connectedDevice?.profile?.model?.startsWith('A31') ||
                     connectedDevice?.profile?.model?.startsWith('A39') ||
                     connectedDevice?.profile?.model?.toLowerCase().includes('motion') ||
                     connectedDevice?.profile?.model?.toLowerCase().includes('flare') ||
@@ -57,7 +57,7 @@ export const SpeakerLightingPage: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Speaker Lighting</h3>
+          <h1 className="text-2xl font-bold">Speaker Lighting</h1>
           <p className="text-gray-500 dark:text-gray-400">Control LED lighting and PartyCast sync</p>
         </div>
       </div>
@@ -98,7 +98,7 @@ export const SpeakerLightingPage: React.FC = () => {
               </div>
             ) : (
               <div className="py-8 text-center">
-                <AlertIcon className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                <ShieldAlert className="w-12 h-12 text-gray-400 mx-auto mb-3" />
                 <p className="text-sm text-gray-500">Your device is not a speaker - lighting controls not available</p>
               </div>
             )}
