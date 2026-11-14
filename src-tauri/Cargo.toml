@@ -18,7 +18,7 @@ thiserror = "1.0"
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 log = "0.4"
-crc16 = "2.0"
+crc16 = "0.4"
 base64 = "0.22"
 notify = { version = "6.0", features = ["inotify"] }
 dirs = "5.0"
