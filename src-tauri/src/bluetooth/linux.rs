@@ -6,23 +6,29 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 pub struct LinuxBluetooth {
-    adapter: Option<bluer::Adapter>,
+    session: Mutex<Option<bluer::Session>>,
+    adapter: Mutex<Option<bluer::Adapter>>,
     device_cache: Mutex<HashMap<String, DeviceProfile>>,
     connected_device: Mutex<Option<bluer::Device>>,
 }
 
 impl LinuxBluetooth {
     pub fn new() -> Self {
+        let session = bluer::Session::new().ok();
+        let adapter = session.as_ref().and_then(|s| s.default_adapter().ok());
+        if let Some(ref adapter) = adapter {
+            let _ = adapter.set_powered(true);
+        }
         Self {
-            adapter: None,
+            session: Mutex::new(session),
+            adapter: Mutex::new(adapter),
             device_cache: Mutex::new(HashMap::new()),
             connected_device: Mutex::new(None),
         }
     }
 
     pub async fn scan(&self) -> Result<Vec<KnownDevice>, String> {
-        let session = bluer::Session::new()
-            .map_err(|e| format!("Failed to create BlueZ session: {}", e))?;
+        let session = self.session.lock().unwrap().clone().ok_or("No Bluetooth session")?;
         let adapter = session.default_adapter()
             .map_err(|e| format!("No Bluetooth adapter: {}", e))?;
         adapter.set_powered(true)
@@ -60,10 +66,7 @@ impl LinuxBluetooth {
     }
 
     pub async fn connect(&self, address: &str) -> Result<(), String> {
-        let session = bluer::Session::new()
-            .map_err(|e| format!("Failed to create BlueZ session: {}", e))?;
-        let adapter = session.default_adapter()
-            .map_err(|e| format!("No Bluetooth adapter: {}", e))?;
+        let adapter = self.adapter.lock().unwrap().clone().ok_or("No Bluetooth adapter")?;
         let device = adapter.device(address)
             .map_err(|e| format!("Device not found: {}", e))?;
         device.connect()
@@ -80,18 +83,13 @@ impl LinuxBluetooth {
     pub async fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
         let device = self.connected_device.lock().unwrap().clone();
         let device = device.ok_or("No connected Bluetooth device")?;
-        // Write to the device's RFCOMM channel or GATT characteristic
-        // For Soundcore CMF protocol, we write to the appropriate characteristic
-        device.write(&frame)
+        device.write(frame)
             .map_err(|e| format!("Failed to send frame over Bluetooth: {}", e))?;
         Ok(())
     }
 
     pub async fn get_state(&self) -> Result<String, String> {
-        let session = bluer::Session::new()
-            .map_err(|e| format!("Failed to create BlueZ session: {}", e))?;
-        let adapter = session.default_adapter()
-            .map_err(|e| format!("No Bluetooth adapter: {}", e))?;
+        let adapter = self.adapter.lock().unwrap().clone().ok_or("No Bluetooth adapter")?;
         if adapter.powered().unwrap_or(false) {
             Ok("powered_on".to_string())
         } else {
