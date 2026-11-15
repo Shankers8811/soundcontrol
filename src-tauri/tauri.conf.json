@@ -1,5 +1,5 @@
 {
-  "$schema": "https://apps.tauri.dev/schema.json",
+  "$schema": "https://schema.tauri.app/config/2",
   "productName": "SoundControl",
   "version": "0.1.0",
   "identifier": "com.shankers8811.soundcontrol",
@@ -24,46 +24,30 @@
         "skipTaskbar": false
       }
     ],
-    "security": {
-      "csp": null
-    }
+    "security": { "csp": null }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "appimage", "deb"],
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
     "longDescription": "Native desktop companion for Anker/Soundcore devices. ANC, EQ, battery monitoring, diagnostics.",
     "shortDescription": "SoundControl - Anker/Soundcore Desktop Companion",
     "copyright": "Copyright (c) 2026 Shankers8811",
-    "externalBin": [],
-    "resources": [],
     "linux": {
-      "deb": {
-        "depends": ["libgtk-3-0", "libbluetooth3", "libdbus-1-3"]
-      }
+      "deb": { "depends": ["libgtk-3-0", "libbluetooth3", "libdbus-1-3"] }
     },
     "windows": {
-      "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
       "timestampUrl": "http://timestamp.digicert.com",
       "nsis": {
-        "installMode": "perUser",
-        "createDesktopShortcut": true,
-        "createStartMenuShortcut": true,
-        "shortcutName": "SoundControl",
-        "artifactName": "soundcontrol-setup-${version}.exe"
+        "installMode": "currentUser"
       }
-    }
-  },
-  "plugins": {
-    "log": {
-      "level": "debug",
-      "rotation": {
-        "maxSize": 1048576,
-        "maxFiles": 5
-      }
-    },
-    "store": {
-      "defaultFilename": "settings.bin"
     }
   }
 }
