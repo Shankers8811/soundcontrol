@@ -31,7 +31,7 @@ pub fn get_hotkeys(state: State<'_, AppState>) -> Result<serde_json::Value, Stri
 
 #[command]
 pub fn show_window(app: AppHandle) -> Result<(), String> {
-    let window = app.get_window("main").ok_or("Window not found")?;
+    let window = app.get_webview_window("main").ok_or("Window not found")?;
     window.show().map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())?;
     Ok(())
@@ -39,7 +39,7 @@ pub fn show_window(app: AppHandle) -> Result<(), String> {
 
 #[command]
 pub fn minimize_window(app: AppHandle) -> Result<(), String> {
-    let window = app.get_window("main").ok_or("Window not found")?;
+    let window = app.get_webview_window("main").ok_or("Window not found")?;
     window.minimize().map_err(|e| e.to_string())?;
     Ok(())
 }

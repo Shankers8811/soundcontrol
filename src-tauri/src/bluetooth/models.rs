@@ -1,4 +1,12 @@
-use crate::protocol::DeviceProfile;
+pub use crate::protocol::DeviceProfile;
+
+#[derive(Debug, Clone)]
+pub struct KnownDevice {
+    pub address: String,
+    pub name: String,
+    pub profile: Option<DeviceProfile>,
+    pub connected: bool,
+}
 
 #[derive(Debug, Clone)]
 pub struct DiscoveredDevice {

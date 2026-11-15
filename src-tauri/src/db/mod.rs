@@ -1,5 +1,6 @@
 use crate::protocol::{DeviceProfile, BatteryLevel};
 use rusqlite::{Connection, params};
+use rusqlite::OptionalExtension;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -21,10 +22,7 @@ impl Database {
     }
 
     fn run_migrations(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let migrations_path = PathBuf::from(manifest_dir).join("../migrations.sql");
-        let migrations_sql = fs::read_to_string(&migrations_path)
-            .map_err(|e| format!("Failed to read migrations file at {:?}: {}", migrations_path, e))?;
+        let migrations_sql = include_str!("../../../migrations.sql");
         conn.execute_batch(&migrations_sql)?;
         Ok(())
     }

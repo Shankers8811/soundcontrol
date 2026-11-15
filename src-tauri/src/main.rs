@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use tauri::Manager;
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::default().build())
@@ -45,6 +47,11 @@ fn main() {
             soundcontrol::commands::system::check_for_updates,
         ])
         .setup(|app| {
+            app.manage(soundcontrol::AppState::new(
+                soundcontrol::db::Database::new()?,
+                soundcontrol::bluetooth::BluetoothManager::new(),
+                soundcontrol::protocol::ProtocolHandler::new(),
+            ));
             soundcontrol::tasks::start_background_tasks(app.handle());
             Ok(())
         })

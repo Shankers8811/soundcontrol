@@ -43,6 +43,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "tauri-build"
+          workspaces: "src-tauri -> target"
 
       - name: Install Node.js
         uses: actions/setup-node@v4
@@ -73,14 +74,17 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Generate icons
+        run: npx tauri icon app-icon.png
+
       - name: Build frontend
         run: npm run build
 
-      - name: Generate icons
-        run: npx tauri icon public/icon-512.png
-
       - name: Verify Tauri CLI
         run: npx tauri --version
+
+      - name: Cargo check (fast compile verification)
+        run: cargo check --manifest-path src-tauri/Cargo.toml
 
       - name: Build Tauri app
         run: npm run tauri -- build --bundles ${{ matrix.bundle }}
