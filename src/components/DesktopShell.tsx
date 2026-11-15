@@ -6,11 +6,11 @@ import { DevicesPage } from '../pages/DevicesPage';
 import { EqualizerPage } from '../pages/EqualizerPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { SimulatorPage } from '../pages/SimulatorPage';
-import { Sidebar } from './Sidebar';
+import { TopTabs } from './TopTabs';
 import { InlineError } from './ui';
 
 /**
- * Desktop application frame: fixed left sidebar + scrollable content region.
+ * Desktop application frame: horizontal top tabs + scrollable content region.
  * Page switches are pure React state changes (no window reload); the keyed
  * wrapper replays a 180ms fade/slide, and all application state lives in the
  * provider above this component, so it survives navigation.
@@ -41,8 +41,8 @@ export function DesktopShell() {
   }, [app.theme]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-bg text-ink">
-      <Sidebar />
+    <div className="flex h-screen overflow-hidden bg-bg text-ink flex-col">
+      <TopTabs />
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* App-level error surface: classified, human-readable transport /
