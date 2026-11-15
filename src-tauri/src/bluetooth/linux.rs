@@ -25,11 +25,10 @@ impl LinuxBluetooth {
             .map_err(|e| format!("No Bluetooth adapter: {}", e))?;
         adapter.set_powered(true).await
             .map_err(|e| format!("Failed to power on adapter: {}", e))?;
-        adapter.start_discovery().await
+        let discovery = adapter.discover_devices().await
             .map_err(|e| format!("Failed to start discovery: {}", e))?;
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        adapter.stop_discovery().await
-            .map_err(|e| format!("Failed to stop discovery: {}", e))?;
+        drop(discovery);
         let addresses = adapter.device_addresses().await
             .map_err(|e| format!("Failed to get device addresses: {}", e))?;
         let mut result = Vec::new();
