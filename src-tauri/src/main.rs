@@ -47,8 +47,13 @@ fn main() {
             soundcontrol::commands::system::check_for_updates,
         ])
         .setup(|app| {
+            let app_data_dir = app.path().app_data_dir()
+                .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+            std::fs::create_dir_all(&app_data_dir)
+                .map_err(|e| format!("Failed to create app data dir: {}", e))?;
+            
             app.manage(soundcontrol::AppState::new(
-                soundcontrol::db::Database::new()?,
+                soundcontrol::db::Database::new(app_data_dir)?,
                 soundcontrol::bluetooth::BluetoothManager::new(),
                 soundcontrol::protocol::ProtocolHandler::new(),
             ));
