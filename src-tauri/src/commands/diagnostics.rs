@@ -52,6 +52,7 @@ pub fn export_diagnostics(state: State<'_, AppState>) -> Result<String, String> 
         "settings": settings,
     });
 
+    // Use app's data dir (same as DB) for exports
     let dir = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."));
     let file_path = dir.join(&filename);
