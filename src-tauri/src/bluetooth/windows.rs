@@ -2,16 +2,17 @@ use super::models::*;
 use serialport::SerialPort;
 use std::io::{Read, Write};
 use std::time::Duration;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use tauri::async_runtime;
 
 pub struct WindowsBluetooth {
-    port: Mutex<Option<Box<dyn SerialPort>>>,
+    port: Arc<Mutex<Option<Box<dyn SerialPort>>>>,
 }
 
 impl WindowsBluetooth {
     pub fn new() -> Self {
         Self {
-            port: Mutex::new(None),
+            port: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -42,21 +43,27 @@ impl WindowsBluetooth {
         let mut buf = [0u8; 1024];
         port.read(&mut buf)
             .map_err(|e| format!("Failed to read response: {}", e))?;
-        self.port.lock().unwrap().replace(port);
+        *self.port.lock().unwrap() = Some(port);
         Ok(())
     }
 
     pub async fn disconnect(&self, address: &str) -> Result<(), String> {
-        self.port.lock().unwrap().take();
+        *self.port.lock().unwrap() = None;
         Ok(())
     }
 
-    pub fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
-        let mut port = self.port.lock().unwrap();
-        let port = port.as_mut().ok_or("No connected Bluetooth device")?;
-        port.write_all(frame)
-            .map_err(|e| format!("Failed to send frame over Bluetooth: {}", e))?;
-        Ok(())
+    pub async fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
+        let port = self.port.clone();
+        let frame = frame.to_vec();
+        async_runtime::spawn_blocking(move || {
+            let mut port_guard = port.lock().unwrap();
+            let port = port_guard.as_mut().ok_or("No connected Bluetooth device")?;
+            port.write_all(&frame)
+                .map_err(|e| format!("Failed to send frame over Bluetooth: {}", e))?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
     }
 
     pub async fn get_state(&self) -> Result<String, String> {
