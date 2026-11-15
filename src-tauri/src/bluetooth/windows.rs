@@ -1,5 +1,4 @@
 use super::models::*;
-use crate::protocol::{DeviceInfo, DeviceProfile};
 use serialport::SerialPort;
 use std::io::{Read, Write};
 use std::time::Duration;

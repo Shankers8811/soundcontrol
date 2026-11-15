@@ -1,22 +1,17 @@
-use super::models::*;
-use crate::protocol::DeviceProfile;
-use tokio::task;
+mod models;
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "windows")]
+mod windows;
 
-#[derive(Debug)]
+pub use models::*;
+
 pub struct BluetoothManager {
     #[cfg(target_os = "linux")]
     linux: Option<linux::LinuxBluetooth>,
     #[cfg(target_os = "windows")]
     windows: Option<windows::WindowsBluetooth>,
     known_devices: std::sync::Mutex<Vec<KnownDevice>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct KnownDevice {
-    pub address: String,
-    pub name: String,
-    pub profile: Option<DeviceProfile>,
-    pub connected: bool,
 }
 
 impl BluetoothManager {
@@ -104,10 +99,7 @@ impl BluetoothManager {
         #[cfg(target_os = "windows")]
         {
             if let Some(windows) = &self.windows {
-                let frame = frame.to_vec();
-                return task::spawn_blocking(move || windows.send_frame(&frame))
-                    .await
-                    .map_err(|e| format!("Task join error: {}", e))?;
+                return windows.send_frame(frame);
             }
         }
         Err("Bluetooth not supported on this platform".to_string())

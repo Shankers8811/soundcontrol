@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
-    updated_at TEXT DEFAULT datetime('now')
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS device_profiles (
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS device_profiles (
 CREATE TABLE IF NOT EXISTS eq_presets (
     name TEXT PRIMARY KEY,
     bands TEXT NOT NULL,
-    created_at TEXT DEFAULT datetime('now')
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS battery_history (
@@ -41,20 +41,20 @@ CREATE TABLE IF NOT EXISTS battery_history (
     left_charging INTEGER NOT NULL DEFAULT 0,
     right_charging INTEGER NOT NULL DEFAULT 0,
     case_charging INTEGER NOT NULL DEFAULT 0,
-    recorded_at TEXT DEFAULT datetime('now')
+    recorded_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS frame_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     direction TEXT NOT NULL,
     frame_data TEXT NOT NULL,
-    logged_at TEXT DEFAULT datetime('now')
+    logged_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS device_states (
     address TEXT PRIMARY KEY,
     state TEXT NOT NULL,
-    updated_at TEXT DEFAULT datetime('now')
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS firmware_cache (
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS firmware_cache (
     version TEXT NOT NULL,
     download_url TEXT,
     checksum TEXT,
-    cached_at TEXT DEFAULT datetime('now')
+    cached_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_battery_history_device ON battery_history(device_address);

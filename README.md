@@ -95,15 +95,15 @@ sudo dpkg -i soundcontrol_amd64.deb
 npm install
 
 # Run in development mode
-npm run tauri:dev
+npm run tauri dev
 
 # Build for production
-npm run tauri:build
+npm run tauri build
 ```
 
 ### Requirements
 - Rust toolchain
-- Node.js 18+
+- Node.js 20+
 - Bluetooth enabled on your system
 
 ## 🤝 Contributing
@@ -132,4 +132,4 @@ See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 
 **Soundcore/Anker devices only — no CMF/Nothing support.**
 
-Made with ❤️ by Shankers8811"# CI Trigger $(date)"  
+Made with ❤️ by Shankers8811
