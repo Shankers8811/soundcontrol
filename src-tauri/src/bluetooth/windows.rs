@@ -55,7 +55,7 @@ impl WindowsBluetooth {
     pub async fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
         let port = self.port.clone();
         let frame = frame.to_vec();
-        task::spawn_blocking(move || {
+        let result: Result<(), String> = task::spawn_blocking(move || -> Result<(), String> {
             let mut port_guard = port.lock().unwrap();
             let port = port_guard.as_mut().ok_or("No connected Bluetooth device")?;
             port.write_all(&frame)
@@ -63,7 +63,8 @@ impl WindowsBluetooth {
             Ok(())
         })
         .await
-        .map_err(|e| format!("Task join error: {}", e))?
+        .map_err(|e| format!("Task join error: {}", e))?;
+        result
     }
 
     pub async fn get_state(&self) -> Result<String, String> {
