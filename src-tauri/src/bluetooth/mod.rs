@@ -99,7 +99,10 @@ impl BluetoothManager {
         #[cfg(target_os = "windows")]
         {
             if let Some(windows) = &self.windows {
-                return windows.send_frame(frame);
+                let frame = frame.to_vec();
+                return tokio::task::spawn_blocking(move || windows.send_frame(&frame))
+                    .await
+                    .map_err(|e| format!("Task join error: {}", e))?;
             }
         }
         Err("Bluetooth not supported on this platform".to_string())
