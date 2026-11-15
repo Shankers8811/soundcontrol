@@ -102,7 +102,7 @@ impl BluetoothManager {
                 let frame = frame.to_vec();
                 return tokio::task::spawn_blocking(move || windows.send_frame(&frame))
                     .await
-                    .map_err(|e| format!("Task join error: {}", e))?;
+                    .map_err(|e| format!("Task join error: {:?}", e))?;
             }
         }
         Err("Bluetooth not supported on this platform".to_string())
