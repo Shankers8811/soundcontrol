@@ -53,7 +53,8 @@ impl Database {
     }
 
     pub fn get_eq_presets(&self) -> Result<Vec<(String, String)>, rusqlite::Error> {
-        let mut stmt = self.conn.lock().unwrap().prepare(
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
             "SELECT name, bands FROM eq_presets ORDER BY created_at DESC"
         )?;
         let presets = stmt.query_map([], |row| {
@@ -88,7 +89,8 @@ impl Database {
     }
 
     pub fn get_battery_history(&self, device_address: &str, limit: u32) -> Result<Vec<(String, Option<u8>, Option<u8>, Option<u8>, bool, bool, bool)>, rusqlite::Error> {
-        let mut stmt = self.conn.lock().unwrap().prepare(
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
             "SELECT recorded_at, left_level, right_level, case_level, left_charging, right_charging, case_charging
              FROM battery_history WHERE device_address = ?1 ORDER BY recorded_at DESC LIMIT ?2"
         )?;
@@ -123,7 +125,8 @@ impl Database {
     }
 
     pub fn get_setting(&self, key: &str) -> Result<Option<String>, rusqlite::Error> {
-        let mut stmt = self.conn.lock().unwrap().prepare(
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
             "SELECT value FROM settings WHERE key = ?1"
         )?;
         let result: Option<String> = stmt.query_row(params![key], |row| row.get(0)).optional()?;
@@ -139,7 +142,8 @@ impl Database {
     }
 
     pub fn get_frame_log(&self, limit: u32) -> Result<Vec<(String, String, String)>, rusqlite::Error> {
-        let mut stmt = self.conn.lock().unwrap().prepare(
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
             "SELECT direction, frame_data, logged_at FROM frame_log ORDER BY logged_at DESC LIMIT ?1"
         )?;
         let rows = stmt.query_map(params![limit], |row| {
@@ -157,7 +161,8 @@ impl Database {
     }
 
     pub fn get_device_state(&self, address: &str) -> Result<Option<String>, rusqlite::Error> {
-        let mut stmt = self.conn.lock().unwrap().prepare(
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
             "SELECT state FROM device_states WHERE address = ?1"
         )?;
         let result: Option<String> = stmt.query_row(params![address], |row| row.get(0)).optional()?;
