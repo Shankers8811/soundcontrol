@@ -77,7 +77,7 @@ pub async fn set_anc_mode(state: State<'_, AppState>, address: String, mode: Str
     bt.send_frame(&anc_cmd).await.map_err(|e| e.to_string())?;
 
     let db = &state.db;
-    db.log_frame("out", &anc_cmd)?;
+    db.log_frame("out", &anc_cmd).map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -90,7 +90,7 @@ pub async fn set_transparency(state: State<'_, AppState>, address: String, enabl
     let bt = bluetooth.read().await;
     bt.send_frame(&frame).await.map_err(|e| e.to_string())?;
     let db = &state.db;
-    db.log_frame("out", &frame)?;
+    db.log_frame("out", &frame).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -102,7 +102,7 @@ pub async fn set_adaptive_noise(state: State<'_, AppState>, address: String, ena
     let bt = bluetooth.read().await;
     bt.send_frame(&frame).await.map_err(|e| e.to_string())?;
     let db = &state.db;
-    db.log_frame("out", &frame)?;
+    db.log_frame("out", &frame).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -114,7 +114,7 @@ pub async fn set_wind_noise(state: State<'_, AppState>, address: String, enabled
     let bt = bluetooth.read().await;
     bt.send_frame(&frame).await.map_err(|e| e.to_string())?;
     let db = &state.db;
-    db.log_frame("out", &frame)?;
+    db.log_frame("out", &frame).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -126,7 +126,7 @@ pub async fn set_game_mode(state: State<'_, AppState>, address: String, enabled:
     let bt = bluetooth.read().await;
     bt.send_frame(&frame).await.map_err(|e| e.to_string())?;
     let db = &state.db;
-    db.log_frame("out", &frame)?;
+    db.log_frame("out", &frame).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -138,7 +138,7 @@ pub async fn set_ldac(state: State<'_, AppState>, address: String, enabled: bool
     let bt = bluetooth.read().await;
     bt.send_frame(&frame).await.map_err(|e| e.to_string())?;
     let db = &state.db;
-    db.log_frame("out", &frame)?;
+    db.log_frame("out", &frame).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -150,7 +150,7 @@ pub async fn set_multipoint(state: State<'_, AppState>, address: String, enabled
     let bt = bluetooth.read().await;
     bt.send_frame(&frame).await.map_err(|e| e.to_string())?;
     let db = &state.db;
-    db.log_frame("out", &frame)?;
+    db.log_frame("out", &frame).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -162,7 +162,7 @@ pub async fn set_bass_enhance(state: State<'_, AppState>, address: String, enabl
     let bt = bluetooth.read().await;
     bt.send_frame(&frame).await.map_err(|e| e.to_string())?;
     let db = &state.db;
-    db.log_frame("out", &frame)?;
+    db.log_frame("out", &frame).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -174,7 +174,7 @@ pub async fn set_wearing_detection(state: State<'_, AppState>, address: String, 
     let bt = bluetooth.read().await;
     bt.send_frame(&frame).await.map_err(|e| e.to_string())?;
     let db = &state.db;
-    db.log_frame("out", &frame)?;
+    db.log_frame("out", &frame).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -186,7 +186,7 @@ pub async fn set_easy_chat(state: State<'_, AppState>, address: String, enabled:
     let bt = bluetooth.read().await;
     bt.send_frame(&frame).await.map_err(|e| e.to_string())?;
     let db = &state.db;
-    db.log_frame("out", &frame)?;
+    db.log_frame("out", &frame).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -198,7 +198,7 @@ pub async fn set_auto_power_off(state: State<'_, AppState>, address: String, ena
     let bt = bluetooth.read().await;
     bt.send_frame(&frame).await.map_err(|e| e.to_string())?;
     let db = &state.db;
-    db.log_frame("out", &frame)?;
+    db.log_frame("out", &frame).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -210,7 +210,7 @@ pub async fn set_find_buds(state: State<'_, AppState>, address: String, enabled:
     let bt = bluetooth.read().await;
     bt.send_frame(&frame).await.map_err(|e| e.to_string())?;
     let db = &state.db;
-    db.log_frame("out", &frame)?;
+    db.log_frame("out", &frame).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -222,7 +222,7 @@ pub async fn set_ear_tip_test(state: State<'_, AppState>, address: String, enabl
     let bt = bluetooth.read().await;
     bt.send_frame(&frame).await.map_err(|e| e.to_string())?;
     let db = &state.db;
-    db.log_frame("out", &frame)?;
+    db.log_frame("out", &frame).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -237,7 +237,7 @@ pub async fn set_gestures(state: State<'_, AppState>, address: String, left_gest
     let bt = bluetooth.read().await;
     bt.send_frame(&frame).await.map_err(|e| e.to_string())?;
     let db = &state.db;
-    db.log_frame("out", &frame)?;
+    db.log_frame("out", &frame).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -246,7 +246,7 @@ pub async fn get_battery_levels(state: State<'_, AppState>, address: String) -> 
     let db = &state.db;
     let protocol = &state.protocol;
     let battery_cmd = protocol.get_battery_cmd();
-    db.log_frame("out", &battery_cmd)?;
+    db.log_frame("out", &battery_cmd).map_err(|e| e.to_string())?;
 
     let bluetooth = &state.bluetooth;
     let bt = bluetooth.read().await;
