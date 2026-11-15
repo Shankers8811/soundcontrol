@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../state/store';
 import { scanDevices } from '../api/bridge';
-import { matchDevice, DeviceProfile } from '../protocol/devices';
+import { matchDevice } from '../protocol/devices';
 import { Button, Card, StatusBadge, Spinner } from './ui';
 
 interface DevicePickerProps {

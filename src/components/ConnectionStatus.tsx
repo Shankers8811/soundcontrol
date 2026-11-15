@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getConnectionManager, ConnectionState } from '../transports/connectionManager';
+import { getConnectionManager } from '../transports/connectionManager';
 import { Card, Button, StatusBadge } from './ui';
 
 /**
@@ -20,7 +20,7 @@ export function ConnectionStatus() {
   });
 
   useEffect(() => {
-    const manager = await import('../transports/connectionManager').then(m => m.getConnectionManager());
+    const manager = getConnectionManager();
     const unsubscribe = manager.subscribe((state) => {
       setState({
         phase: state.phase,

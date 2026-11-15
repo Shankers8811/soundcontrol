@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../state/store';
-import { Card, Button, StatusBadge } from './ui';
+import { Card, StatusBadge } from './ui';
 import { DEVICES } from '../protocol/devices';
-import { matchDevice } from '../protocol/devices';
 
 /**
  * Touch/Button Control Mapping - Visual guide for device controls
@@ -12,15 +11,7 @@ export function ControlMapping() {
   const app = useApp();
   const [showDetails, setShowDetails] = useState<string | null>(null);
 
-  const { connected, profile, capabilities } = app;
-
-  if (!connected) return null;
-
-  const device = DEVICES.find(d => d.id === profile.id);
-  const isAeroClip = profile.id === 'aeroclip';
-  const isAeroFit = profile.id?.includes('aerofit');
-  const isP30i = profile.id === 'p30i';
-  const isR50i = profile.id === 'p20i';
+  const { connected, profile } = app;
 
   // Touch control mapping based on device
   const touchControls = getTouchControls(profile.id);

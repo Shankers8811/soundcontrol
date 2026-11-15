@@ -11,7 +11,7 @@ export function CleaningReminder() {
   const [showDetails, setShowDetails] = useState(false);
   const [lastCleaned, setLastCleaned] = useState<Record<string, number>>({});
 
-  const { connected, profile, earbudState, capabilities } = app;
+  const { connected, profile } = app;
 
   // Only show for connected devices
   if (!connected) return null;
