@@ -3,7 +3,7 @@ use serialport::SerialPort;
 use std::io::{Read, Write};
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
-use tauri::async_runtime;
+use tokio::task;
 
 pub struct WindowsBluetooth {
     port: Arc<Mutex<Option<Box<dyn SerialPort>>>>,
@@ -55,7 +55,7 @@ impl WindowsBluetooth {
     pub async fn send_frame(&self, frame: &[u8]) -> Result<(), String> {
         let port = self.port.clone();
         let frame = frame.to_vec();
-        async_runtime::spawn_blocking(move || {
+        task::spawn_blocking(move || {
             let mut port_guard = port.lock().unwrap();
             let port = port_guard.as_mut().ok_or("No connected Bluetooth device")?;
             port.write_all(&frame)
