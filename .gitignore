@@ -8,3 +8,8 @@ python-embed.tmp/
 *.log
 .DS_Store
 *.local
+*.pyc
+.build-tmp/
+.temp/
+build/
+.claude/
