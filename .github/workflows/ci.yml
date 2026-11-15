@@ -74,14 +74,6 @@ jobs:
             xorriso \
             squashfs-tools
 
-      - name: Install bundling tools (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          # Install appimage-builder dependencies
-          sudo apt-get install -y python3-pip
-          pip3 install --user appimage-builder
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-
       - name: Install frontend dependencies
         run: npm install
 
