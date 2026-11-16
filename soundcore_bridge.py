@@ -560,23 +560,24 @@ def _normalize_mac(raw: str) -> str:
 
 
 def _parse_windows_scan_output(text: str) -> list[dict[str, object]]:
-    """Parse the ``MAC|Name|Battery`` lines produced by PowerShell.
+    """Parse ``MAC|Name|Battery|Connected`` lines produced by PowerShell.
 
-    Windows PowerShell can emit non-ASCII Bluetooth names using the active
-    console code page. The caller explicitly decodes UTF-8, and this parser
-    also removes the common all-question-mark placeholder instead of showing
-    it as a device name in the UI.
+    ``Connected`` comes from WinRT's ``BluetoothDevice.ConnectionStatus`` —
+    the authoritative live host link state — so a paired-but-disconnected
+    device is not shown as connected. Lines without the field keep the key
+    absent (unknown) rather than inventing a state.
     """
     devices: list[dict[str, object]] = []
     seen: set[str] = set()
     for line in text.splitlines():
         line = line.strip()
-        if not line:
+        if not line or line == "__SOUNDCONTROL_SCAN_OK__":
             continue
-        parts = line.split("|", 2)
+        parts = line.split("|", 3)
         mac_part = parts[0]
         name = parts[1].strip() if len(parts) > 1 else ""
         raw_battery = parts[2].strip() if len(parts) > 2 else ""
+        raw_connected = parts[3].strip().lower() if len(parts) > 3 else ""
         mac = _normalize_mac(mac_part)
         if not mac or mac in seen:
             continue
@@ -594,60 +595,117 @@ def _parse_windows_scan_output(text: str) -> list[dict[str, object]]:
         item: dict[str, object] = {"mac": mac, "name": name}
         if battery is not None:
             item["battery"] = battery
+        if raw_connected in ("true", "1", "yes"):
+            item["connected"] = True
+        elif raw_connected in ("false", "0", "no"):
+            item["connected"] = False
         devices.append(item)
     return devices
 
 
-def _windows_paired_devices() -> list[dict[str, object]]:
-    """Enumerate paired Bluetooth devices and Windows-reported battery levels.
+def _windows_registry_paired_devices() -> list[dict[str, object]]:
+    """Fast fallback: paired addresses and names from the Bluetooth registry.
 
-    The registry contains every paired address, including earbuds that are
-    already connected and playing audio. PnP exposes the friendly name and,
-    on Windows 10/11 devices that publish the standard battery property,
-    ``{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2`` contains the percentage.
+    This key does not expose live connection state, so devices are returned
+    with ``connected`` unknown rather than guessed. It exists so a WinRT
+    failure still leaves the user with their paired devices instead of an
+    empty list.
+    """
+    try:
+        import winreg
+    except ImportError:  # not Windows
+        return []
+    devices: list[dict[str, object]] = []
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Devices",
+        ) as root:
+            index = 0
+            while True:
+                try:
+                    key_name = winreg.EnumKey(root, index)
+                except OSError:
+                    break
+                index += 1
+                mac = _normalize_mac(key_name)
+                if not mac:
+                    continue
+                name = ""
+                try:
+                    with winreg.OpenKey(root, key_name) as entry:
+                        raw, _kind = winreg.QueryValueEx(entry, "Name")
+                    if isinstance(raw, bytes):
+                        name = raw.decode("utf-16-le", "replace").strip("\x00").strip()
+                    elif isinstance(raw, str):
+                        name = raw.strip("\x00").strip()
+                except OSError:
+                    pass
+                devices.append({"mac": mac, "name": name or mac})
+    except OSError:
+        return []
+    return devices
+
+
+def _windows_paired_devices() -> list[dict[str, object]]:
+    """Enumerate paired Bluetooth devices and their live host connection state.
+
+    WinRT's Bluetooth enumeration returns every paired device and its
+    authoritative ``ConnectionStatus`` in one fast call (~0.5 s including
+    PowerShell startup). The previous PnP implementation queried two device properties for every Bluetooth entry;
+    each ``Get-PnpDeviceProperty`` costs ~1.2 s on a normal Windows machine, so
+    the script routinely exceeded the 10 s subprocess timeout and the helper
+    returned an empty list. That made the app show "no devices" even while a
+    soundcore earbud was connected and playing audio.
+
+    If WinRT is unavailable or its script fails, the paired-device registry is
+    read directly so devices still appear (with connection state unknown)
+    instead of silently vanishing.
     """
     script = r"""
+$ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $OutputEncoding = [Text.Encoding]::UTF8
-$levels = @{}
-$names = @{}
-Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | ForEach-Object {
-    $id = [string]$_.InstanceId
-    $friendly = [string]$_.FriendlyName
-    $mac = ""
-    if ($id -match '(?i)DEV_([0-9A-F]{12})') { $mac = $Matches[1].ToUpper() }
-    elseif ($id -match '(?i)([0-9A-F]{12})_C[0-9A-F]+$') { $mac = $Matches[1].ToUpper() }
-    if (-not $mac) { return }
-    if ($friendly -and $friendly -notmatch '(?i)Microsoft Bluetooth|Bluetooth Enumerator|RFCOMM Protocol|Generic Attribute|A2DP|AVRCP|Hands-Free|Audio Gateway') {
-        $existing = if ($names.ContainsKey($mac)) { [string]$names[$mac] } else { "" }
-        if (-not $existing -or $friendly -match '(?i)soundcore|anker|liberty|life |space ') {
-            $names[$mac] = $friendly
-        }
-    }
-    $v = Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName '{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2' -ErrorAction SilentlyContinue |
-        Where-Object { $_.Type -ne 'Empty' -and $null -ne $_.Data } |
-        Select-Object -First 1
-    if ($null -ne $v) {
-        try {
-            $n = [int]$v.Data
-            if ($n -ge 0 -and $n -le 100) { $levels[$mac] = $n }
-        } catch { }
-    }
+try {
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+    $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+})[0]
+function Await($WinRtTask, $ResultType) {
+    $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
+    $netTask = $asTask.Invoke($null, @($WinRtTask))
+    $netTask.Wait(-1) | Out-Null
+    $netTask.Result
 }
-Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Devices' -ErrorAction SilentlyContinue |
-    ForEach-Object {
-        $p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
-        $n = if ($p.Name -is [byte[]]) {
-            [Text.Encoding]::Unicode.GetString([byte[]]$p.Name).Trim([char]0).Trim()
-        } elseif ($null -ne $p.Name) {
-            [string]$p.Name
-        } else { "" }
-        $key = $_.PSChildName.ToUpper()
-        if ($names.ContainsKey($key) -and $names[$key]) { $n = [string]$names[$key] }
-        if (-not $n -or -not $n.Trim("?")) { $n = $key }
-        $b = if ($levels.ContainsKey($key)) { $levels[$key] } else { "" }
-        "{0}|{1}|{2}" -f $key, $n, $b
-    }
+[Windows.Devices.Enumeration.DeviceInformation,Windows.Devices.Enumeration,ContentType=WindowsRuntime] | Out-Null
+[Windows.Devices.Bluetooth.BluetoothDevice,Windows.Devices.Bluetooth,ContentType=WindowsRuntime] | Out-Null
+$selector = [Windows.Devices.Bluetooth.BluetoothDevice]::GetDeviceSelectorFromPairingState($true)
+$found = Await ([Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync($selector)) ([Windows.Devices.Enumeration.DeviceInformationCollection])
+foreach ($d in $found) {
+    try {
+        # The Id starts with the local adapter address and ends with the
+        # device address: Bluetooth#Bluetooth<adapter>-<device>. Take the last
+        # MAC, never the adapter's.
+        $ms = [regex]::Matches([string]$d.Id, '(?i)([0-9a-f]{2}:){5}[0-9a-f]{2}')
+        if ($ms.Count -eq 0) { continue }
+        $mac = $ms[$ms.Count - 1].Value.ToUpper()
+        $connected = ""
+        try {
+            $addr = [Convert]::ToUInt64($mac.Replace(':', ''), 16)
+            $bt = Await ([Windows.Devices.Bluetooth.BluetoothDevice]::FromBluetoothAddressAsync([uint64]$addr)) ([Windows.Devices.Bluetooth.BluetoothDevice])
+            if ($null -ne $bt) {
+                $connected = if ([string]$bt.ConnectionStatus -eq 'Connected') { 'true' } else { 'false' }
+            }
+        } catch { }
+        $name = ([string]$d.Name).Trim()
+        if (-not $name) { $name = $mac }
+        "{0}|{1}||{2}" -f $mac, $name, $connected
+    } catch { }
+}
+"__SOUNDCONTROL_SCAN_OK__"
+} catch {
+exit 1
+}
 """
     try:
         raw = subprocess.check_output(
@@ -659,8 +717,15 @@ Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Device
             timeout=10,
         )
     except Exception:
+        return _windows_registry_paired_devices()
+    parsed = _parse_windows_scan_output(raw.replace("__SOUNDCONTROL_SCAN_OK__", ""))
+    if parsed:
+        return parsed
+    if "__SOUNDCONTROL_SCAN_OK__" in raw:
+        # The script ran and genuinely found no paired devices. Do not fall
+        # back to stale registry pairings in that case.
         return []
-    return _parse_windows_scan_output(raw)
+    return _windows_registry_paired_devices()
 
 
 
@@ -673,7 +738,7 @@ _SCAN_CACHE_LOCK = threading.Lock()
 def scan_devices(fresh: bool = False) -> list[dict[str, object]]:
     # The packaged bridge is intentionally Windows-only. Windows registry and
     # PnP enumeration are what let us find already-paired devices reliably.
-    # Enumeration shells out to PowerShell (~1-4s), so cache briefly: the
+    # Enumeration shells out to PowerShell (~0.5-1s), so cache briefly: the
     # renderer polls for liveness separately via /health and only needs a
     # fresh device list on user refresh. Pass fresh=True (?fresh=1) to bypass.
     global _SCAN_CACHE, _SCAN_CACHE_AT

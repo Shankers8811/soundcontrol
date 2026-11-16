@@ -17,5 +17,9 @@ interface Window {
     getAppVersion?: () => Promise<string>;
     /** Opens %AppData%\soundcontrol in the file manager. */
     openLogFolder?: () => Promise<boolean>;
+    /** Current Windows default-output volume, 0..100 (null if unavailable). */
+    getSystemVolume?: () => Promise<number | null>;
+    /** Sets the Windows default-output volume, 0..100. */
+    setSystemVolume?: (value: number) => Promise<number | null>;
   };
 }

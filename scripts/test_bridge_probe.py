@@ -473,6 +473,91 @@ for label, payload in (
     except Exception as exc:  # noqa: BLE001 — the test fails on ANY escape
         check(f"WS {label} -> clean error reply", False, f"raised {type(exc).__name__}: {exc}")
 
+# 17. Windows host discovery: WinRT ConnectionStatus is the live link state.
+#     The old PnP path queried two properties per entry (~1.2 s each) and
+#     exceeded the 10 s helper timeout, which is why the app could show no
+#     devices while a soundcore earbud was connected.
+windows_scan = (
+    "AA:BB:CC:DD:EE:FF|soundcore R50i NC|90|true\n"
+    "11:22:33:44:55:66|AeroClip|75|false\n"
+    "__SOUNDCONTROL_SCAN_OK__\n"
+)
+parsed_windows = bridge._parse_windows_scan_output(windows_scan)
+check(
+    "Windows parser reports connected=true from the explicit connection field",
+    parsed_windows[0]["connected"] is True and parsed_windows[0]["battery"] == 90,
+    str(parsed_windows),
+)
+check(
+    "Windows parser keeps paired-but-disconnected device false",
+    parsed_windows[1]["connected"] is False and parsed_windows[1]["battery"] == 75,
+    str(parsed_windows),
+)
+check(
+    "Windows parser does not invent connected state when the field is absent",
+    "connected" not in bridge._parse_windows_scan_output("AA:BB:CC:DD:EE:FF|R50i NC|90")[0],
+)
+real_check_output = bridge.subprocess.check_output
+windows_calls = []
+
+
+def fake_windows_check_output(cmd, **_kwargs):
+    windows_calls.append(cmd)
+    return windows_scan
+
+
+bridge.subprocess.check_output = fake_windows_check_output
+try:
+    discovered_windows = bridge._windows_paired_devices()
+finally:
+    bridge.subprocess.check_output = real_check_output
+
+check(
+    "Windows production discovery uses WinRT ConnectionStatus",
+    "ConnectionStatus" in str(windows_calls[0] if windows_calls else "")
+    and "GetDeviceSelectorFromPairingState" in str(windows_calls[0] if windows_calls else ""),
+    str(windows_calls[0] if windows_calls else ""),
+)
+check(
+    "Windows production discovery does not use PresentOnly as its connected signal",
+    not any(
+        "Get-PnpDevice" in line and "-PresentOnly" in line
+        for line in str(windows_calls[0] if windows_calls else "").splitlines()
+    ),
+    str(windows_calls[0] if windows_calls else ""),
+)
+
+# A WinRT failure must not empty the device list: the registry still knows the
+# user's paired addresses and names.
+real_registry_scan = bridge._windows_registry_paired_devices
+bridge._windows_registry_paired_devices = lambda: [
+    {"mac": "AA:BB:CC:DD:EE:FF", "name": "registry fallback"}
+]
+bridge.subprocess.check_output = lambda *a, **k: (_ for _ in ()).throw(OSError("winrt unavailable"))
+try:
+    fallback_windows = bridge._windows_paired_devices()
+finally:
+    bridge.subprocess.check_output = real_check_output
+    bridge._windows_registry_paired_devices = real_registry_scan
+check(
+    "Windows discovery falls back to paired registry when WinRT fails",
+    bool(fallback_windows) and fallback_windows[0]["name"] == "registry fallback",
+    str(fallback_windows),
+)
+
+# A successful scan with zero paired devices is a real empty result, not a
+# failure — stale registry pairings must not reappear in that case.
+bridge.subprocess.check_output = lambda *a, **k: "__SOUNDCONTROL_SCAN_OK__\n"
+try:
+    empty_windows = bridge._windows_paired_devices()
+finally:
+    bridge.subprocess.check_output = real_check_output
+check(
+    "Windows discovery accepts a successful empty WinRT scan",
+    empty_windows == [],
+    str(empty_windows),
+)
+
 print(f"  {passed} checks")
 if failures:
     print(f"\n{len(failures)} FAILED:")

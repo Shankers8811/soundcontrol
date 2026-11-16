@@ -7,7 +7,7 @@
  * test framework. Every rule here is derived from PROTOCOL.md and the
  * per-model profiles in `src/protocol/devices.ts` — nothing is guessed.
  */
-import type { AncLayout, AncMode, AncScene, BatteryState, DeviceProfile, EarbudPresence } from '../types';
+import type { AncLayout, AncMode, AncScene, AncSubMode, BatteryState, DeviceProfile, EarbudPresence } from '../types';
 
 /* ------------------------------------------------------------------ */
 /* Capabilities                                                        */
@@ -317,6 +317,19 @@ export interface SoundModeReport {
   mode: AncMode;
   /** Manual ANC level 1..5 when the layout carries one in the high nibble. */
   level?: number;
+  /**
+   * A3959-only: which sub-mode the automation byte (payload[3]) selects.
+   * The device reports it, so the UI can mirror `Manual / Adaptive /
+   * Multi-scene` instead of assuming the last button the user pressed.
+   */
+  subMode?: AncSubMode;
+  /** Device-reported adaptive strength (low nibble), 1..5. */
+  adaptiveLevel?: number;
+  /**
+   * Device-reported adaptive sensitivity, 0..10. The firmware sends 0xFF when
+   * it has none set, which is reported as `undefined` (never as a level).
+   */
+  adaptiveSensitivity?: number;
   /** Classic over-ears only. */
   scene?: AncScene;
   transVocal?: boolean;
@@ -341,6 +354,26 @@ export function parseSoundModes(
   };
   const manual = (payload[1] >> 4) & 0x0f;
   if (manual >= 1 && manual <= 5) report.level = manual;
+  if (layout === 'tws-p30i' && payload.length >= 7) {
+    // A3959 (`a3959/structures/sound_modes.rs`): byte 3 is the
+    // Manual(0)/Adaptive(1)/Multi-scene(2) selector — the enum OpenSCQ30
+    // commit 9b6e42a7 corrected. Byte 1's low nibble is the adaptive strength
+    // and byte 5 the adaptive sensitivity, both firmware-owned.
+    const automation = payload[3];
+    report.subMode =
+      automation === 0x00
+        ? 'manual'
+        : automation === 0x01
+          ? 'adaptive'
+          : automation === 0x02
+            ? 'multiscene'
+            : undefined;
+    if (b0 === 0x00 && report.subMode === 'adaptive') report.mode = 'adaptive';
+    const adaptiveNibble = payload[1] & 0x0f;
+    if (adaptiveNibble >= 1 && adaptiveNibble <= 5) report.adaptiveLevel = adaptiveNibble;
+    const sensitivity = payload[5];
+    if (sensitivity >= 0 && sensitivity <= 10) report.adaptiveSensitivity = sensitivity;
+  }
   if (layout === 'tws-l4nc' && payload.length >= 5) {
     report.transVocal = (payload[2] & 0x01) !== 0;
     report.wind = (payload[4] & 0x01) !== 0;
@@ -350,6 +383,12 @@ export function parseSoundModes(
   if (layout === 'classic' && payload.length >= 4) {
     report.transVocal = (payload[2] & 0x01) !== 0;
     const scene = payload[1];
+    report.scene = scene === 0x00 ? 'transport' : scene === 0x02 ? 'indoor' : 'outdoor';
+  } else if (layout === 'tws-p30i' && payload.length >= 7) {
+    // A3959 byte 6 is the multi-scene selector: 00 Transport · 01 Outdoor ·
+    // 02 Indoor. Mirror it so a scene changed on the phone shows up here.
+    // A shorter mirror carries no scene byte, so the confirmed scene survives.
+    const scene = payload[6];
     report.scene = scene === 0x00 ? 'transport' : scene === 0x02 ? 'indoor' : 'outdoor';
   }
   return report;

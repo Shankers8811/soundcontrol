@@ -4,7 +4,7 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const { enforceNoAutostart, migrateLegacySettingsFile } = require('./autostart.cjs');
 
 let bridgeProcess = null;
@@ -74,6 +74,149 @@ ipcMain.handle('soundcontrol:app-version', () => {
   } catch {
     return '';
   }
+});
+
+// ---------------------------------------------------------------------------
+// Windows playback volume.
+//
+// The Soundcore RFCOMM protocol has no volume command, so the Volume card
+// controls the Windows default output device instead — the earbuds when they
+// are the active output. Core Audio's IAudioEndpointVolume is reached through
+// a small C# interop type compiled by Windows PowerShell. Each call is a fresh
+// short-lived process, and writes are coalesced so dragging the slider cannot
+// spawn a PowerShell process per pixel.
+// ---------------------------------------------------------------------------
+const VOLUME_INTEROP = `
+$src = @"
+using System;
+using System.Runtime.InteropServices;
+
+[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
+class MMDeviceEnumeratorComObject { }
+
+[Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDeviceEnumerator {
+    int EnumAudioEndpoints(int dataFlow, int stateMask, out IntPtr devices);
+    int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice endpoint);
+}
+
+[Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDevice {
+    int Activate(ref Guid id, int clsCtx, IntPtr activationParams, [MarshalAs(UnmanagedType.IUnknown)] out object interfacePointer);
+}
+
+[Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAudioEndpointVolume {
+    int NotImpl1();
+    int NotImpl2();
+    int GetChannelCount(out uint channelCount);
+    int SetMasterVolumeLevel(float level, Guid eventContext);
+    int SetMasterVolumeLevelScalar(float level, Guid eventContext);
+    int GetMasterVolumeLevel(out float level);
+    int GetMasterVolumeLevelScalar(out float level);
+}
+
+public static class SoundControlVolume {
+    static IAudioEndpointVolume Endpoint() {
+        var enumerator = (IMMDeviceEnumerator)(new MMDeviceEnumeratorComObject());
+        IMMDevice device;
+        Marshal.ThrowExceptionForHR(enumerator.GetDefaultAudioEndpoint(0, 1, out device));
+        Guid iid = typeof(IAudioEndpointVolume).GUID;
+        object obj;
+        Marshal.ThrowExceptionForHR(device.Activate(ref iid, 1, IntPtr.Zero, out obj));
+        return (IAudioEndpointVolume)obj;
+    }
+    public static int Get() {
+        float v;
+        Marshal.ThrowExceptionForHR(Endpoint().GetMasterVolumeLevelScalar(out v));
+        return (int)Math.Round(v * 100.0);
+    }
+    public static void Set(int percent) {
+        if (percent < 0) percent = 0;
+        if (percent > 100) percent = 100;
+        Marshal.ThrowExceptionForHR(Endpoint().SetMasterVolumeLevelScalar(percent / 100.0f, Guid.Empty));
+    }
+}
+"@
+Add-Type -TypeDefinition $src -Language CSharp
+try {
+    if ('__ACTION__' -eq 'set') { [SoundControlVolume]::Set(__VALUE__) }
+    $percent = [SoundControlVolume]::Get()
+    @{ ok = $true; percent = $percent } | ConvertTo-Json -Compress
+} catch {
+    @{ ok = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+`;
+
+function runVolumeInterop(action, value) {
+  const script = VOLUME_INTEROP.replace('__ACTION__', action).replace(
+    '__VALUE__',
+    String(Math.max(0, Math.min(100, Math.round(Number(value) || 0)))),
+  );
+  return new Promise((resolve, reject) => {
+    execFile(
+      'powershell',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      { timeout: 8000, windowsHide: true, maxBuffer: 1024 * 1024 },
+      (err, stdout, stderr) => {
+        if (err) {
+          reject(new Error(String(stderr || err.message).trim()));
+          return;
+        }
+        const line = String(stdout).trim().split(/\r?\n/).filter(Boolean).pop();
+        try {
+          resolve(JSON.parse(line));
+        } catch {
+          reject(new Error(`unexpected volume output: ${line || '<empty>'}`));
+        }
+      },
+    );
+  });
+}
+
+let volumeWriteBusy = false;
+let volumeWritePending = null;
+
+async function flushVolumeWrites() {
+  if (volumeWriteBusy) return;
+  volumeWriteBusy = true;
+  try {
+    while (volumeWritePending !== null) {
+      const target = volumeWritePending;
+      volumeWritePending = null;
+      try {
+        const result = await runVolumeInterop('set', target);
+        if (!result || result.ok !== true) {
+          log(`set-system-volume failed: ${result && result.error ? result.error : 'unknown error'}`);
+        }
+      } catch (err) {
+        log(`set-system-volume failed: ${err.message}`);
+      }
+    }
+  } finally {
+    volumeWriteBusy = false;
+  }
+}
+
+ipcMain.handle('soundcontrol:get-system-volume', async () => {
+  if (process.platform !== 'win32') return null;
+  try {
+    const result = await runVolumeInterop('get', 0);
+    return result && result.ok === true ? result.percent : null;
+  } catch (err) {
+    log(`get-system-volume failed: ${err.message}`);
+    return null;
+  }
+});
+
+ipcMain.handle('soundcontrol:set-system-volume', (_event, value) => {
+  if (process.platform !== 'win32') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const clamped = Math.max(0, Math.min(100, Math.round(n)));
+  volumeWritePending = clamped;
+  void flushVolumeWrites();
+  return clamped;
 });
 
 // ---------------------------------------------------------------------------

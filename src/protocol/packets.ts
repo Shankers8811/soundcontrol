@@ -2,6 +2,7 @@ import type {
   AncLayout,
   AncMode,
   AncScene,
+  AncSubMode,
   DeviceProfile,
   EqCommand,
 } from '../types';
@@ -81,6 +82,19 @@ export interface AncIntent {
   mode: AncMode;
   /** Manual ANC strength 1..5 (only meaningful when `mode === 'anc'`). */
   level: number;
+  /** ANC sub-mode; defaults to `adaptive` for `mode === 'adaptive'`, else `manual`. */
+  subMode?: AncSubMode;
+  /**
+   * Device-reported adaptive strength (low nibble). OpenSCQ30 exposes
+   * `AdaptiveNoiseCanceling` as read-only — the firmware decides it — so the
+   * app preserves the reported value instead of inventing one.
+   */
+  adaptiveLevel?: number;
+  /**
+   * Device-reported adaptive sensitivity (0..10; 0xFF = none reported).
+   * Also read-only upstream, so the reported value is echoed back.
+   */
+  adaptiveSensitivity?: number;
   scene: AncScene;
   /** Transparency sub-mode: `true` = vocal/talk mode. */
   transVocal: boolean;
@@ -109,9 +123,14 @@ export function buildClassicAnc(intent: AncIntent): Uint8Array {
   return frame(0x06, 0x81, [CLASSIC_MODE[mode], sceneByte, transByte, 0x00]);
 }
 
+/** Clamp a user-facing manual ANC level to the documented 1..5 range. */
+function clampLevel(level: number): number {
+  return Math.max(1, Math.min(5, Math.round(level)));
+}
+
 /** `(manual << 4) | adaptive`, the shared nibble byte on every TWS layout. */
 function manualAdaptiveByte(manual: number, adaptive: number): number {
-  const m = Math.max(1, Math.min(5, Math.round(manual)));
+  const m = clampLevel(manual);
   const a = Math.max(0, Math.min(5, Math.round(adaptive)));
   return ((m << 4) | a) & 0xff;
 }
@@ -138,16 +157,35 @@ function adaptiveFromLevel(level: number): number {
  * records "Soundcore R50i NC should not have transparency modes".
  */
 export function buildP30iAnc(intent: AncIntent): Uint8Array {
-  const ambient = intent.mode === 'anc' || intent.mode === 'adaptive' ? 0x00 : intent.mode === 'transparency' ? 0x01 : 0x02;
-  const adaptive = intent.mode === 'adaptive';
-  const nibble = manualAdaptiveByte(intent.level, adaptive ? adaptiveFromLevel(intent.level) : 0);
+  const ambient =
+    intent.mode === 'anc' || intent.mode === 'adaptive'
+      ? 0x00
+      : intent.mode === 'transparency'
+        ? 0x01
+        : 0x02;
+  const subMode: AncSubMode =
+    intent.subMode ?? (intent.mode === 'adaptive' ? 'adaptive' : 'manual');
+  const automation =
+    subMode === 'adaptive' ? 0x01 : subMode === 'multiscene' ? 0x02 : 0x00;
+  // The manual nibble follows the user's level in every sub-mode; the adaptive
+  // nibble always mirrors the device (read-only), never the UI.
+  const manual = clampLevel(intent.level);
+  const adaptive = Number.isFinite(intent.adaptiveLevel)
+    ? Math.max(0, Math.min(5, Math.round(intent.adaptiveLevel as number)))
+    : 5;
+  const sensitivity =
+    Number.isInteger(intent.adaptiveSensitivity) &&
+    (intent.adaptiveSensitivity as number) >= 0 &&
+    (intent.adaptiveSensitivity as number) <= 10
+      ? (intent.adaptiveSensitivity as number)
+      : 0xff;
   return frame(0x06, 0x81, [
     ambient,
-    nibble,
+    ((manual << 4) | adaptive) & 0xff,
     ambient,
-    adaptive ? 0x01 : 0x00,
+    automation,
     intent.wind ? 0x01 : 0x00,
-    adaptive ? adaptiveFromLevel(intent.level) : 0x00,
+    sensitivity,
     CLASSIC_SCENE[intent.scene],
   ]);
 }

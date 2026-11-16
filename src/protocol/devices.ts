@@ -30,6 +30,7 @@ const P30I_STATE: StateOffsets = {
   eqPresetId: 32,
   eqBands: { at: 34, count: 10 },
   soundModes: 64,
+  soundModeLength: 7,
 };
 
 /**

@@ -356,7 +356,7 @@ await scenario('L6 legacy settings migrated; settings IPC gone; no tray', async 
   check('legacy minimizeToTray stripped from settings.json', !('minimizeToTray' in after));
   check('unrelated settings keys preserved', after.keep === 1);
   check('settings write IPC removed', !ipc.has('soundcontrol:set-setting') && !ipc.has('soundcontrol:get-settings'));
-  check('real IPC channels still registered', ipc.has('soundcontrol:bridge-token') && ipc.has('soundcontrol:open-log-folder') && ipc.has('soundcontrol:app-version'));
+  check('real IPC channels still registered', ipc.has('soundcontrol:bridge-token') && ipc.has('soundcontrol:open-log-folder') && ipc.has('soundcontrol:app-version') && ipc.has('soundcontrol:get-system-volume') && ipc.has('soundcontrol:set-system-volume'));
   check('no Tray instance created (stub has none; any use would throw)', windows.length >= 1);
   windows[0].userClose(appStub);
   await sleep(200);

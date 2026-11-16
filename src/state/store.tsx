@@ -44,6 +44,7 @@ import {
 import type {
   AncMode,
   AncScene,
+  AncSubMode,
   BatteryState,
   DeviceProfile,
   LogEntry,
@@ -217,6 +218,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [ancMode, setAncMode] = useState<AncMode>('anc');
   const [ancLevel, setAncLevel] = useState(5);
   const [ancScene, setAncScene] = useState<AncScene>('outdoor');
+  // The A3959 firmware owns the adaptive strength and sensitivity; these mirror
+  // the last `06:01` report so every write echoes them back unchanged.
+  const [ancSubMode, setAncSubMode] = useState<AncSubMode>('manual');
+  const [ancAdaptiveLevel, setAncAdaptiveLevel] = useState(5);
+  const [ancSensitivity, setAncSensitivity] = useState<number | undefined>(undefined);
   const [transVocal, setTransVocalState] = useState(false);
   const [windNoise, setWindNoiseState] = useState(false);
   const [gaming, setGamingState] = useState(false);
@@ -274,6 +280,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!report) return;
     setAncMode(report.mode);
     if (report.level !== undefined) setAncLevel(report.level);
+    if (report.subMode !== undefined) setAncSubMode(report.subMode);
+    if (report.adaptiveLevel !== undefined) setAncAdaptiveLevel(report.adaptiveLevel);
+    if (report.adaptiveSensitivity !== undefined) setAncSensitivity(report.adaptiveSensitivity);
     if (report.transVocal !== undefined) setTransVocalState(report.transVocal);
     if (report.wind !== undefined) setWindNoiseState(report.wind);
     if (report.scene !== undefined) setAncScene(report.scene);
@@ -517,6 +526,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAncMode('anc');
       setAncLevel(5);
       setAncScene('outdoor');
+      setAncSubMode('manual');
+      setAncAdaptiveLevel(5);
+      setAncSensitivity(undefined);
       setTransVocalState(false);
       setWindNoiseState(false);
       setGamingState(false);
@@ -646,6 +658,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAncMode('anc');
     setAncLevel(5);
     setAncScene('outdoor');
+    setAncSubMode('manual');
+    setAncAdaptiveLevel(5);
+    setAncSensitivity(undefined);
     setTransVocalState(false);
     setWindNoiseState(false);
     setGamingState(false);
@@ -786,6 +801,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSurroundState(false);
     setAncMode('anc');
     setAncLevel(5);
+    setAncSubMode('manual');
+    setAncAdaptiveLevel(5);
+    setAncSensitivity(undefined);
     setGamingState(false);
     if (prompts) await beep('ok');
   }, [prompts, write]);
@@ -811,11 +829,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (over: Partial<AncIntent> = {}): AncIntent => ({
       mode: over.mode ?? ancMode,
       level: over.level ?? ancLevel,
+      // The sub-mode travels with every frame: on the A3959 the automation
+      // byte decides whether the manual level, the adaptive mode or the
+      // multi-scene selection is the one the firmware applies.
+      subMode: over.subMode ?? ancSubMode,
+      adaptiveLevel: over.adaptiveLevel ?? ancAdaptiveLevel,
+      adaptiveSensitivity: over.adaptiveSensitivity ?? ancSensitivity,
       scene: over.scene ?? ancScene,
       transVocal: over.transVocal ?? transVocal,
       wind: over.wind ?? windNoise,
     }),
-    [ancLevel, ancMode, ancScene, transVocal, windNoise],
+    [
+      ancAdaptiveLevel,
+      ancLevel,
+      ancMode,
+      ancScene,
+      ancSensitivity,
+      ancSubMode,
+      transVocal,
+      windNoise,
+    ],
   );
 
   const sendAnc = useCallback(
@@ -835,19 +868,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const setAnc = useCallback(
-    async (mode: AncMode, level?: number, scene = ancScene) => {
+    async (mode: AncMode, level?: number, scene?: AncScene) => {
       const appliedLevel = level ?? ancLevel;
-      const prev = { mode: ancMode, level: ancLevel, scene: ancScene };
+      const appliedScene = scene ?? ancScene;
+      // Which sub-mode the user just chose. An explicit scene pick means
+      // multi-scene; the adaptive toggle means adaptive; a level button means
+      // manual. On the A3959 these are mutually exclusive (byte 3), so the
+      // frame always states the one that was actually selected instead of
+      // leaving the firmware on a stale automation mode.
+      const subMode: AncSubMode =
+        scene !== undefined ? 'multiscene' : mode === 'adaptive' ? 'adaptive' : 'manual';
+      const prev = { mode: ancMode, level: ancLevel, scene: ancScene, subMode: ancSubMode };
       setAncMode(mode);
       setAncLevel(appliedLevel);
-      setAncScene(scene);
+      setAncScene(appliedScene);
+      setAncSubMode(subMode);
       setBusy('anc');
       try {
-        const intent = ancIntent({ mode, level: appliedLevel, scene });
+        const intent = ancIntent({ mode, level: appliedLevel, scene: appliedScene, subMode });
         await sendAnc(
           intent,
           `ANC ${mode}${mode === 'anc' || mode === 'adaptive' ? ` L${appliedLevel}` : ''}${
-            profile.scenes ? ` ${scene}` : ''
+            profile.scenes ? ` ${appliedScene}` : ''
           }`,
         );
       } catch (err) {
@@ -856,13 +898,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setAncMode(prev.mode);
         setAncLevel(prev.level);
         setAncScene(prev.scene);
+        setAncSubMode(prev.subMode);
         throw err;
       } finally {
         setBusy(null);
       }
       if (prompts) await beep('mode');
     },
-    [ancIntent, ancLevel, ancMode, ancScene, profile.scenes, prompts, sendAnc],
+    [ancIntent, ancLevel, ancMode, ancScene, ancSubMode, profile.scenes, prompts, sendAnc],
   );
 
   const setTransVocal = useCallback(

@@ -1,44 +1,95 @@
+import { useEffect, useRef, useState } from 'react';
 import { Card } from './ui';
 import { IconVolume } from './Icons';
 
 /**
- * Volume (PART F) — an honest, disabled card.
+ * Volume (PART F) — Windows playback volume.
  *
  * No Soundcore RFCOMM capture and no OpenSCQ30 command table contains a
- * volume read or set frame, so SoundControl has no real device volume to
- * show and no command to send. Rather than a local-only slider pretending to
- * control the headset, this card states exactly that and points at the two
- * volume paths that genuinely work: the Windows mixer and the earbuds' own
- * buttons (whose mappings the device itself handles).
+ * volume read or set frame, so this card controls the Windows default output
+ * device instead — the earbuds when they are the active output. The desktop
+ * app exposes Core Audio over IPC; in a browser/dev preview that surface is
+ * absent and the slider stays disabled rather than faking a device change.
  *
- * `capabilities.supportsVolume` is a hard `false` in src/state/derive.ts; if
- * a future protocol capture ever documents a volume command, the capability
- * flips there and this card is the place to build the real control.
+ * The earbuds' own hardware volume is still adjusted by their buttons. This
+ * card is deliberately labelled as the Windows output level so the two are
+ * never confused.
  */
 export function VolumeControl() {
+  const [volume, setVolume] = useState<number | null>(null);
+  const [available, setAvailable] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const timer = useRef<number | null>(null);
+  const latest = useRef<number | null>(null);
+
+  useEffect(() => {
+    const api = typeof window === 'undefined' ? undefined : window.electronAPI;
+    if (!api?.getSystemVolume) {
+      setNote('Windows volume control is available in the desktop app.');
+      return;
+    }
+    let cancelled = false;
+    void api
+      .getSystemVolume()
+      .then((value) => {
+        if (cancelled) return;
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          setVolume(value);
+          latest.current = value;
+          setAvailable(true);
+        } else {
+          setNote('Windows did not report a default output device.');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setNote('Could not read the Windows volume.');
+      });
+    return () => {
+      cancelled = true;
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    };
+  }, []);
+
+  const change = (value: number) => {
+    setVolume(value);
+    latest.current = value;
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    // Coalesce a drag into one Core Audio write shortly after the last move.
+    timer.current = window.setTimeout(() => {
+      const target = latest.current;
+      if (target !== null) void window.electronAPI?.setSystemVolume?.(target).catch(() => {});
+    }, 120);
+  };
+
   return (
-    <Card title="Volume" subtitle="Device-side volume is not part of the Soundcore RFCOMM protocol">
+    <Card title="Volume" subtitle="Windows playback volume · controls the default output device">
       <div className="flex items-start gap-4">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-edge bg-sunken text-faint">
           <IconVolume size={22} />
         </span>
-        <div className="min-w-0">
-          {/* Rendered disabled on purpose — never interactive, never wired to
-              local-only state that would fake a device change. */}
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={0}
-            disabled
-            aria-label="Device volume (not supported by the protocol)"
-            className="h-range w-full max-w-[260px]"
-          />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={volume ?? 0}
+              disabled={!available}
+              aria-label="Windows playback volume"
+              onChange={(e) => change(Number(e.target.value))}
+              className="h-range w-full max-w-[260px]"
+            />
+            <span className="w-10 shrink-0 text-right font-mono text-xs text-mute">
+              {volume === null ? '—' : `${volume}%`}
+            </span>
+          </div>
           <p className="mt-2.5 text-xs leading-relaxed text-mute">
-            SoundControl will not fake a headset volume: the protocol this app speaks has no
-            volume command in any published capture. Adjust playback volume in the{' '}
-            <span className="font-semibold text-ink">Windows mixer</span>, or with your earbuds'
-            own buttons — those work without this app.
+            {note ?? (
+              <>
+                Adjusts the Windows default output — the earbuds when they are the active
+                output. The earbuds' own buttons still change their hardware volume.
+              </>
+            )}
           </p>
         </div>
       </div>

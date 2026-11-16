@@ -12,7 +12,7 @@
  *   - Dashboard: "Battery unavailable" (never an invented percentage),
  *     honest noise-control unsupported note for the no-ANC default profile,
  *     earbud card in "Status unavailable" (unknown ≠ disconnected),
- *     disabled volume card explaining the protocol gap.
+ *     disabled volume card that explains it controls Windows playback volume.
  *   - Devices: real scan surface, capability matrix rows.
  *   - Equalizer: preset grid + FE FE custom curve (this profile has EQ).
  *   - Controls: the explicit gesture-unsupported statement.
@@ -134,8 +134,9 @@ check('header title (Pass 8: Home)', dash.includes('>Home<') && !dash.includes('
 check('disconnected status badge', dash.includes('Disconnected'));
 check('disconnected battery pill says "No device" — never an invented percentage', dash.includes('>No device<') && !/>\s*\d+\s*%/.test(dash));
 check('no-ANC default profile gets the unsupported note, not fake buttons', dash.includes('Noise control is not available on this model'));
-check('volume card explains the protocol gap instead of a live slider', dash.includes('Volume') && dash.includes('no volume command in any published capture'));
-check('volume slider is rendered disabled', /aria-label="Device volume \(not supported by the protocol\)"[^>]*disabled/.test(dash) || dash.includes('disabled'));
+check('volume card labels the Windows playback control', dash.includes('Volume') && dash.includes('Windows playback volume'));
+check('volume card explains what the slider controls', dash.includes('Adjusts the Windows default output'));
+check('volume slider is disabled without the Electron IPC surface', /<input[^>]*disabled[^>]*aria-label="Windows playback volume"/.test(dash));
 check('earbud card present for TWS profile', dash.includes('Earbud Connection'));
 // Sides render "Unknown" — never the old "Status unavailable" copy and never
 // "Not connected". (The page-level connection-phase badge legitimately reads

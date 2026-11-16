@@ -209,7 +209,7 @@ export function NoiseControl() {
                         key={lvl}
                         disabled={disabled}
                         aria-pressed={on}
-                        onClick={() => void app.setAnc(app.ancMode === 'adaptive' ? 'adaptive' : 'anc', lvl).catch(() => {})}
+                        onClick={() => void app.setAnc('anc', lvl).catch(() => {})}
                         className={`h-8 w-8 rounded-lg border text-xs font-bold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${
                           on
                             ? 'border-accent bg-accent/15 text-accent-soft shadow-[0_0_10px_rgb(61_123_255/0.25)]'
@@ -259,7 +259,11 @@ export function NoiseControl() {
                         key={sc.id}
                         disabled={disabled}
                         aria-pressed={on}
-                        onClick={() => void app.setAnc(app.ancMode, undefined, sc.id).catch(() => {})}
+                        onClick={() =>
+                          void app
+                            .setAnc(app.profile.ancLayout === 'classic' ? app.ancMode : 'anc', undefined, sc.id)
+                            .catch(() => {})
+                        }
                         className={`rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${
                           on
                             ? 'border-accent bg-accent/15 text-accent-soft'

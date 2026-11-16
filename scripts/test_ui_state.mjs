@@ -353,6 +353,21 @@ eq('l4nc: manual level 3 + wind on', parseSoundModes([0x00, 0x30, 0x00, 0x00, 0x
 eq('p30i: adaptive nibble below 1 is not a level', parseSoundModes([0x02, 0x00, 0x00, 0x00, 0x00], 'tws-p30i'), {
   mode: 'normal', wind: false,
 });
+eq('p30i: manual report carries sub-mode + firmware-owned adaptive values', parseSoundModes(
+  [0x00, 0x25, 0x00, 0x00, 0x01, 0xff, 0x01], 'tws-p30i',
+), {
+  mode: 'anc', level: 2, subMode: 'manual', adaptiveLevel: 5, wind: true, scene: 'outdoor',
+});
+eq('p30i: adaptive report selects adaptive mode', parseSoundModes(
+  [0x00, 0x25, 0x00, 0x01, 0x00, 0x07, 0x01], 'tws-p30i',
+), {
+  mode: 'adaptive', level: 2, subMode: 'adaptive', adaptiveLevel: 5, adaptiveSensitivity: 7, wind: false, scene: 'outdoor',
+});
+eq('p30i: multi-scene report keeps the scene selector', parseSoundModes(
+  [0x00, 0x20, 0x00, 0x02, 0x00, 0xff, 0x02], 'tws-p30i',
+), {
+  mode: 'anc', level: 2, subMode: 'multiscene', wind: false, scene: 'indoor',
+});
 // TEST 12 input — a malformed mirror must be REJECTED, so the last confirmed
 // mode survives (the store only moves ANC state on a non-null report).
 eq('garbage mode byte → null (confirmed state untouched)', parseSoundModes([0x07, 0x00, 0x00, 0x00], 'classic'), null);

@@ -351,6 +351,43 @@ const p30iAdaptive = buildP30iAnc({ mode: 'adaptive', level: 3, scene: 'outdoor'
 ok('P30i automation = adaptive', p30iAdaptive[12] === 0x01);
 const p30iWind = buildP30iAnc({ mode: 'anc', level: 2, scene: 'outdoor', transVocal: false, wind: true });
 ok('P30i wind bit', (p30iWind[13] & 0x01) === 1);
+// OpenSCQ30 9b6e42a7 manual-NC vector: 06:81 00 25 00 00 01 FF 01.
+const p30iManual = buildP30iAnc({
+  mode: 'anc',
+  level: 2,
+  subMode: 'manual',
+  adaptiveLevel: 5,
+  scene: 'outdoor',
+  transVocal: false,
+  wind: true,
+});
+ok(
+  'P30i manual frame matches the OpenSCQ30 vector',
+  [9, 10, 11, 12, 13, 14, 15].every((i) => p30iManual[i] === [0x00, 0x25, 0x00, 0x00, 0x01, 0xff, 0x01][i - 9]),
+  Array.from(p30iManual.slice(9, 16), (b) => `0x${b.toString(16).padStart(2, '0')}`).join(' '),
+);
+const p30iScene = buildP30iAnc({
+  mode: 'anc',
+  level: 2,
+  subMode: 'multiscene',
+  scene: 'indoor',
+  transVocal: false,
+  wind: false,
+});
+ok('P30i scene automation = multi-scene', p30iScene[12] === 0x02);
+ok('P30i scene byte = indoor', p30iScene[15] === 0x02);
+const p30iEcho = buildP30iAnc({
+  mode: 'adaptive',
+  level: 3,
+  subMode: 'adaptive',
+  adaptiveLevel: 2,
+  adaptiveSensitivity: 7,
+  scene: 'outdoor',
+  transVocal: false,
+  wind: false,
+});
+ok('P30i adaptive echoes the reported nibble', (p30iEcho[10] & 0x0f) === 2);
+ok('P30i adaptive echoes the reported sensitivity', p30iEcho[14] === 7);
 
 // Liberty 4 NC: transparency at byte 2, transportation at byte 6.
 const l4nc = buildLiberty4NcAnc({ mode: 'transparency', level: 3, scene: 'transport', transVocal: true, wind: true });
@@ -368,7 +405,7 @@ ok('L3Pro manual level', (l3pro[10] >> 4) === 4);
 // A3949 / A3948 have no sound-mode control: buildAnc must refuse.
 const a3949 = DEVICES.find((d) => d.sku === 'A3949');
 ok('A3949 buildAnc returns null', P.buildAnc(a3949.ancLayout, { mode: 'anc', level: 5, scene: 'outdoor', transVocal: false, wind: false }) === null);
-console.log('  13 TWS sound-mode shape checks');
+console.log('  19 TWS sound-mode shape checks');
 
 /* ----------------------------------------------------------- device table */
 

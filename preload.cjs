@@ -14,4 +14,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // user-toggleable setting, so nothing in the renderer can alter it.
   getAppVersion: () => ipcRenderer.invoke('soundcontrol:app-version'),
   openLogFolder: () => ipcRenderer.invoke('soundcontrol:open-log-folder'),
+  // Windows default-output volume. The Soundcore RFCOMM protocol has no
+  // volume command, so the Volume card controls the OS mixer instead.
+  getSystemVolume: () => ipcRenderer.invoke('soundcontrol:get-system-volume'),
+  setSystemVolume: (value) => ipcRenderer.invoke('soundcontrol:set-system-volume', value),
 });
