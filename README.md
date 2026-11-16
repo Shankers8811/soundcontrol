@@ -31,7 +31,7 @@
   launch-at-login or minimize-to-tray setting by design; obsolete entries in an old
   `%AppData%\soundcontrol\settings.json` are stripped at startup so they can never re-enable
   either behaviour. The complete installed package stays far below 500 MB (measured on Windows CI).
-- More docs: [TROUBLESHOOTING.md](TROUBLESHOOTING.md) (every connect failure mode, explained from the real log messages), [ROADMAP.md](ROADMAP.md) (shipped vs open), [PROTOCOL.md](PROTOCOL.md) (verified wire spec), [PUBLISH.md](PUBLISH.md) (release checklist).
+- More docs: [REQUIREMENTS.md](REQUIREMENTS.md) (honest audit of the community requirement list), [TROUBLESHOOTING.md](TROUBLESHOOTING.md) (every connect failure mode, explained from the real log messages), [ROADMAP.md](ROADMAP.md) (shipped vs open), [PROTOCOL.md](PROTOCOL.md) (verified wire spec), [PUBLISH.md](PUBLISH.md) (release checklist).
 
 **🔎 Connecting earbuds on Windows (important).** SoundControl talks to devices **already paired
 with Windows** through a small local bridge that runs on a Python runtime **bundled inside the
@@ -75,7 +75,7 @@ UI shows **disabled with the protocol reason** — SoundControl never renders a 
 
 | Feature | Official Android App | SoundControl for Windows |
 |---|:---:|:---:|
-| **Ambient Sound (ANC)** | ✅ 5-Level Manual, Adaptive, Multi-Scene | ✅ Real `06:81` frames with per-model layouts: scenes + transparency sub-modes on classic over-ears; manual level, adaptive and wind-noise bytes on TWS |
+| **Ambient Sound (ANC)** | ✅ 5-Level Manual, Adaptive, Multi-Scene | ✅ Real `06:81` frames with per-model layouts: scenes + transparency sub-modes on classic over-ears; manual level, adaptive and wind-noise bytes on TWS. The UI moves only on the device's `06:01` mirror, so it shows the true sub-mode instead of guessing |
 | **Transparency Mode** | ✅ Fully Transparent & Talk Mode | ✅ Fully Transparent & Talk Mode (vocal byte where the model documents one) |
 | **Equalizer Presets** | ✅ 22 Soundcore Curated Presets | ✅ All 22 presets on EQ-capable models (`02:81` / `02:83`); HearID models (`03:87`) get a disabled page with the reason — never a guessed frame |
 | **Custom Graphic EQ** | ✅ 8-Band Slider Curve (-6 to +6 dB) | ✅ 8-band −6…+6 dB curve sent as the real `FE FE` custom preset (same model gating) |
@@ -88,14 +88,19 @@ UI shows **disabled with the protocol reason** — SoundControl never renders a 
 | **LDAC High-Res** | ✅ Sony 990 kbps Codec Flip | ✅ Real `01:7F` query + `01:FF` enable/disable |
 | **Dual Connection** | ✅ Multipoint PC + Phone | ✅ Real `0B:84` toggle |
 | **3D Surround** | ✅ Spatial audio toggle | ✅ Real `02:86` toggle on models that document it |
-| **Device Volume** | ✅ In-app slider | ⚠️ No volume command exists in any published capture — the volume card renders disabled with that explanation instead of faking a headset change |
-| **Safe Volume** | ✅ Decibel Limiter & Warnings | ❌ Not implemented — would require the volume command that does not exist |
+| **Device Volume** | ✅ In-app slider | ✅ Windows default-output volume via Core Audio (`IAudioEndpointVolume`) with a live slider. No Soundcore RFCOMM volume command exists, so the card says it controls Windows, not the earbuds |
+| **Safe Volume** | ✅ Decibel Limiter & Warnings | ❌ Not implemented — no Soundcore limiter command exists; the app only reads/writes the Windows endpoint volume |
 | **Factory reset** | ✅ | ⚠️ `01:85` is documented only for the Motion+ (A3116) speaker; capability-gated per model, never sent speculatively |
 | **Find My Device** | ✅ Acoustic Locator Chirps | ⚠️ No RFCOMM command in any public capture — never faked; see PROTOCOL.md |
 | **Capability gating** | — | ✅ Every page adapts per model: unsupported controls show a disabled state with the protocol reason |
 | **Diagnostics / Console**| ❌ Hidden / Unavailable | ✅ Live Hex Frame Inspector & TX/RX Logger |
 | **Battery telemetry** | ✅ Live L/R/Case Levels | ✅ Live L/R Levels (case never shown — many models don't report it; over-ears have none) + 30 s refresh + Windows % fallback; a side reported absent (`0xFF`) loses its level immediately — a stale % can never survive new telemetry |
 | **Capture decoding** | ❌ Hidden / Unavailable | ✅ Base64→Hex + BLE→RFCOMM Map in Diagnostics |
+
+The full community-requirements audit — every must-have, Windows expectation and
+anti-complaint, marked ✅ implemented / 🟡 partial / ❌ not implemented /
+🚫 protocol-blocked / ⛔ deliberately excluded with evidence — is in
+[**REQUIREMENTS.md**](REQUIREMENTS.md).
 
 ---
 
@@ -104,7 +109,7 @@ UI shows **disabled with the protocol reason** — SoundControl never renders a 
 The Windows desktop app communicates with Soundcore Bluetooth hardware over:
 
 1. **Bluetooth Classic RFCOMM (SPP)**: the DSP channel is model-dependent (4 on most earbuds, 10 on the P20i family, 12/15 on several over-ears, 30 on Space 2). The helper probes each candidate with the `01:01` handshake and keeps the first channel that answers with a valid `09 FF` frame — accepting a socket alone is not proof (see PROTOCOL.md).
-2. **Local Electron-to-helper IPC**: The packaged renderer talks to the bundled Python helper over an authenticated loopback HTTP/WebSocket connection; the helper performs the RFCOMM work. Liveness uses the fast `/health` endpoint; `/scan` enumerates Windows PnP devices (slow on cold machines, cached 3 s) and is only called when the helper is up.
+2. **Local Electron-to-helper IPC**: The packaged renderer talks to the bundled Python helper over an authenticated loopback HTTP/WebSocket connection; the helper performs the RFCOMM work. Liveness uses the fast `/health` endpoint; `/scan` uses WinRT `BluetoothDevice.ConnectionStatus` (~0.5 s) with a paired-registry fallback, caches for 3 s, and is only called when the helper is up.
 
 ### Packet Framing & Checksum Calculation
 
@@ -158,8 +163,8 @@ BLE frames use an XOR checksum; RFCOMM frames use the additive Σ checksum. The 
 
 ### Troubleshooting connections
 
-- **"Windows helper: not responding"** means the renderer could not reach `/health`. Restart SoundControl and check `%AppData%\soundcontrol\main.log` for `bridge started via …` or a Python startup error. The status no longer depends on the slow PnP scan, so a slow machine will not false-positive.
-- **Empty paired-device list** with the helper running means Windows has no paired RFCOMM device to enumerate. Pair in **Settings → Bluetooth & devices**, then use **Refresh** on the Devices page (which forces a fresh `?fresh=1` scan).
+- **"Windows helper: not responding"** means the renderer could not reach `/health`. Restart SoundControl and check `%AppData%\soundcontrol\main.log` for `bridge started via …` or a Python startup error. The status no longer depends on device discovery, so a slow machine will not false-positive.
+- **Empty paired-device list** with the helper running means Windows has no paired RFCOMM device to enumerate. Pair in **Settings → Bluetooth & devices**, then use **Refresh** on the Devices page (which forces a fresh `?fresh=1` scan). The scan itself is the WinRT fast path; if WinRT is unavailable the helper falls back to the paired-device registry.
 - **Battery stuck?** The app re-queries `01 03` every 30 s while connected to real hardware and falls back to the Windows PnP percentage when protocol telemetry is unavailable.
 
 ---
@@ -184,10 +189,11 @@ Use `npm run electron` with the renderer available when testing the desktop shel
 ### Tests
 ```bash
 npm test            # everything below in sequence
-npm run test:ui     # pure UI state derivation (capabilities, earbud presence, battery math, scan machine) + a server-side render smoke of every page
-npm run test:bridge # Python bridge unit tests (channel probe, token/origin auth, WS protocol)
+npm run test:ui     # 261 UI state checks (capabilities, earbud presence, battery math, scan machine) + 114 server-render checks over every page
+npm run test:bridge # 75 Python bridge checks (channel probe, token/origin auth, WS protocol, WinRT/registry scan)
 npm run test:e2e    # startup/lifecycle e2e: real helper server + real renderer transport against an emulated RFCOMM device (incl. per-side earbud telemetry)
 npm run test:lifecycle # main-process exit/restart races: window close kills the real helper, port 8765 frees, no post-shutdown restart (Electron stubbed; Windows CI repeats this against the packaged app)
+npm run verify:protocol # 490 wire-frame checks against published captures, incl. the A3959 ANC vector
 ```
 None of these need Windows, Bluetooth hardware, or an Electron binary; the
 emulated helper (`scripts/emulated_bridge.py`) is test data only and is never

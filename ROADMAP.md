@@ -2,7 +2,30 @@
 
 Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doing.
 
-## Shipped (v1.0.6)
+## Shipped (v1.0.6, plus the `fix/1.0.6-anc-volume` corrections)
+
+- ✅ **ANC true-state fix (A3959 / P30i / R50i NC)** — the `06:81` automation
+  byte now follows the real sub-mode (`0x00` manual, `0x01` adaptive,
+  `0x02` multi-scene) instead of always writing manual, the firmware-owned
+  adaptive strength/sensitivity bytes are echoed rather than zeroed, and the
+  `06:01` mirror parses the sub-mode so the UI can never show a guessed scene.
+  The manual vector is pinned to OpenSCQ30's capture:
+  `06:81 00 25 00 00 01 FF 01`. Transparency → ANC re-sends the last
+  device-confirmed scene, fixing the Q30 "shows/reopens in Outdoor" class of bug.
+- ✅ **Fast device discovery** — `/scan` uses WinRT
+  `BluetoothDevice.ConnectionStatus` (~0.5 s on a normal machine) and falls
+  back to the paired-device registry, replacing the multi-second PnP loop that
+  could exceed the helper timeout. Live scan confirmed `soundcore R50i NC`
+  (`18:9C:2C:E5:C8:56`) as `connected: true`.
+- ✅ **Windows output volume** — Home → Volume now controls the Windows default
+  output endpoint through Core Audio `IAudioEndpointVolume` (main-process IPC,
+  preload bridge, live slider). No Soundcore RFCOMM volume command exists, so
+  the UI labels it as Windows volume rather than a headset change. Interop
+  verified `32 → 44 → 32`; physical loudness still needs hardware validation.
+- ✅ **Requirements audit** — [REQUIREMENTS.md](REQUIREMENTS.md) maps all 41
+  community requirements to ✅ implemented / 🟡 partial / ❌ not implemented /
+  🚫 protocol-blocked / ⛔ deliberately excluded, with evidence and honest
+  protocol limits. No feature was added just to turn a row green.
 
 - ✅ **Final navigation IA (Pass 8)** — the sidebar is now exactly five
   destinations (Home, Devices, Equalizer, Noise Control, Settings); the
@@ -46,11 +69,11 @@ Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doi
 - ✅ **Silent-link watchdog** — names the fake-"Connected" state after 8 s and
   self-heals: background handshake retries until the control slot frees up,
   then announces "battery and ANC are live now".
-- ✅ **Protocol correctness suite** — `scripts/verify-protocol.mjs` (479
+- ✅ **Protocol correctness suite** — `scripts/verify-protocol.mjs` (490
   checks, runs inside `npm run build`) rebuilds every outbound frame and
   compares against published captures from OpenSCQ30, SoundcoreDesktop,
   Noiseclapper-GNOME, soundcorebridge and soundcore_anker_equalyzer;
-  `scripts/test_bridge_probe.py` (51 checks) covers the probe.
+  `scripts/test_bridge_probe.py` (75 checks) covers the probe, auth and scan.
 - ✅ **Model table by SKU** — A3959 = P30i/R50i NC vs A3949 = R50i, four
   `06:81` sound-mode layouts, 22 preset curves verbatim, custom EQ `FE FE`,
   DRC second channel byte-identical to 22 live P20i captures.
@@ -62,15 +85,15 @@ Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doi
   (localStorage), activity log export (JSON/CSV), low-battery nudge, new
   loading art, bridge diagnostics surfaced in-app.
 - ✅ **Desktop UI redesign** — dark-navy/electric-blue desktop layout
-  (sidebar: Dashboard, Devices, Equalizer, Controls, Settings, About),
+  (sidebar: Home, Devices, Equalizer, Noise Control, Settings),
   capability-gated everywhere: every control either sends a documented
-  frame or renders disabled with the protocol reason (volume, gestures,
-  HearID EQ, factory reset, Sleep/Find-My claims removed). Per-side earbud
+  frame or renders disabled with the protocol reason (gestures, HearID EQ,
+  factory reset, Sleep/Find-My claims removed). Per-side earbud
   status derives from real `0xFF` presence bytes with "unknown" kept
   distinct from "disconnected". Real persisted desktop settings
-  (launch-at-login, minimize-to-tray) via Electron IPC.
-- ✅ **UI truth test suites** — `npm run test:ui` (pure state-derivation
-  checks + server-side render-smoke checks over the real React tree) and
+  (theme, interface sounds, recent devices) survive restarts.
+- ✅ **UI truth test suites** — `npm run test:ui` (261 state-derivation
+  checks + 114 server-side render-smoke checks over the real React tree) and
   e2e scenario 7 (per-side earbud telemetry through the real
   helper→WS→transport pipeline; `--earbud-state` on the emulator).
 - ✅ **Live L/R correctness (Pass 4)** — battery telemetry merges through a
@@ -87,9 +110,26 @@ Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doi
   (pure `parseSoundModes`); earbud product art dims per side independently
   from real telemetry. Emulator gains `--earbud-state unknown` and
   `--earbud-script both,left,both` live transitions (e2e scenario 8).
-  Suites: 170 state + 69 render + 51 bridge + 96 e2e checks.
+  Suites: 261 state + 114 render + 75 bridge + 96 e2e checks.
 
 ## Next (small, high value)
+
+Requirements-audit follow-ups (all client-side; no invented frames — see
+[REQUIREMENTS.md](REQUIREMENTS.md) "Suggested next supported work"):
+
+- ⬜ **Named EQ preset library + import/export** — local JSON; the device still
+  receives the real `02:81`/`02:83`/`FE FE` curve.
+- ⬜ **Per-mode EQ memory** — keep Normal/ANC curves locally and re-apply on a
+  device-confirmed `06:01` mode change.
+- ⬜ **Last-known battery snapshot** per recent device, with a "last seen"
+  timestamp when offline; case level only where the model reports it.
+- ⬜ **Settings backup/restore + reset to defaults** (local file, no cloud).
+- ⬜ **Model search by name/SKU** in the existing profile picker.
+- ⬜ **Windows output balance** through the same Core Audio interop, labelled
+  "Windows output balance" (not earbud hardware balance).
+- ⬜ **Re-claim audio** reconnect action and local rename for recent devices.
+
+Protocol/platform work:
 
 - ⬜ **Wider device matrix** — community-reported rows (model, firmware,
   what works) collected via the bug-report template in TROUBLESHOOTING.md;
