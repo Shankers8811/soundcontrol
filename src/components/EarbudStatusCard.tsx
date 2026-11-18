@@ -162,6 +162,22 @@ export function EarbudStatusCard() {
         <SidePanel side={state.left} label="Left" scaleUnknown={scaleUnknown} />
         <SidePanel side={state.right} label="Right" scaleUnknown={scaleUnknown} />
       </div>
+      {state.case.supported && (
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-edge bg-sunken px-4 py-3">
+          <span className="text-xs font-semibold text-mute">Charging case</span>
+          <span className="flex items-center gap-2 text-xs">
+            {state.case.charging && <IconBolt size={12} className="text-warn" />}
+            {state.case.battery !== null ? (
+              <>
+                <span className="font-mono font-semibold text-ink">{state.case.battery}%</span>
+                {state.case.charging && <span className="text-[10px] text-warn/90">charging</span>}
+              </>
+            ) : (
+              <span className="text-[11px] text-faint">Not reported yet</span>
+            )}
+          </span>
+        </div>
+      )}
     </Card>
   );
 }

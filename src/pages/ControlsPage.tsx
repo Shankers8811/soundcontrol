@@ -85,7 +85,12 @@ export function ControlsPage() {
   const caps = app.capabilities;
   const [resetOpen, setResetOpen] = useState(false);
 
-  const anyFeature = caps.supportsGaming || caps.supportsSurround || caps.supportsDual || caps.supportsLdac;
+  const anyFeature =
+    caps.supportsGaming ||
+    caps.supportsSurround ||
+    caps.supportsDual ||
+    caps.supportsLdac ||
+    caps.gamingBlockedByFirmware;
 
   return (
     <div>
@@ -128,6 +133,15 @@ export function ControlsPage() {
                     busyKey="gaming"
                     onChange={app.setGaming}
                   />
+                )}
+                {caps.gamingBlockedByFirmware && (
+                  <div className="rounded-lg border border-warn/30 bg-warn/8 px-3 py-2 text-[11px] leading-relaxed text-warn">
+                    <span className="font-semibold">Gaming mode needs newer firmware.</span>{' '}
+                    {app.profile.name} ({app.profile.sku}) documents the gaming command from
+                    firmware <span className="font-mono">{caps.gamingMinFirmware}</span>; this
+                    device reports <span className="font-mono">{app.firmware}</span>. The switch is
+                    hidden rather than sending a frame the firmware may ignore.
+                  </div>
                 )}
                 {caps.supportsSurround && (
                   <FeatureToggle

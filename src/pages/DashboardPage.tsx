@@ -1,5 +1,6 @@
 import { useApp } from '../state/store';
 import { batteryPercent } from '../state/derive';
+import { lastKnownSummary, recentDisplayName } from '../state/localData';
 import { EarbudStatusCard } from '../components/EarbudStatusCard';
 import { IconBattery, IconBolt, IconBt, IconDevices } from '../components/Icons';
 import { NoiseControl } from '../components/NoiseControl';
@@ -32,6 +33,8 @@ function BatteryPill() {
     const parts: string[] = [];
     if (presence === 'both' || presence === 'left') parts.push(l !== null ? `L ${l}%` : 'L —');
     if (presence === 'both' || presence === 'right') parts.push(r !== null ? `R ${r}%` : 'R —');
+    const caseLevel = batteryPercent(app.battery.case ?? null, app.battery.batteryScale);
+    if (caps.supportsCaseBattery && caseLevel !== null) parts.push(`Case ${caseLevel}%`);
     return (
       <span className="inline-flex items-center gap-2 rounded-full border border-edge bg-sunken px-3 py-1 font-mono text-xs font-semibold text-ink">
         <IconBattery level={l ?? r} label="" charging={Boolean(app.battery.leftCharging || app.battery.rightCharging)} />
@@ -76,6 +79,12 @@ function ConnectionHero() {
               ? 'The Bluetooth helper is opening the RFCOMM link and verifying the DSP channel. This can take a few seconds on a cold Windows stack.'
               : 'SoundControl controls Soundcore devices that are already paired with Windows. Open the Devices page to scan, connect, and manage them.'}
           </p>
+          {!app.connecting && app.recentDevices[0]?.lastBattery && (
+            <p className="mt-1.5 text-[11px] text-faint">
+              Last known for {recentDisplayName(app.recentDevices[0])}:{' '}
+              {lastKnownSummary(app.recentDevices[0].lastBattery)}
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 flex-col items-stretch gap-2">
           <Button variant="primary" disabled={app.connecting} onClick={() => app.setPage('devices')}>
@@ -118,9 +127,17 @@ function DeviceSummaryCard() {
               {app.profileNote}
             </p>
           )}
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 flex flex-wrap gap-2">
             <Button size="sm" onClick={() => app.setPage('devices')}>
               Manage
+            </Button>
+            <Button
+              size="sm"
+              disabled={app.busy !== null}
+              title="Re-open SoundControl's control link (Windows owns the audio route)"
+              onClick={() => void app.reclaimAudio().catch(() => {})}
+            >
+              Re-claim audio
             </Button>
             <Button
               size="sm"

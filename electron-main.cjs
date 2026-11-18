@@ -1,4 +1,12 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  dialog,
+  globalShortcut,
+  ipcMain,
+  Notification,
+  shell,
+} = require('electron');
 const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
@@ -114,6 +122,10 @@ interface IAudioEndpointVolume {
     int SetMasterVolumeLevelScalar(float level, Guid eventContext);
     int GetMasterVolumeLevel(out float level);
     int GetMasterVolumeLevelScalar(out float level);
+    int SetChannelVolumeLevel(uint channel, float level, Guid eventContext);
+    int SetChannelVolumeLevelScalar(uint channel, float level, Guid eventContext);
+    int GetChannelVolumeLevel(uint channel, out float level);
+    int GetChannelVolumeLevelScalar(uint channel, out float level);
 }
 
 public static class SoundControlVolume {
@@ -136,13 +148,46 @@ public static class SoundControlVolume {
         if (percent > 100) percent = 100;
         Marshal.ThrowExceptionForHR(Endpoint().SetMasterVolumeLevelScalar(percent / 100.0f, Guid.Empty));
     }
+    // Balance is -100 (right only) .. 0 (centred) .. 100 (left only).
+    // It is implemented with Core Audio's real per-channel scalars, so the
+    // control changes the Windows output mix - never the earbud firmware.
+    public static int GetBalance() {
+        var endpoint = Endpoint();
+        uint channels;
+        Marshal.ThrowExceptionForHR(endpoint.GetChannelCount(out channels));
+        if (channels < 2) return 0;
+        float left, right;
+        Marshal.ThrowExceptionForHR(endpoint.GetChannelVolumeLevelScalar(0, out left));
+        Marshal.ThrowExceptionForHR(endpoint.GetChannelVolumeLevelScalar(1, out right));
+        float max = Math.Max(left, right);
+        if (max <= 0.0001f) return 0;
+        return (int)Math.Round((left - right) / max * 100.0);
+    }
+    public static void SetBalance(int balance) {
+        var endpoint = Endpoint();
+        uint channels;
+        Marshal.ThrowExceptionForHR(endpoint.GetChannelCount(out channels));
+        if (channels < 2) return;
+        if (balance < -100) balance = -100;
+        if (balance > 100) balance = 100;
+        float master;
+        Marshal.ThrowExceptionForHR(endpoint.GetMasterVolumeLevelScalar(out master));
+        float left = master;
+        float right = master;
+        if (balance > 0) right = master * (100 - balance) / 100.0f;
+        if (balance < 0) left = master * (100 + balance) / 100.0f;
+        Marshal.ThrowExceptionForHR(endpoint.SetChannelVolumeLevelScalar(0, left, Guid.Empty));
+        Marshal.ThrowExceptionForHR(endpoint.SetChannelVolumeLevelScalar(1, right, Guid.Empty));
+    }
 }
 "@
 Add-Type -TypeDefinition $src -Language CSharp
 try {
     if ('__ACTION__' -eq 'set') { [SoundControlVolume]::Set(__VALUE__) }
+    if ('__ACTION__' -eq 'set-balance') { [SoundControlVolume]::SetBalance(__VALUE__) }
     $percent = [SoundControlVolume]::Get()
-    @{ ok = $true; percent = $percent } | ConvertTo-Json -Compress
+    $balance = [SoundControlVolume]::GetBalance()
+    @{ ok = $true; percent = $percent; balance = $balance } | ConvertTo-Json -Compress
 } catch {
     @{ ok = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
@@ -151,7 +196,9 @@ try {
 function runVolumeInterop(action, value) {
   const script = VOLUME_INTEROP.replace('__ACTION__', action).replace(
     '__VALUE__',
-    String(Math.max(0, Math.min(100, Math.round(Number(value) || 0)))),
+    // Balance is signed (-100..100); the C# setters clamp each use to its own
+    // legal range (volume 0..100, balance -100..100).
+    String(Math.max(-100, Math.min(100, Math.round(Number(value) || 0)))),
   );
   return new Promise((resolve, reject) => {
     execFile(
@@ -217,6 +264,103 @@ ipcMain.handle('soundcontrol:set-system-volume', (_event, value) => {
   volumeWritePending = clamped;
   void flushVolumeWrites();
   return clamped;
+});
+
+ipcMain.handle('soundcontrol:get-system-balance', async () => {
+  if (process.platform !== 'win32') return null;
+  try {
+    const result = await runVolumeInterop('get', 0);
+    return result && result.ok === true && typeof result.balance === 'number' ? result.balance : null;
+  } catch (err) {
+    log(`get-system-balance failed: ${err.message}`);
+    return null;
+  }
+});
+
+ipcMain.handle('soundcontrol:set-system-balance', async (_event, value) => {
+  if (process.platform !== 'win32') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const clamped = Math.max(-100, Math.min(100, Math.round(n)));
+  try {
+    const result = await runVolumeInterop('set-balance', clamped);
+    if (!result || result.ok !== true) {
+      log(`set-system-balance failed: ${result && result.error ? result.error : 'unknown error'}`);
+      return null;
+    }
+    return typeof result.balance === 'number' ? result.balance : clamped;
+  } catch (err) {
+    log(`set-system-balance failed: ${err.message}`);
+    return null;
+  }
+});
+
+// Native Windows toast for low-battery nudges. The renderer decides when a
+// notification is warranted from real telemetry; this handler only displays
+// it. Unsupported platforms and failures return false and stay silent.
+ipcMain.handle('soundcontrol:notify', (_event, title, body) => {
+  try {
+    if (!Notification.isSupported()) return false;
+    const notification = new Notification({
+      title: String(title ?? 'SoundControl').slice(0, 120),
+      body: String(body ?? '').slice(0, 300),
+      silent: true,
+    });
+    notification.show();
+    return true;
+  } catch (err) {
+    log(`notify failed: ${err.message}`);
+    return false;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Optional app-wide hotkeys.
+//
+// Off by default. The renderer asks for them explicitly from Settings; the
+// main process only registers the two documented actions below and forwards a
+// press to the window. The renderer then sends the same real ANC/EQ frames a
+// click would, so a hotkey can never invent a command. Registrations last only
+// for this process lifetime — nothing is written to the registry, and they are
+// released on quit.
+// ---------------------------------------------------------------------------
+const GLOBAL_HOTKEYS = [
+  ['Control+Alt+N', 'cycle-anc'],
+  ['Control+Alt+E', 'cycle-eq'],
+];
+
+function sendHotkeyAction(action) {
+  const target =
+    BrowserWindow.getFocusedWindow() ?? (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null);
+  if (!target) return;
+  try {
+    target.webContents.send('soundcontrol:hotkey', action);
+  } catch (err) {
+    log(`hotkey delivery failed: ${err.message}`);
+  }
+}
+
+ipcMain.handle('soundcontrol:set-global-hotkeys', (_event, enabled) => {
+  const wanted = enabled === true;
+  for (const [accelerator] of GLOBAL_HOTKEYS) {
+    if (globalShortcut.isRegistered(accelerator)) globalShortcut.unregister(accelerator);
+  }
+  const registered = [];
+  if (wanted) {
+    for (const [accelerator, action] of GLOBAL_HOTKEYS) {
+      try {
+        if (globalShortcut.register(accelerator, () => sendHotkeyAction(action))) {
+          registered.push(accelerator);
+        } else {
+          log(`global hotkey ${accelerator} was refused by Windows`);
+        }
+      } catch (err) {
+        log(`global hotkey ${accelerator} failed: ${err.message}`);
+      }
+    }
+  }
+  log(`global hotkeys ${wanted ? 'enabled' : 'disabled'}: ${registered.join(', ') || 'none'}`);
+  return { enabled: wanted, registered };
 });
 
 // ---------------------------------------------------------------------------
@@ -713,6 +857,11 @@ if (!gotTheLock) {
 app.on('before-quit', () => {
   log('app quitting; stopping the Bluetooth helper');
   shuttingDown = true;
+  try {
+    globalShortcut.unregisterAll();
+  } catch {
+    /* no hotkeys were registered */
+  }
   killBridgeProcesses();
 });
 

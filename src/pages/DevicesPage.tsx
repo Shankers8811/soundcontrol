@@ -5,7 +5,9 @@ import {
   nextScanState,
   type ScannedDevice,
 } from '../state/derive';
+import { lastKnownSummary, recentDisplayName } from '../state/localData';
 import { DEVICES } from '../protocol/devices';
+import type { RecentDevice } from '../types';
 import { bridgeHealth, scanBridgeDevicesDetailed } from '../transports/bridge';
 import { IconBolt, IconBt, IconCheck, IconClose, IconRefresh } from '../components/Icons';
 import {
@@ -52,6 +54,9 @@ export function DevicesPage() {
   const [macHint, setMacHint] = useState<string | null>(null);
   const [connectingMac, setConnectingMac] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [profileQuery, setProfileQuery] = useState('');
+  const [renaming, setRenaming] = useState<RecentDevice | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   /* ---------------------------------------------------------- scanning */
 
@@ -265,9 +270,19 @@ export function DevicesPage() {
                         </span>
                       </span>
                       {isActive ? (
-                        <Button size="sm" variant="danger" disabled={busy} onClick={() => void app.disconnect()}>
-                          Disconnect
-                        </Button>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <Button
+                            size="sm"
+                            disabled={busy}
+                            title="Re-open SoundControl's control link (Windows owns the audio route)"
+                            onClick={() => void app.reclaimAudio().catch(() => {})}
+                          >
+                            Re-claim audio
+                          </Button>
+                          <Button size="sm" variant="danger" disabled={busy} onClick={() => void app.disconnect()}>
+                            Disconnect
+                          </Button>
+                        </div>
                       ) : (
                         <Button
                           size="sm"
@@ -318,15 +333,36 @@ export function DevicesPage() {
                       onClick={() => void connect(d.mac, d.name)}
                       className="min-w-0 flex-1 text-left disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <span className="block truncate text-xs font-semibold text-ink">{d.name}</span>
+                      <span className="block truncate text-xs font-semibold text-ink">
+                        {recentDisplayName(d)}
+                      </span>
+                      {d.label && (
+                        <span className="block truncate text-[10px] text-mute">{d.name}</span>
+                      )}
                       <span className="block font-mono text-[10px] text-faint">{d.mac}</span>
+                      {d.lastBattery && (
+                        <span className="mt-0.5 block truncate text-[10px] text-mute">
+                          Last known: {lastKnownSummary(d.lastBattery)}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setRenaming(d);
+                        setRenameValue(d.label ?? '');
+                      }}
+                      aria-label={`Rename ${recentDisplayName(d)}`}
+                      title="Set a local display name (not sent to the device)"
+                      className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-faint transition-colors hover:bg-raised hover:text-ink"
+                    >
+                      Rename
                     </button>
                     <span className="text-[11px] font-semibold text-accent-soft">
                       {connectingMac === d.mac ? <Spinner size={13} /> : busy ? '…' : 'Reconnect'}
                     </span>
                     <button
                       onClick={() => app.forgetRecentDevice(d.mac)}
-                      aria-label={`Forget ${d.name} from the recent list`}
+                      aria-label={`Forget ${recentDisplayName(d)} from the recent list`}
                       title="Remove from this local list (does not unpair the device in Windows)"
                       className="rounded p-1 text-faint transition-colors hover:bg-raised hover:text-danger"
                     >
@@ -371,8 +407,33 @@ export function DevicesPage() {
           wrong model — the profile decides which real protocol frames (sound modes, EQ, toggles)
           are sent, so a wrong override means wrong commands.
         </p>
+        <input
+          value={profileQuery}
+          onChange={(e) => setProfileQuery(e.target.value)}
+          placeholder="Search by model name or code (e.g. a3959, R50i NC)"
+          aria-label="Search model profiles"
+          spellCheck={false}
+          className="mb-3 w-full rounded-lg border border-edge bg-sunken px-3 py-2 text-sm text-ink placeholder:text-faint focus:border-accent/60 focus:outline-none"
+        />
+        {(() => {
+          const q = profileQuery.trim().toLowerCase();
+          const matches = q
+            ? DEVICES.filter((d) =>
+                [d.name, d.sku, d.id, ...d.names].join(' ').toLowerCase().includes(q),
+              )
+            : DEVICES;
+          if (matches.length === 0) {
+            return (
+              <p className="rounded-lg border border-edge bg-sunken px-3 py-2 text-xs text-mute">
+                No supported profile matches “{profileQuery.trim()}”. SoundControl only lists models
+                with published protocol evidence — an unknown model stays on the honest generic
+                profile instead of a guessed one.
+              </p>
+            );
+          }
+          return (
         <ul className="space-y-1.5">
-          {DEVICES.map((d) => {
+          {matches.map((d) => {
             const current = app.profile.id === d.id;
             return (
               <li key={d.id}>
@@ -406,6 +467,44 @@ export function DevicesPage() {
             );
           })}
         </ul>
+          );
+        })()}
+      </Modal>
+
+      {/* Local rename — a display label only, never a Bluetooth name write. */}
+      <Modal
+        open={renaming !== null}
+        title="Rename this device"
+        onClose={() => setRenaming(null)}
+        width="max-w-md"
+      >
+        <p className="mb-3 text-xs leading-relaxed text-mute">
+          This name is stored only in SoundControl’s local recent list. It is not sent to the
+          earbuds and does not change the Bluetooth name Windows shows.
+        </p>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (renaming) app.renameRecentDevice(renaming.mac, renameValue.trim() || null);
+            setRenaming(null);
+          }}
+          className="flex gap-2"
+        >
+          <input
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            maxLength={40}
+            placeholder={renaming?.name ?? 'Display name'}
+            aria-label="Device display name"
+            className="min-w-0 flex-1 rounded-lg border border-edge bg-sunken px-3 py-2 text-sm text-ink placeholder:text-faint focus:border-accent/60 focus:outline-none"
+          />
+          <Button type="submit" variant="primary">
+            Save
+          </Button>
+        </form>
+        <p className="mt-2 text-[11px] text-faint">
+          Leave the field empty to fall back to the device’s reported name.
+        </p>
       </Modal>
     </div>
   );
@@ -418,12 +517,13 @@ function CapabilityList() {
   const rows: Array<[string, boolean, string]> = [
     ['Noise control', c.supportsNoiseControl, c.supportsNoiseControl ? `06:81 · ${app.profile.ancLayout}` : 'no sound-mode module'],
     ['Equalizer', c.supportsEqualizer, c.supportsEqualizer ? String(app.profile.eqCommand) : '03:87 HearID — not sent on purpose'],
-    ['Gaming mode', c.supportsGaming, c.supportsGaming ? (app.profile.sku === 'A3947' ? '10:85' : '01:87') : 'no command for this model'],
+    ['Gaming mode', c.supportsGaming, c.supportsGaming ? (app.profile.sku === 'A3947' ? '10:85' : '01:87') : c.gamingBlockedByFirmware ? `needs firmware ≥ ${c.gamingMinFirmware}` : 'no command for this model'],
     ['3D surround', c.supportsSurround, c.supportsSurround ? '02:86' : 'no command for this model'],
     ['Dual connection', c.supportsDual, c.supportsDual ? '0B:84' : 'no command for this model'],
     ['LDAC codec', c.supportsLdac, c.supportsLdac ? '01:7F / 01:FF' : 'no command for this model'],
     ['Firmware & serial', c.supportsFirmwareInfo, '01:05 — every supported model'],
     ['Per-earbud status & battery', c.supportsEarbudState, c.supportsEarbudState ? '01:03 side bytes (0xFF = absent)' : 'single-body / over-ear hardware'],
+    ['Charging case battery', c.supportsCaseBattery, c.supportsCaseBattery ? '01:01 case byte' : 'this model reports no case level'],
     ['Device volume', c.supportsVolume, 'no volume command exists in the protocol'],
     ['Gesture remapping', c.supportsGestures, 'no button-write command is publicly documented'],
   ];

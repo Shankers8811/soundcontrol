@@ -1,10 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store';
 import { EQ_PRESETS } from '../protocol/presets';
+import { eqBucketForMode } from '../state/derive';
 import { EQ_HZ } from '../types';
+import type { EqBucket } from '../types';
 import { EqCurve } from '../components/EqCurve';
 import { IconCheck, IconEqualizer } from '../components/Icons';
-import { Button, CapabilityGate, Card, PageHeader, StatusBadge } from '../components/ui';
+import { Button, CapabilityGate, Card, PageHeader, StatusBadge, Toggle } from '../components/ui';
 
 /**
  * Equalizer page (PART N) — everything here sends real frames.
@@ -92,7 +94,7 @@ export function EqualizerPage() {
           </div>
 
           {/* ----------------------------------------------------- presets */}
-          <div className="xl:col-span-5">
+          <div className="space-y-4 xl:col-span-5">
             <Card
               title="Soundcore presets"
               subtitle={`${EQ_PRESETS.length} factory curves — captured wire bytes, verified against three independent sources`}
@@ -139,10 +141,209 @@ export function EqualizerPage() {
                 })}
               </div>
             </Card>
+
+            <SavedPresetsCard />
+            <PerModeEqCard />
           </div>
         </div>
       </CapabilityGate>
     </div>
+  );
+}
+
+/**
+ * Locally saved EQ curves. The device protocol has no user-preset storage, so
+ * this library lives in `localStorage`; applying an entry still sends the
+ * model's real custom-EQ frame. Import/export is plain JSON, and the UI never
+ * claims a curve is on the device until the device reports it back.
+ */
+function SavedPresetsCard() {
+  const app = useApp();
+  const [name, setName] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const applyDisabled = !app.connected || app.busy === 'eq';
+
+  const save = () => {
+    const preset = app.savePreset(name);
+    if (!preset) {
+      setMessage('Give the curve a name first.');
+      return;
+    }
+    setName('');
+    setMessage(`Saved “${preset.name}” locally.`);
+  };
+
+  const download = () => {
+    const blob = new Blob([app.exportSavedPresets()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'soundcontrol-eq-presets.json';
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setMessage(`Exported ${app.savedPresets.length} preset(s).`);
+  };
+
+  const importFile = async (file: File | null) => {
+    if (!file) return;
+    const result = app.importSavedPresets(await file.text());
+    setMessage(result.error ?? `Imported ${result.added} preset(s).`);
+  };
+
+  return (
+    <Card
+      title="Your presets"
+      subtitle="Local curve library — applying one sends the real FE FE custom frame"
+      actions={
+        <div className="flex items-center gap-2">
+          <Button size="sm" disabled={app.savedPresets.length === 0} onClick={download}>
+            Export
+          </Button>
+          <Button size="sm" onClick={() => fileRef.current?.click()}>
+            Import
+          </Button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            aria-label="Import EQ presets"
+            onChange={(e) => {
+              void importFile(e.target.files?.[0] ?? null);
+              e.target.value = '';
+            }}
+          />
+        </div>
+      }
+    >
+      <div className="flex gap-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+          }}
+          maxLength={40}
+          placeholder="Name this curve"
+          aria-label="Preset name"
+          className="min-w-0 flex-1 rounded-lg border border-edge bg-sunken px-3 py-2 text-sm text-ink placeholder:text-faint focus:border-accent/60 focus:outline-none"
+        />
+        <Button size="sm" variant="primary" onClick={save}>
+          Save current
+        </Button>
+      </div>
+
+      {app.savedPresets.length === 0 ? (
+        <p className="mt-3 text-[11px] leading-relaxed text-faint">
+          No saved curves yet. Shape the faders above, name the curve, and save it — it stays in
+          this app, never on the device.
+        </p>
+      ) : (
+        <ul className="mt-3 space-y-1.5">
+          {app.savedPresets.map((preset) => (
+            <li
+              key={preset.id}
+              className="flex items-center gap-2 rounded-lg border border-edge bg-sunken px-3 py-2"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-semibold text-ink">{preset.name}</span>
+                <span className="mt-0.5 flex h-3 items-end gap-[2px]" aria-hidden>
+                  {preset.bands.map((db, i) => (
+                    <span
+                      key={i}
+                      className="w-full rounded-[1px] bg-[#2c3a58]"
+                      style={{ height: `${Math.max(12, ((db + 6) / 12) * 100)}%` }}
+                    />
+                  ))}
+                </span>
+              </span>
+              <Button
+                size="sm"
+                disabled={applyDisabled}
+                onClick={() => void app.applySavedPreset(preset).catch(() => {})}
+              >
+                Apply
+              </Button>
+              <button
+                onClick={() => app.deleteSavedPreset(preset.id)}
+                aria-label={`Delete ${preset.name}`}
+                title="Delete this local preset"
+                className="rounded p-1 text-faint transition-colors hover:bg-raised hover:text-danger"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {message && <p className="mt-2 text-[11px] text-mute">{message}</p>}
+    </Card>
+  );
+}
+
+const EQ_BUCKET_LABELS: Array<[EqBucket, string]> = [
+  ['anc', 'ANC / Adaptive'],
+  ['normal', 'Normal'],
+  ['transparency', 'Transparency'],
+];
+
+/**
+ * Per-noise-mode EQ memory. The device holds one EQ state; this is an
+ * app-side memory that re-sends the documented EQ frame when the noise mode
+ * changes. Off by default, because an automatic write should be an explicit
+ * choice. Nothing here is device storage.
+ */
+function PerModeEqCard() {
+  const app = useApp();
+  const current = eqBucketForMode(app.ancMode);
+
+  return (
+    <Card
+      title="EQ per noise mode"
+      subtitle="Local memory · the same real EQ frame is re-sent on mode changes"
+    >
+      <Toggle
+        label="Remember a separate EQ for each noise mode"
+        checked={app.preferences.perModeEq}
+        onChange={(on) => app.setPreference('perModeEq', on)}
+      />
+      <ul className="mt-3 space-y-1.5">
+        {EQ_BUCKET_LABELS.map(([bucket, label]) => {
+          const entry = app.eqModeProfiles[bucket];
+          const value =
+            entry === null
+              ? 'Not remembered'
+              : entry.kind === 'preset'
+                ? `Factory preset ${entry.presetId}`
+                : 'Custom curve';
+          return (
+            <li
+              key={bucket}
+              className="flex items-center gap-2 rounded-lg border border-edge bg-sunken px-3 py-2 text-xs"
+            >
+              <span className="w-32 shrink-0 font-medium text-ink">
+                {label}
+                {bucket === current && <span className="ml-1 text-[10px] text-accent-soft">now</span>}
+              </span>
+              <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-mute">{value}</span>
+              <button
+                disabled={entry === null}
+                onClick={() => app.clearEqModeProfile(bucket)}
+                className="rounded px-1.5 py-0.5 text-[10px] text-faint transition-colors hover:bg-raised hover:text-danger disabled:opacity-40"
+              >
+                Clear
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-2 text-[10px] leading-relaxed text-faint">
+        Applying a preset or custom curve while this is on records it for the current noise mode.
+        Switching modes re-sends the remembered curve through the model’s documented EQ command;
+        a model without one is left untouched.
+      </p>
+    </Card>
   );
 }
 

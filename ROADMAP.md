@@ -22,10 +22,27 @@ Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doi
   preload bridge, live slider). No Soundcore RFCOMM volume command exists, so
   the UI labels it as Windows volume rather than a headset change. Interop
   verified `32 → 44 → 32`; physical loudness still needs hardware validation.
-- ✅ **Requirements audit** — [REQUIREMENTS.md](REQUIREMENTS.md) maps all 41
+- ✅ **Requirements audit** - [REQUIREMENTS.md](REQUIREMENTS.md) maps all 41
   community requirements to ✅ implemented / 🟡 partial / ❌ not implemented /
   🚫 protocol-blocked / ⛔ deliberately excluded, with evidence and honest
   protocol limits. No feature was added just to turn a row green.
+- ✅ **Requirements follow-up batch (client-side, no invented frames)**:
+  - named EQ preset library with JSON import/export (local storage; the device
+    still receives the real `02:81`/`02:83`/`FE FE` curve);
+  - per-mode EQ memory (opt-in; re-sends the remembered documented EQ frame on
+    a noise-mode change);
+  - last-known battery snapshot per recent device with a "last seen" label, and
+    case battery where the model's layout carries the byte;
+  - Settings backup/restore/reset for local settings only;
+  - model search by name/SKU in the profile picker;
+  - Windows output balance through the same Core Audio interop, labelled as
+    Windows balance (no earbud balance command exists);
+  - re-claim audio reconnect action and local device rename;
+  - optional low-battery Windows toasts and optional launch reconnect;
+  - re-apply current ANC/EQ when the second bud joins;
+  - firmware-aware gating (A3959 gaming mode below `01.60` is hidden);
+  - optional app-wide hotkeys (`Ctrl+Alt+N` cycles noise modes, `Ctrl+Alt+E`
+    cycles factory EQ presets) registered only while the app runs.
 
 - ✅ **Final navigation IA (Pass 8)** — the sidebar is now exactly five
   destinations (Home, Devices, Equalizer, Noise Control, Settings); the
@@ -92,7 +109,7 @@ Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doi
   status derives from real `0xFF` presence bytes with "unknown" kept
   distinct from "disconnected". Real persisted desktop settings
   (theme, interface sounds, recent devices) survive restarts.
-- ✅ **UI truth test suites** — `npm run test:ui` (261 state-derivation
+- ✅ **UI truth test suites** - `npm run test:ui` (292 state-derivation
   checks + 114 server-side render-smoke checks over the real React tree) and
   e2e scenario 7 (per-side earbud telemetry through the real
   helper→WS→transport pipeline; `--earbud-state` on the emulator).
@@ -110,24 +127,9 @@ Status legend: ✅ done · 🟡 partial · ⬜ open · 🚫 deliberately not doi
   (pure `parseSoundModes`); earbud product art dims per side independently
   from real telemetry. Emulator gains `--earbud-state unknown` and
   `--earbud-script both,left,both` live transitions (e2e scenario 8).
-  Suites: 261 state + 114 render + 75 bridge + 96 e2e checks.
+  Suites: 292 state + 114 render + 75 bridge + 96 e2e checks.
 
 ## Next (small, high value)
-
-Requirements-audit follow-ups (all client-side; no invented frames — see
-[REQUIREMENTS.md](REQUIREMENTS.md) "Suggested next supported work"):
-
-- ⬜ **Named EQ preset library + import/export** — local JSON; the device still
-  receives the real `02:81`/`02:83`/`FE FE` curve.
-- ⬜ **Per-mode EQ memory** — keep Normal/ANC curves locally and re-apply on a
-  device-confirmed `06:01` mode change.
-- ⬜ **Last-known battery snapshot** per recent device, with a "last seen"
-  timestamp when offline; case level only where the model reports it.
-- ⬜ **Settings backup/restore + reset to defaults** (local file, no cloud).
-- ⬜ **Model search by name/SKU** in the existing profile picker.
-- ⬜ **Windows output balance** through the same Core Audio interop, labelled
-  "Windows output balance" (not earbud hardware balance).
-- ⬜ **Re-claim audio** reconnect action and local rename for recent devices.
 
 Protocol/platform work:
 
@@ -136,11 +138,10 @@ Protocol/platform work:
   each report with a capture becomes a pinned verifier check.
 - ⬜ **macOS/Linux bridge parity** — RFCOMM via PyBlueZ/socket on Linux works
   today; macOS needs `rfcomm` tooling documented or a small wrapper.
-- ⬜ **Firmware-version awareness** — `01:05` already returns firmware; gate
-  features whose layout changed across firmware (e.g. A3959 gaming mode needs
-  ≥ 01.60 per OpenSCQ30).
 - ⬜ **E2E smoke on the simulator** per profile in CI (the simulator already
   drives per-profile offsets).
+- ⬜ **Physical validation pass** on R50i NC / Q30 for ANC levels/scenes,
+  Windows volume/balance and single-bud writes (see HARDWARE-VALIDATION.md).
 
 ## Open questions (need hardware captures)
 

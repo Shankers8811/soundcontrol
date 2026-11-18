@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store';
 import { getAppVersion, isDesktop, openLogFolder } from '../lib/appSettings';
 import { HexConsole } from '../components/HexConsole';
@@ -64,6 +64,8 @@ export function SettingsPage() {
   const [folderOpened, setFolderOpened] = useState<boolean | null>(null);
   const [version, setVersion] = useState<string | null>(null);
   const [consoleOpen, setConsoleOpen] = useState(false);
+  const [backupMessage, setBackupMessage] = useState<string | null>(null);
+  const importRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let stopped = false;
@@ -78,6 +80,31 @@ export function SettingsPage() {
   }, [desktop]);
 
   const caps = app.capabilities;
+
+  const downloadSettings = () => {
+    const blob = new Blob([app.exportSettings()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'soundcontrol-settings.json';
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setBackupMessage('Settings exported. The file stays on this PC.');
+  };
+
+  const importSettingsFile = async (file: File | null) => {
+    if (!file) return;
+    const result = app.importSettings(await file.text());
+    setBackupMessage(result.message);
+  };
+
+  const resetSettings = () => {
+    if (!window.confirm('Reset every local SoundControl setting (theme, preferences, saved EQ curves and the recent list)? The device is not touched.')) {
+      return;
+    }
+    app.resetAppSettings();
+    setBackupMessage('Local settings reset to defaults. The device was not changed.');
+  };
 
   return (
     <div>
@@ -122,6 +149,7 @@ export function SettingsPage() {
                     ['Dual connection', caps.supportsDual],
                     ['LDAC', caps.supportsLdac],
                     ['Per-earbud battery', caps.supportsPerEarbudBattery],
+                    ['Case battery', caps.supportsCaseBattery],
                     ['Firmware info', caps.supportsFirmwareInfo],
                     ['Factory reset', caps.supportsFactoryReset],
                     // Protocol-wide constants — honest about what NO model gets:
@@ -130,6 +158,13 @@ export function SettingsPage() {
                   ]}
                 />
               </div>
+              {caps.gamingBlockedByFirmware && (
+                <p className="rounded-lg border border-warn/30 bg-warn/8 px-3 py-2 text-[11px] leading-relaxed text-warn">
+                  Gaming mode is hidden for this unit: the documented minimum is firmware{' '}
+                  <span className="font-mono">{caps.gamingMinFirmware}</span>, but the device
+                  reports <span className="font-mono">{app.firmware}</span>.
+                </p>
+              )}
             </div>
           ) : (
             <div className="flex items-center justify-between gap-4">
@@ -150,6 +185,118 @@ export function SettingsPage() {
           subtitle="Theme applies immediately and persists between launches — System follows the Windows appearance preference"
         >
           <ThemeSection />
+        </Card>
+
+        {/* ------------------------------------------- connection & behavior */}
+        <Card
+          title="Connection & behavior"
+          subtitle="Local preferences — automatic actions still send only documented device frames"
+        >
+          <div className="-mx-5 -my-4">
+            <SettingsRow
+              title="Reconnect to the last device on launch"
+              sub="Off by default. When on, SoundControl opens the same bridge session the Devices page uses after launch — it never runs in the background."
+              control={
+                <Toggle
+                  label="Reconnect to the last device on launch"
+                  checked={app.preferences.autoReconnect}
+                  onChange={(on) => app.setPreference('autoReconnect', on)}
+                />
+              }
+            />
+            <SettingsRow
+              title="Re-apply settings when the second earbud connects"
+              sub="When the device reports a presence change from one side to both, the current ANC intent and remembered EQ are re-sent through their real frames."
+              control={
+                <Toggle
+                  label="Re-apply settings when the second earbud connects"
+                  checked={app.preferences.reapplyOnSecondBud}
+                  onChange={(on) => app.setPreference('reapplyOnSecondBud', on)}
+                />
+              }
+            />
+            <SettingsRow
+              title="Remember a separate EQ for each noise mode"
+              sub="Local memory only: applying a curve records it for ANC/Adaptive, Normal or Transparency, and switching modes re-sends the remembered EQ frame."
+              control={
+                <Toggle
+                  label="Remember a separate EQ for each noise mode"
+                  checked={app.preferences.perModeEq}
+                  onChange={(on) => app.setPreference('perModeEq', on)}
+                />
+              }
+            />
+            <SettingsRow
+              title="Low-battery Windows notifications"
+              sub="A native toast when real telemetry reports a side or the charging case below 20%. The in-app activity log always records the same nudge."
+              control={
+                <Toggle
+                  label="Low-battery Windows notifications"
+                  checked={app.preferences.lowBatteryNotifications}
+                  onChange={(on) => app.setPreference('lowBatteryNotifications', on)}
+                />
+              }
+            />
+            <SettingsRow
+              title="App-wide hotkeys"
+              sub="While SoundControl is running: Ctrl+Alt+N cycles Noise Cancellation → Normal → Transparency, and Ctrl+Alt+E cycles the factory EQ presets. Both send the same documented frames as a click and do nothing when no device is connected."
+              control={
+                <Toggle
+                  label="App-wide hotkeys"
+                  checked={app.preferences.globalHotkeys}
+                  onChange={(on) => app.setPreference('globalHotkeys', on)}
+                />
+              }
+            />
+          </div>
+        </Card>
+
+        {/* ------------------------------------------------ backup & restore */}
+        <Card
+          title="Backup & restore"
+          subtitle="Local JSON only — theme, preferences, saved EQ curves and the recent list. Device state is never included."
+        >
+          <div className="-mx-5 -my-4">
+            <SettingsRow
+              title="Export settings"
+              sub="Writes one JSON file with the local settings above. Nothing is uploaded."
+              control={
+                <Button size="sm" onClick={downloadSettings}>
+                  Export
+                </Button>
+              }
+            />
+            <SettingsRow
+              title="Restore settings"
+              sub="Reads a file produced by Export. Invalid files are rejected; individual sections are sanitized."
+              control={
+                <Button size="sm" onClick={() => importRef.current?.click()}>
+                  Choose file
+                </Button>
+              }
+            />
+            <SettingsRow
+              title="Reset local settings"
+              sub="Returns theme, preferences, saved EQ curves and the recent list to defaults. It never sends a reset to the device."
+              control={
+                <Button size="sm" variant="danger" onClick={resetSettings}>
+                  Reset
+                </Button>
+              }
+            />
+          </div>
+          <input
+            ref={importRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            aria-label="Restore settings file"
+            onChange={(e) => {
+              void importSettingsFile(e.target.files?.[0] ?? null);
+              e.target.value = '';
+            }}
+          />
+          {backupMessage && <p className="mt-3 text-[11px] leading-relaxed text-mute">{backupMessage}</p>}
         </Card>
 
         {/* ------------------------------------------------------ updates */}

@@ -18,4 +18,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // volume command, so the Volume card controls the OS mixer instead.
   getSystemVolume: () => ipcRenderer.invoke('soundcontrol:get-system-volume'),
   setSystemVolume: (value) => ipcRenderer.invoke('soundcontrol:set-system-volume', value),
+  // Windows output balance (per-channel levels) and native notifications.
+  getSystemBalance: () => ipcRenderer.invoke('soundcontrol:get-system-balance'),
+  setSystemBalance: (value) => ipcRenderer.invoke('soundcontrol:set-system-balance', value),
+  notify: (title, body) => ipcRenderer.invoke('soundcontrol:notify', title, body),
+  // Optional app-wide hotkeys. The main process registers them only while the
+  // toggle is on and forwards a press as a plain action string; the renderer
+  // maps that to the same real device frames the UI uses.
+  setGlobalHotkeys: (enabled) => ipcRenderer.invoke('soundcontrol:set-global-hotkeys', enabled),
+  onHotkey: (callback) => {
+    const listener = (_event, action) => callback(action);
+    ipcRenderer.on('soundcontrol:hotkey', listener);
+    return () => ipcRenderer.removeListener('soundcontrol:hotkey', listener);
+  },
 });

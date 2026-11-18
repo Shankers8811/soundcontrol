@@ -18,9 +18,13 @@ import { IconVolume } from './Icons';
 export function VolumeControl() {
   const [volume, setVolume] = useState<number | null>(null);
   const [available, setAvailable] = useState(false);
+  const [balance, setBalance] = useState<number | null>(null);
+  const [balanceAvailable, setBalanceAvailable] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
   const latest = useRef<number | null>(null);
+  const balanceTimer = useRef<number | null>(null);
+  const latestBalance = useRef<number | null>(null);
 
   useEffect(() => {
     const api = typeof window === 'undefined' ? undefined : window.electronAPI;
@@ -44,9 +48,25 @@ export function VolumeControl() {
       .catch(() => {
         if (!cancelled) setNote('Could not read the Windows volume.');
       });
+    if (api.getSystemBalance) {
+      void api
+        .getSystemBalance()
+        .then((value) => {
+          if (cancelled) return;
+          if (typeof value === 'number' && Number.isFinite(value)) {
+            setBalance(value);
+            latestBalance.current = value;
+            setBalanceAvailable(true);
+          }
+        })
+        .catch(() => {
+          /* balance is an extra; volume already reports the main failure */
+        });
+    }
     return () => {
       cancelled = true;
       if (timer.current !== null) window.clearTimeout(timer.current);
+      if (balanceTimer.current !== null) window.clearTimeout(balanceTimer.current);
     };
   }, []);
 
@@ -58,6 +78,16 @@ export function VolumeControl() {
     timer.current = window.setTimeout(() => {
       const target = latest.current;
       if (target !== null) void window.electronAPI?.setSystemVolume?.(target).catch(() => {});
+    }, 120);
+  };
+
+  const changeBalance = (value: number) => {
+    setBalance(value);
+    latestBalance.current = value;
+    if (balanceTimer.current !== null) window.clearTimeout(balanceTimer.current);
+    balanceTimer.current = window.setTimeout(() => {
+      const target = latestBalance.current;
+      if (target !== null) void window.electronAPI?.setSystemBalance?.(target).catch(() => {});
     }, 120);
   };
 
@@ -91,6 +121,36 @@ export function VolumeControl() {
               </>
             )}
           </p>
+
+          <div className="mt-3 border-t border-edge-soft pt-3">
+            <div className="flex items-center gap-3">
+              <span className="w-14 shrink-0 text-[10px] font-bold uppercase tracking-wider text-faint">
+                Balance
+              </span>
+              <input
+                type="range"
+                min={-100}
+                max={100}
+                step={5}
+                value={balance ?? 0}
+                disabled={!balanceAvailable}
+                aria-label="Windows output balance"
+                onChange={(e) => changeBalance(Number(e.target.value))}
+                className="h-range w-full max-w-[260px]"
+              />
+              <span className="w-16 shrink-0 text-right font-mono text-xs text-mute">
+                {balance === null
+                  ? '—'
+                  : balance === 0
+                    ? 'Center'
+                    : `${balance > 0 ? 'L' : 'R'} ${Math.abs(balance)}%`}
+              </span>
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-faint">
+              Left/right levels of the Windows output mix (Core Audio channel scalars). This is an
+              OS-side balance control — the earbuds report no hardware balance command.
+            </p>
+          </div>
         </div>
       </div>
     </Card>

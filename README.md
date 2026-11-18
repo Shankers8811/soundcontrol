@@ -79,6 +79,8 @@ UI shows **disabled with the protocol reason** — SoundControl never renders a 
 | **Transparency Mode** | ✅ Fully Transparent & Talk Mode | ✅ Fully Transparent & Talk Mode (vocal byte where the model documents one) |
 | **Equalizer Presets** | ✅ 22 Soundcore Curated Presets | ✅ All 22 presets on EQ-capable models (`02:81` / `02:83`); HearID models (`03:87`) get a disabled page with the reason — never a guessed frame |
 | **Custom Graphic EQ** | ✅ 8-Band Slider Curve (-6 to +6 dB) | ✅ 8-band −6…+6 dB curve sent as the real `FE FE` custom preset (same model gating) |
+| **Saved EQ library** | ✅ User presets | ✅ Named curves stored locally (`sc.eq.presets`) and applied through the real custom-EQ frame; JSON import/export. The device has no user-preset storage, so the UI says the library is local |
+| **EQ per noise mode** | ✅ Remembered per mode | ✅ Opt-in local memory: ANC/Adaptive, Normal and Transparency each keep a curve, re-sent through the documented EQ frame on mode change |
 | **Per-earbud connection state** | ✅ Live per-side status | ✅ Derived from the device's own battery bytes (`0xFF` = that side is not connected); "Status unavailable" stays distinct from "Not connected" |
 | **BassUp™ Technology** | ✅ Dynamic Low-End Boost | ⚠️ No `02:82` command exists in any public capture — bass curves live in the preset table (Bass Booster / Reducer) |
 | **HearID Sound** | ✅ Dual-Ear Frequency Test & Audiogram | ⚠️ No HearID test/write command in any public capture — no fake audiogram UI; the `03:87` EQ is left untouched to protect measured profiles |
@@ -88,13 +90,16 @@ UI shows **disabled with the protocol reason** — SoundControl never renders a 
 | **LDAC High-Res** | ✅ Sony 990 kbps Codec Flip | ✅ Real `01:7F` query + `01:FF` enable/disable |
 | **Dual Connection** | ✅ Multipoint PC + Phone | ✅ Real `0B:84` toggle |
 | **3D Surround** | ✅ Spatial audio toggle | ✅ Real `02:86` toggle on models that document it |
-| **Device Volume** | ✅ In-app slider | ✅ Windows default-output volume via Core Audio (`IAudioEndpointVolume`) with a live slider. No Soundcore RFCOMM volume command exists, so the card says it controls Windows, not the earbuds |
+| **Device Volume** | ✅ In-app slider | ✅ Windows default-output volume via Core Audio (`IAudioEndpointVolume`) with a live slider, plus a Windows left/right balance slider (real per-channel scalars). No Soundcore RFCOMM volume or balance command exists, so the card says it controls Windows, not the earbuds |
 | **Safe Volume** | ✅ Decibel Limiter & Warnings | ❌ Not implemented — no Soundcore limiter command exists; the app only reads/writes the Windows endpoint volume |
 | **Factory reset** | ✅ | ⚠️ `01:85` is documented only for the Motion+ (A3116) speaker; capability-gated per model, never sent speculatively |
 | **Find My Device** | ✅ Acoustic Locator Chirps | ⚠️ No RFCOMM command in any public capture — never faked; see PROTOCOL.md |
 | **Capability gating** | — | ✅ Every page adapts per model: unsupported controls show a disabled state with the protocol reason |
 | **Diagnostics / Console**| ❌ Hidden / Unavailable | ✅ Live Hex Frame Inspector & TX/RX Logger |
-| **Battery telemetry** | ✅ Live L/R/Case Levels | ✅ Live L/R Levels (case never shown — many models don't report it; over-ears have none) + 30 s refresh + Windows % fallback; a side reported absent (`0xFF`) loses its level immediately — a stale % can never survive new telemetry |
+| **Battery telemetry** | ✅ Live L/R/Case Levels | ✅ Live L/R levels + case level on models whose documented layout carries the byte (otherwise "not reported"); 30 s refresh + Windows % fallback; last-known snapshot with a "last seen" label when offline; a side reported absent (`0xFF`) loses its level immediately — a stale % can never survive new telemetry |
+| **Backup & restore** | ✅ Cloud sync | ✅ Local JSON export/import of theme, behaviour preferences, saved EQ curves and the recent list; reset to defaults never touches the device |
+| **Global hotkeys** | — | ✅ Optional `Ctrl+Alt+N` noise-mode cycle and `Ctrl+Alt+E` factory-EQ cycle, registered only while the app runs and mapped to the same documented frames |
+| **Low-battery alerts** | ✅ Push notification | ✅ Optional native Windows toast for a side or the charging case below 20%, driven only by real telemetry |
 | **Capture decoding** | ❌ Hidden / Unavailable | ✅ Base64→Hex + BLE→RFCOMM Map in Diagnostics |
 
 The full community-requirements audit — every must-have, Windows expectation and
@@ -189,7 +194,7 @@ Use `npm run electron` with the renderer available when testing the desktop shel
 ### Tests
 ```bash
 npm test            # everything below in sequence
-npm run test:ui     # 261 UI state checks (capabilities, earbud presence, battery math, scan machine) + 114 server-render checks over every page
+npm run test:ui     # 292 UI state checks (capabilities, earbud presence, battery math, scan machine, local data) + 114 server-render checks over every page
 npm run test:bridge # 75 Python bridge checks (channel probe, token/origin auth, WS protocol, WinRT/registry scan)
 npm run test:e2e    # startup/lifecycle e2e: real helper server + real renderer transport against an emulated RFCOMM device (incl. per-side earbud telemetry)
 npm run test:lifecycle # main-process exit/restart races: window close kills the real helper, port 8765 frees, no post-shutdown restart (Electron stubbed; Windows CI repeats this against the packaged app)

@@ -21,5 +21,18 @@ interface Window {
     getSystemVolume?: () => Promise<number | null>;
     /** Sets the Windows default-output volume, 0..100. */
     setSystemVolume?: (value: number) => Promise<number | null>;
+    /** Current Windows output balance, -100 (right) .. 100 (left). */
+    getSystemBalance?: () => Promise<number | null>;
+    /** Sets the Windows output balance, -100 (right) .. 100 (left). */
+    setSystemBalance?: (value: number) => Promise<number | null>;
+    /** Shows a native Windows notification (low-battery nudges). */
+    notify?: (title: string, body: string) => Promise<boolean>;
+    /** Enables/disables the optional app-wide ANC/EQ hotkeys. */
+    setGlobalHotkeys?: (enabled: boolean) => Promise<{
+      enabled: boolean;
+      registered: string[];
+    }>;
+    /** Subscribe to hotkey presses; returns an unsubscribe function. */
+    onHotkey?: (callback: (action: string) => void) => () => void;
   };
 }

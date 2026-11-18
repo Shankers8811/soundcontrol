@@ -7,7 +7,16 @@
  * test framework. Every rule here is derived from PROTOCOL.md and the
  * per-model profiles in `src/protocol/devices.ts` — nothing is guessed.
  */
-import type { AncLayout, AncMode, AncScene, AncSubMode, BatteryState, DeviceProfile, EarbudPresence } from '../types';
+import type {
+  AncLayout,
+  AncMode,
+  AncScene,
+  AncSubMode,
+  BatteryState,
+  DeviceProfile,
+  EarbudPresence,
+  EqBucket,
+} from '../types';
 
 /* ------------------------------------------------------------------ */
 /* Capabilities                                                        */
@@ -79,16 +88,50 @@ export interface Capabilities {
   supportsFactoryReset: boolean;
   supportsEarbudState: boolean;
   supportsPerEarbudBattery: boolean;
+  /** True only for models whose `01:01` layout documents a case byte. */
+  supportsCaseBattery: boolean;
   supportsFirmwareInfo: boolean;
   supportsGaming: boolean;
+  /** Set when the model has gaming mode but the reported firmware is too old. */
+  gamingBlockedByFirmware: boolean;
+  /** The documented minimum, when the profile names one. */
+  gamingMinFirmware?: string;
   supportsSurround: boolean;
   supportsDual: boolean;
   supportsLdac: boolean;
   ancSub: AncSubFeatures;
 }
 
-export function deriveCapabilities(profile: DeviceProfile): Capabilities {
+/** Parse a dotted firmware string such as `01.60` / `02.31.00`. */
+export function parseFirmware(value: string | null | undefined): { major: number; minor: number } | null {
+  const match = /(\d+)\.(\d+)/.exec((value ?? '').trim());
+  if (!match) return null;
+  return { major: Number(match[1]), minor: Number(match[2]) };
+}
+
+/**
+ * True when `firmware` is at least `minimum`. Unknown/absent firmware is
+ * never treated as old: the UI keeps the model-level capability rather than
+ * hiding a feature the device may support. Only a parsed value below the
+ * documented threshold blocks the feature.
+ */
+export function firmwareAtLeast(
+  firmware: string | null | undefined,
+  minimum: string | null | undefined,
+): boolean {
+  if (!minimum) return true;
+  const fw = parseFirmware(firmware);
+  const min = parseFirmware(minimum);
+  if (!fw || !min) return true;
+  return fw.major > min.major || (fw.major === min.major && fw.minor >= min.minor);
+}
+
+export function deriveCapabilities(profile: DeviceProfile, firmware?: string | null): Capabilities {
   const tws = profile.kind === 'earbuds' && profile.state.batteryRight !== null;
+  const gamingBlockedByFirmware =
+    profile.gaming &&
+    !!profile.gamingMinFirmware &&
+    !firmwareAtLeast(firmware, profile.gamingMinFirmware);
   return {
     supportsNoiseControl: profile.ancLayout !== 'none',
     supportsEqualizer: profile.eqCommand !== null,
@@ -97,9 +140,12 @@ export function deriveCapabilities(profile: DeviceProfile): Capabilities {
     supportsFactoryReset: profile.factoryReset === true,
     supportsEarbudState: tws,
     supportsPerEarbudBattery: tws,
+    supportsCaseBattery: profile.state.batteryCase !== null,
     // `01:05` (serial + firmware) is implemented by every supported model.
     supportsFirmwareInfo: true,
-    supportsGaming: profile.gaming,
+    supportsGaming: profile.gaming && !gamingBlockedByFirmware,
+    gamingBlockedByFirmware,
+    gamingMinFirmware: profile.gamingMinFirmware,
     supportsSurround: profile.surround,
     supportsDual: profile.dual,
     supportsLdac: profile.ldac,
@@ -207,10 +253,19 @@ export interface EarbudSide {
   charging: boolean | null;
 }
 
+export interface EarbudCase {
+  /** False unless the model's `01:01` layout documents a case byte. */
+  supported: boolean;
+  battery: number | null;
+  charging: boolean | null;
+}
+
 export interface EarbudState {
   left: EarbudSide;
   right: EarbudSide;
   connection: EarbudConnectionState;
+  /** Charging case, only for models that report it. */
+  case: EarbudCase;
   /** False for models without independent L/R hardware. */
   supported: boolean;
 }
@@ -222,6 +277,8 @@ export function emptyBattery(): BatteryState {
     right: null,
     leftCharging: undefined,
     rightCharging: undefined,
+    case: null,
+    caseCharging: undefined,
     batteryScale: null,
     presence: 'unknown',
   };
@@ -231,9 +288,12 @@ export function emptyBattery(): BatteryState {
 export interface BatteryFrame {
   rawLeft: number | undefined;
   rawRight: number | undefined;
+  /** Case byte, only present on `01:01` for models that document one. */
+  rawCase?: number | undefined;
   /** Only `01:01`/`01:04` carry charging bits; `01:03` leaves them unset. */
   chargingLeft?: boolean;
   chargingRight?: boolean;
+  caseCharging?: boolean;
   /**
    * The model's raw-level maximum (0..5 / 0..10), null for percents, or
    * 'unknown' when the device model — and therefore the scale — is unknown.
@@ -260,11 +320,21 @@ export function mergeBatteryTelemetry(previous: BatteryState, frame: BatteryFram
   });
   const l = side(frame.rawLeft);
   const r = side(frame.rawRight);
+  // A `01:03` query carries no case byte. Keep the last reported case level
+  // across such frames, but an explicit 0xFF / invalid case byte clears it.
+  const hasCaseByte = frame.rawCase !== undefined;
+  const c = side(frame.rawCase);
   return {
     left: l.level,
     right: r.level,
     leftCharging: l.trusted ? frame.chargingLeft ?? previous.leftCharging : undefined,
     rightCharging: r.trusted ? frame.chargingRight ?? previous.rightCharging : undefined,
+    case: hasCaseByte ? c.level : previous.case ?? null,
+    caseCharging: hasCaseByte
+      ? c.trusted
+        ? frame.caseCharging ?? previous.caseCharging
+        : undefined
+      : previous.caseCharging,
     batteryScale: frame.scale,
     presence: presenceFromRaw(frame.rawLeft, frame.rawRight),
   };
@@ -285,7 +355,13 @@ export function mergeBatteryTelemetry(previous: BatteryState, frame: BatteryFram
 export function deriveEarbudState(battery: BatteryState, caps: Capabilities): EarbudState {
   if (!caps.supportsEarbudState) {
     const unavailable: EarbudSide = { state: 'unavailable', battery: null, charging: null };
-    return { left: unavailable, right: unavailable, connection: 'unavailable', supported: false };
+    return {
+      left: unavailable,
+      right: unavailable,
+      connection: 'unavailable',
+      case: { supported: false, battery: null, charging: null },
+      supported: false,
+    };
   }
   const presence: EarbudPresence = battery.presence ?? 'unknown';
 
@@ -305,7 +381,30 @@ export function deriveEarbudState(battery: BatteryState, caps: Capabilities): Ea
     };
   };
 
-  return { left: side('left'), right: side('right'), connection: presence, supported: true };
+  const caseSupported = caps.supportsCaseBattery;
+  return {
+    left: side('left'),
+    right: side('right'),
+    connection: presence,
+    case: {
+      supported: caseSupported,
+      battery: caseSupported ? batteryPercent(battery.case ?? null, battery.batteryScale) : null,
+      charging:
+        caseSupported && battery.caseCharging !== undefined ? battery.caseCharging : null,
+    },
+    supported: true,
+  };
+}
+
+/**
+ * Which locally remembered EQ curve a noise mode should use. ANC and adaptive
+ * share one bucket (both are "noise cancelling" to the user); Normal and
+ * Transparency get their own.
+ */
+export function eqBucketForMode(mode: AncMode): EqBucket {
+  if (mode === 'normal') return 'normal';
+  if (mode === 'transparency') return 'transparency';
+  return 'anc';
 }
 
 /* ------------------------------------------------------------------ */

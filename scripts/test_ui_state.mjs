@@ -57,7 +57,7 @@ try {
   const { build } = await import('esbuild');
   await build({
     stdin: {
-      contents: `export * from './src/state/derive.ts'; export * from './src/protocol/devices.ts';`,
+      contents: `export * from './src/state/derive.ts'; export * from './src/protocol/devices.ts'; export * from './src/state/localData.ts';`,
       sourcefile: 'ui-state-barrel.ts',
       resolveDir: ROOT,
       loader: 'ts',
@@ -93,6 +93,23 @@ const {
   matchDevice,
   matchNote,
   UNKNOWN_PROFILE,
+  parseFirmware,
+  firmwareAtLeast,
+  eqBucketForMode,
+  canonicalMac,
+  sanitizeSavedPresets,
+  sanitizeRecentDevices,
+  sanitizeEqModeProfiles,
+  sanitizePreferences,
+  renameRecentDevice,
+  upsertRecentDevice,
+  formatLastSeen,
+  parsePresetFile,
+  serializePresetFile,
+  buildSettingsBackup,
+  serializeSettingsBackup,
+  parseSettingsBackup,
+  DEFAULT_PREFERENCES,
 } = M;
 
 const byId = (id) => DEVICES.find((d) => d.id === id);
@@ -252,6 +269,7 @@ const merge = (prev, rawL, rawR, extra = {}) =>
 // TEST 9 shape: the cleared state every connect/disconnect starts from.
 eq('emptyBattery: no levels, no flags, presence unknown', emptyBattery(), {
   left: null, right: null, leftCharging: undefined, rightCharging: undefined,
+  case: null, caseCharging: undefined,
   batteryScale: null, presence: 'unknown',
 });
 
@@ -336,6 +354,42 @@ eq('a scale change is taken from the frame, never remembered', [batteryPercent(s
 const sc = mergeBatteryTelemetry(emptyBattery(), { rawLeft: 4, rawRight: 0xff, scale: 5 });
 const scd = deriveEarbudState(sc, twsCaps);
 eq('raw steps: 4/5 → 80%, absent side null', [scd.left.battery, scd.right.battery], [80, null]);
+
+// Case battery: only models whose documented layout carries the byte.
+const caseFrame = mergeBatteryTelemetry(emptyBattery(), { rawLeft: 4, rawRight: 4, rawCase: 3, scale: 5 });
+eq('case byte is decoded on the model scale', caseFrame.case, 3);
+const caseKept = mergeBatteryTelemetry(caseFrame, { rawLeft: 4, rawRight: 4, scale: 5 });
+eq('a frame without a case byte keeps the last reported case', caseKept.case, 3);
+const caseGone = mergeBatteryTelemetry(caseFrame, { rawLeft: 4, rawRight: 4, rawCase: 0xff, scale: 5 });
+eq('0xFF case byte clears the case level', caseGone.case, null);
+const caseUi = deriveEarbudState(caseFrame, twsCaps).case;
+eq('case renders as a real percentage on a case-reporting model', [caseUi.supported, caseUi.battery], [true, 60]);
+const p30iCaps = deriveCapabilities(byId('p30i'));
+eq('p30i documents no case byte', p30iCaps.supportsCaseBattery, false);
+const noCaseUi = deriveEarbudState(caseFrame, p30iCaps).case;
+eq('a model without a case byte never shows a guessed case level', [noCaseUi.supported, noCaseUi.battery], [false, null]);
+
+/* ============ 3b2. firmware-aware gating (no invented thresholds) ======= */
+
+console.log('\n[3b2] firmware parsing and feature gating');
+
+eq('dotted firmware parses', parseFirmware('01.60'), { major: 1, minor: 60 });
+eq('multi-part firmware parses its first pair', parseFirmware('02.31.00'), { major: 2, minor: 31 });
+eq('unparseable firmware is null', parseFirmware('Unknown'), null);
+eq('firmware comparison', [
+  firmwareAtLeast('01.60', '01.60'),
+  firmwareAtLeast('01.59', '01.60'),
+  firmwareAtLeast('02.00', '01.60'),
+  firmwareAtLeast('Unknown', '01.60'),
+  firmwareAtLeast(null, '01.60'),
+], [true, false, true, true, true]);
+eq('p30i gaming is blocked below the documented minimum', deriveCapabilities(byId('p30i'), '01.50').gamingBlockedByFirmware, true);
+eq('p30i gaming is allowed at the documented minimum', deriveCapabilities(byId('p30i'), '01.60').supportsGaming, true);
+eq('unknown firmware never hides a model capability', deriveCapabilities(byId('p30i'), 'Unknown').supportsGaming, true);
+eq('a model without a minimum is never firmware-blocked', deriveCapabilities(byId('liberty-4-nc'), '00.01').gamingBlockedByFirmware, false);
+eq('EQ bucket mapping (ANC + adaptive share one memory)', [
+  eqBucketForMode('anc'), eqBucketForMode('adaptive'), eqBucketForMode('normal'), eqBucketForMode('transparency'),
+], ['anc', 'anc', 'normal', 'transparency']);
 
 /* ============ 3c. sound-mode mirror parsing (confirmed ANC state) ======== */
 
@@ -699,6 +753,94 @@ try {
   globalThis.fetch = realFetch;
   rmSync(repDir, { recursive: true, force: true });
 }
+
+/* ------------------------------------------- local data (presets/backup) */
+
+console.log('\n[15] local data sanitizers, preset files and settings backup');
+
+const goodPreset = { id: 'p1', name: '  My curve  ', bands: [0, 1, -1, 2.3, 6.4, -7, 0, 0], createdAt: 123 };
+const presets = sanitizeSavedPresets([
+  goodPreset,
+  { id: 'p1', name: 'duplicate id', bands: [0, 0, 0, 0, 0, 0, 0, 0], createdAt: 1 },
+  { id: 'bad', name: 'short', bands: [1, 2], createdAt: 1 },
+  null,
+]);
+eq('presets: trims names, rounds/clamps bands, drops invalid and duplicate ids', [
+  presets.length, presets[0].name, presets[0].bands,
+], [1, 'My curve', [0, 1, -1, 2.5, 6, -6, 0, 0]]);
+
+const recents = sanitizeRecentDevices([
+  { mac: 'aa:bb:cc:dd:ee:ff', name: ' R50i NC ', label: ' Desk ', lastBattery: { left: 80, right: 70, case: null, at: 1000 } },
+  { mac: 'AA:BB:CC:DD:EE:FF', name: 'duplicate MAC' },
+  { mac: 'not-a-mac', name: 'junk' },
+  { mac: '11:22:33:44:55:66', name: 'Q30', lastBattery: { left: null, right: null, case: null, at: 1 } },
+]);
+eq('recents: canonical MAC, duplicate dropped, label + battery kept', [
+  recents.length, recents[0].mac, recents[0].name, recents[0].label, recents[0].lastBattery.left,
+], [2, 'AA:BB:CC:DD:EE:FF', 'R50i NC', 'Desk', 80]);
+eq('recents: an all-null battery snapshot is discarded', recents[1].lastBattery, undefined);
+
+const renamed = renameRecentDevice(recents, 'aa:bb:cc:dd:ee:ff', 'Office');
+eq('rename keeps the reported name and adds a local label', [renamed[0].label, renamed[0].name], ['Office', 'R50i NC']);
+const cleared = renameRecentDevice(renamed, 'AA:BB:CC:DD:EE:FF', null);
+eq('an empty rename clears the local label', cleared[0].label, undefined);
+const upserted = upsertRecentDevice(renamed, { mac: 'AA:BB:CC:DD:EE:FF', name: 'R50i NC v2' });
+eq('upsert refreshes the reported name but preserves the user label', [upserted[0].name, upserted[0].label], ['R50i NC v2', 'Office']);
+
+eq('canonical MAC accepts any case and rejects junk', [canonicalMac('aa:bb:cc:dd:ee:ff'), canonicalMac('AA-BB'), canonicalMac(42)], ['AA:BB:CC:DD:EE:FF', null, null]);
+eq('last-seen formatting stays human and bounded', [
+  formatLastSeen(1000, 1000 + 30_000),
+  formatLastSeen(1000, 1000 + 5 * 60_000),
+  formatLastSeen(1000, 1000 + 3 * 3_600_000),
+  formatLastSeen(0, 0),
+], ['just now', '5 min ago', '3 h ago', 'unknown']);
+
+const presetFile = serializePresetFile(presets);
+const parsedPresetFile = parsePresetFile(presetFile);
+eq('preset export/import round-trips the curve', [
+  parsedPresetFile.presets.length, parsedPresetFile.presets[0].name, parsedPresetFile.presets[0].bands,
+], [1, 'My curve', [0, 1, -1, 2.5, 6, -6, 0, 0]]);
+check('invalid preset JSON is rejected with a reason', !!parsePresetFile('{oops').error);
+check('a bare preset array is accepted', parsePresetFile(JSON.stringify([goodPreset])).presets.length === 1);
+
+const backup = buildSettingsBackup({
+  theme: 'dark',
+  prompts: false,
+  preferences: {
+    perModeEq: true,
+    autoReconnect: true,
+    reapplyOnSecondBud: false,
+    lowBatteryNotifications: false,
+  },
+  eqPresets: presets,
+  eqModeProfiles: { anc: { kind: 'custom', bands: presets[0].bands }, normal: null, transparency: null },
+  recentDevices: recents,
+});
+const parsedBackup = parseSettingsBackup(serializeSettingsBackup(backup));
+eq('settings backup round-trips theme/preferences/presets/recents', [
+  parsedBackup.backup.theme,
+  parsedBackup.backup.prompts,
+  parsedBackup.backup.preferences.perModeEq,
+  parsedBackup.backup.preferences.reapplyOnSecondBud,
+  parsedBackup.backup.eqPresets.length,
+  parsedBackup.backup.eqModeProfiles.anc.kind,
+  parsedBackup.backup.recentDevices.length,
+], ['dark', false, true, false, 1, 'custom', 2]);
+check('a foreign JSON file is rejected as a settings backup', !!parseSettingsBackup('{"app":"other"}').error);
+check('corrupt JSON is rejected as a settings backup', !!parseSettingsBackup('{oops').error);
+eq('preferences sanitizer keeps booleans and defaults the rest', sanitizePreferences({ perModeEq: 'yes', autoReconnect: true }), {
+  ...DEFAULT_PREFERENCES,
+  autoReconnect: true,
+});
+eq('per-mode profile sanitizer keeps only valid entries', sanitizeEqModeProfiles({
+  anc: { kind: 'preset', presetId: 'bass-booster' },
+  normal: { kind: 'custom', bands: [0, 0, 0, 0, 0, 0, 0, 0] },
+  transparency: { kind: 'custom', bands: [1, 2] },
+}), {
+  anc: { kind: 'preset', presetId: 'bass-booster' },
+  normal: { kind: 'custom', bands: [0, 0, 0, 0, 0, 0, 0, 0] },
+  transparency: null,
+});
 
 /* ------------------------------------------------------------- verdict */
 

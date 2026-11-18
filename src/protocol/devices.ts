@@ -126,6 +126,9 @@ export const DEVICES: DeviceProfile[] = [
     kind: 'earbuds',
     family: 'tws',
     gaming: true,
+    // OpenSCQ30 notes that A3959 gaming mode needs firmware >= 01.60; older
+    // units must not be sent a frame their firmware may discard.
+    gamingMinFirmware: '01.60',
     ancLevels: true,
     scenes: false,
     ldac: false,

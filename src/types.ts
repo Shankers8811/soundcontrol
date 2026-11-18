@@ -37,9 +37,13 @@ export interface BatteryState {
   right: number | null;
   leftCharging?: boolean;
   rightCharging?: boolean;
-  // No case level on purpose: many Soundcore models never report one (the
-  // official app hides it too) and over-ears have no case, so displaying a
-  // number here would mostly show guesses.
+  /**
+   * Charging-case level, only for models whose `01:01` layout documents a
+   * case byte (Liberty 4 NC / Liberty 3 Pro today). Null means "not reported
+   * or absent"; the UI never invents a case percentage for other models.
+   */
+  case: number | null;
+  caseCharging?: boolean;
   /**
    * Null means the values are already percentages (for example Windows PnP).
    * 'unknown' means the device model — and with it the raw-level scale — is
@@ -111,6 +115,12 @@ export interface DeviceProfile {
   id: string;
   name: string;
   sku: string;
+  /**
+   * Minimum firmware for a documented feature whose wire layout changed.
+   * Only set where a public source names the threshold (A3959 gaming mode
+   * needs >= 01.60 per OpenSCQ30). Unknown firmware is never treated as old.
+   */
+  gamingMinFirmware?: string;
   kind: 'earbuds' | 'overear';
   family: DeviceFamily;
   gaming: boolean;
@@ -172,3 +182,36 @@ export interface Transport {
 export const EQ_HZ = [100, 200, 400, 800, 1600, 3200, 6400, 12800] as const;
 
 export const ZERO_BANDS = [0, 0, 0, 0, 0, 0, 0, 0];
+
+/** Which noise mode a locally remembered EQ curve belongs to. */
+export type EqBucket = 'anc' | 'normal' | 'transparency';
+
+/** A named user EQ curve. Stored locally; the device still gets a real EQ frame. */
+export interface SavedEqPreset {
+  id: string;
+  name: string;
+  bands: number[];
+  createdAt: number;
+}
+
+/** One per-noise-mode EQ memory entry. */
+export type EqModeProfile =
+  | { kind: 'preset'; presetId: string }
+  | { kind: 'custom'; bands: number[] };
+
+/** Last telemetry snapshot kept for a recent device, shown only when offline. */
+export interface LastKnownBattery {
+  left: number | null;
+  right: number | null;
+  case: number | null;
+  at: number;
+}
+
+/** A locally remembered device. `name` is the reported name (profile match). */
+export interface RecentDevice {
+  mac: string;
+  name: string;
+  /** User-chosen display name; never used for model matching. */
+  label?: string;
+  lastBattery?: LastKnownBattery;
+}

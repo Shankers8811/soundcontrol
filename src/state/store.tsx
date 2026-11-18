@@ -26,7 +26,7 @@ import {
   describePacket,
   type AncIntent,
 } from '../protocol/packets';
-import { presetById, type EqPreset } from '../protocol/presets';
+import { EQ_PRESETS, presetById, type EqPreset } from '../protocol/presets';
 import { isTransportBusyError } from '../lib/transportErrors';
 import { connectBridge } from '../transports/bridge';
 import {
@@ -35,20 +35,44 @@ import {
   deriveConnectionPhase,
   deriveEarbudState,
   emptyBattery,
+  eqBucketForMode,
   mergeBatteryTelemetry,
   parseSoundModes,
   type Capabilities,
   type ConnectionPhase,
   type EarbudState,
 } from './derive';
+import {
+  DEFAULT_PREFERENCES,
+  SAVED_PRESET_LIMIT,
+  buildSettingsBackup,
+  canonicalMac,
+  parsePresetFile,
+  parseSettingsBackup,
+  renameRecentDevice as renameRecentInList,
+  sanitizeEqModeProfiles,
+  sanitizeLabel,
+  sanitizePreferences,
+  sanitizeRecentDevices,
+  sanitizeSavedPresets,
+  serializePresetFile,
+  serializeSettingsBackup,
+  upsertRecentDevice,
+  type AppPreferences,
+} from './localData';
 import type {
   AncMode,
   AncScene,
   AncSubMode,
   BatteryState,
   DeviceProfile,
+  EqBucket,
+  EqModeProfile,
+  LastKnownBattery,
   LogEntry,
   PageId,
+  RecentDevice,
+  SavedEqPreset,
   ThemePref,
   Transport,
 } from '../types';
@@ -69,6 +93,12 @@ function save(key: string, value: unknown) {
   } catch {
     /* private mode */
   }
+}
+
+/** A last-known battery snapshot, only when the device reported a real level. */
+function snapshotBattery(b: BatteryState): LastKnownBattery | null {
+  if (b.left === null && b.right === null && b.case === null) return null;
+  return { left: b.left, right: b.right, case: b.case, at: Date.now() };
 }
 
 /**
@@ -136,11 +166,38 @@ interface AppState {
   eqId: string;
   bands: number[];
   surround: boolean;
+  /** Named user EQ curves, stored locally; applying one sends a real EQ frame. */
+  savedPresets: SavedEqPreset[];
+  /** Remember the current curve as a named local preset. */
+  savePreset: (name: string) => SavedEqPreset | null;
+  deleteSavedPreset: (id: string) => void;
+  /** Apply a locally saved curve through the model's real EQ command. */
+  applySavedPreset: (preset: SavedEqPreset) => Promise<void>;
+  /** Import presets from an exported JSON file; returns the number added. */
+  importSavedPresets: (text: string) => { added: number; error?: string };
+  /** Serialized export of every saved preset (local file download). */
+  exportSavedPresets: () => string;
+  /** One remembered curve per noise mode (local-only memory, re-applied on mode change). */
+  eqModeProfiles: Record<EqBucket, EqModeProfile | null>;
+  clearEqModeProfile: (bucket: EqBucket) => void;
+  /** Behaviour preferences (persisted; see localData.AppPreferences). */
+  preferences: AppPreferences;
+  setPreference: <K extends keyof AppPreferences>(key: K, value: AppPreferences[K]) => void;
   log: LogEntry[];
   /** Last few bridge devices, most recent first — one-tap reconnect. */
-  recentDevices: Array<{ mac: string; name: string }>;
+  recentDevices: RecentDevice[];
   /** Drop one entry from the local reconnect list (real, local-only action). */
   forgetRecentDevice: (mac: string) => void;
+  /** Set/clear the local display name for a recent device (never sent to hardware). */
+  renameRecentDevice: (mac: string, label: string | null) => void;
+  /** Re-open the control link to the current device (Windows audio route is OS-owned). */
+  reclaimAudio: () => Promise<void>;
+  /** Serialized backup of local settings (theme, preferences, presets, recents). */
+  exportSettings: () => string;
+  /** Restore a backup produced by exportSettings; returns a short outcome message. */
+  importSettings: (text: string) => { ok: boolean; message: string };
+  /** Reset every local app setting to its default (does not touch the device). */
+  resetAppSettings: () => void;
   error: string | null;
   clearError: () => void;
   connectBridge: (mac: string, name?: string, windowsBattery?: number | null) => Promise<void>;
@@ -185,37 +242,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [connectedMac, setConnectedMac] = useState<string | null>(null);
   const [profile, setProfile] = useState<DeviceProfile>(matchDevice('R50i'));
   const profileRef = useRef(profile);
-  const [battery, setBattery] = useState<BatteryState>({ left: null, right: null });
-  // Persisted recent-device list. Sanitized on load: only well-formed
-  // {mac,name} entries survive, and a non-array value falls back to empty —
-  // consumers map/filter this list during connect and render, so a corrupt
-  // stored value must degrade to "no recents", never to a crash.
-  // Pass 11 §19: the MAC must also be syntactically valid, and duplicates
-  // (including case variants of the same address) are dropped keeping the
-  // first — the Devices list renders one row per MAC as a React key, so
-  // duplicate entries would mean duplicate keys and the same device twice.
-  const [recentDevices, setRecentDevices] = useState<Array<{ mac: string; name: string }>>(() => {
-    const raw = load<unknown>('soundcontrol_recent_devices', []);
-    if (!Array.isArray(raw)) return [];
-    const MAC_RE = /^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$/;
-    const seen = new Set<string>();
-    const out: Array<{ mac: string; name: string }> = [];
-    for (const d of raw) {
-      if (typeof d !== 'object' || d === null) continue;
-      const mac = (d as { mac?: unknown }).mac;
-      const name = (d as { name?: unknown }).name;
-      if (typeof mac !== 'string' || !MAC_RE.test(mac)) continue;
-      if (typeof name !== 'string' || name.length === 0) continue;
-      const key = mac.toUpperCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ mac: key, name });
-    }
-    return out;
-  });
+  const [battery, setBattery] = useState<BatteryState>(emptyBattery);
+  // Persisted recent-device list. Sanitized on load: only well-formed entries
+  // survive, a non-array value falls back to empty, MACs are canonicalized,
+  // and duplicates are dropped keeping the first. Optional user labels and
+  // last-known battery snapshots are validated by localData.
+  const [recentDevices, setRecentDevices] = useState<RecentDevice[]>(() =>
+    sanitizeRecentDevices(load<unknown>('soundcontrol_recent_devices', [])),
+  );
+  const recentDevicesRef = useRef<RecentDevice[]>(recentDevices);
+  recentDevicesRef.current = recentDevices;
+  // Named EQ curves and per-noise-mode memory are local-only conveniences.
+  const [savedPresets, setSavedPresets] = useState<SavedEqPreset[]>(() =>
+    sanitizeSavedPresets(load<unknown>('sc.eq.presets', [])),
+  );
+  const [eqModeProfiles, setEqModeProfiles] = useState<Record<EqBucket, EqModeProfile | null>>(
+    () => sanitizeEqModeProfiles(load<unknown>('sc.eq.modes', null)),
+  );
+  const eqModeProfilesRef = useRef(eqModeProfiles);
+  eqModeProfilesRef.current = eqModeProfiles;
+  const [preferences, setPreferences] = useState<AppPreferences>(() =>
+    sanitizePreferences(load<unknown>('sc.prefs', DEFAULT_PREFERENCES)),
+  );
+  const preferencesRef = useRef(preferences);
+  preferencesRef.current = preferences;
   // The low-battery nudge should fire once per connection, not every poll.
   const lowBatteryWarned = useRef(false);
   const [ancMode, setAncMode] = useState<AncMode>('anc');
+  const ancModeRef = useRef(ancMode);
+  ancModeRef.current = ancMode;
   const [ancLevel, setAncLevel] = useState(5);
   const [ancScene, setAncScene] = useState<AncScene>('outdoor');
   // The A3959 firmware owns the adaptive strength and sensitivity; these mirror
@@ -255,7 +310,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const profileNote = useMemo(() => matchNote(deviceName), [deviceName]);
 
   /** Protocol-derived capability matrix for the connected (or previewed) model. */
-  const capabilities = useMemo(() => deriveCapabilities(profile), [profile]);
+  const capabilities = useMemo(
+    () => deriveCapabilities(profile, firmware),
+    [profile, firmware],
+  );
 
   /** Per-side earbud state; null for hardware without independent L/R sides. */
   const earbudState = useMemo(() => deriveEarbudState(battery, capabilities), [battery, capabilities]);
@@ -305,6 +363,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ];
       return next.slice(0, 400);
     });
+  }, []);
+
+  /**
+   * Windows toast via the desktop bridge. Silently absent in browser/dev
+   * preview — the in-app activity log still records every nudge, so nothing
+   * is lost when the OS notification surface is unavailable.
+   */
+  const notify = useCallback((title: string, body: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      void window.electronAPI?.notify?.(title, body);
+    } catch {
+      /* notification support is optional */
+    }
   }, []);
 
   const onRx = useCallback(
@@ -378,6 +450,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let sawBatteryFrame = false;
       let rawLeft: number | undefined;
       let rawRight: number | undefined;
+      let rawCase: number | undefined;
       let chargingLeft: boolean | undefined;
       let chargingRight: boolean | undefined;
 
@@ -388,8 +461,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         sawBatteryFrame = true;
         rawLeft = payload[offsets.batteryLeft];
         rawRight = offsets.batteryRight === null ? undefined : payload[offsets.batteryRight];
-        // The case byte stays a wire fact (see PROTOCOL.md) but is never
-        // surfaced: many models do not report it and over-ears have no case.
+        // Only models whose documented layout carries a case byte expose one;
+        // the UI renders it only when the profile says it is real.
+        rawCase = offsets.batteryCase === null ? undefined : payload[offsets.batteryCase];
         if (offsets.batteryChargingLeft !== null) {
           chargingLeft = (payload[offsets.batteryChargingLeft] & 0x01) !== 0;
         }
@@ -423,6 +497,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         mergeBatteryTelemetry(previous, {
           rawLeft,
           rawRight,
+          rawCase,
           chargingLeft,
           chargingRight,
           // An unidentified model has no proven scale: levels stay raw and
@@ -444,16 +519,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
               .filter((v): v is number => v !== null)
               .map((v) => (v / scale) * 100)
               .filter((p) => p < 20);
-      if (!lowBatteryWarned.current && low.length > 0) {
+      const caseLevel = scale === null ? null : batteryLevel(rawCase);
+      const caseLow = scale !== null && caseLevel !== null && (caseLevel / scale) * 100 < 20;
+      if (!lowBatteryWarned.current && (low.length > 0 || caseLow)) {
         lowBatteryWarned.current = true;
-        pushLog(
-          'sys',
-          '',
-          `Low battery: ${low.map((p) => `${Math.round(p)}%`).join(', ')} — charge soon`,
-        );
+        const parts: string[] = [];
+        if (low.length > 0) parts.push(low.map((p) => `${Math.round(p)}%`).join(', '));
+        if (caseLow) parts.push('charging case');
+        const message = `Low battery: ${parts.join(' · ')} — charge soon`;
+        pushLog('sys', '', message);
+        if (preferencesRef.current.lowBatteryNotifications) {
+          notify('SoundControl — low battery', message);
+        }
       }
     },
-    [pushLog, syncSoundModes],
+    [notify, pushLog, syncSoundModes],
   );
   const write = useCallback(
     async (data: Uint8Array, note?: string) => {
@@ -725,12 +805,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setRecentDevices((prev) => {
             // Canonical uppercase MAC (the bridge's normal form) so a
             // lowercase manual entry cannot persist as a case-variant
-            // duplicate of the same address.
-            const key = mac.toUpperCase();
-            const next = [
-              { mac: key, name: name || 'soundcore' },
-              ...prev.filter((d) => d.mac.toUpperCase() !== key),
-            ].slice(0, 5);
+            // duplicate. A user label and the previous battery snapshot
+            // survive a reconnect; the reported name is refreshed.
+            const next = upsertRecentDevice(prev, {
+              mac,
+              name: name || 'soundcore',
+            });
             save('soundcontrol_recent_devices', next);
             return next;
           });
@@ -867,6 +947,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [profile.ancLayout, profile.name, profile.sku, pushLog, write],
   );
 
+  /** Persist one curve as the remembered curve for a noise-mode bucket. */
+  const rememberEq = useCallback((bucket: EqBucket, entry: EqModeProfile) => {
+    if (!preferencesRef.current.perModeEq) return;
+    setEqModeProfiles((prev) => {
+      const next = { ...prev, [bucket]: entry };
+      save('sc.eq.modes', next);
+      return next;
+    });
+  }, []);
+
+  /**
+   * Re-apply the locally remembered curve for a noise mode. This sends the
+   * same documented EQ frame the user originally chose — never a new command
+   * — and is skipped silently when nothing is remembered or the model has no
+   * documented EQ path.
+   */
+  const applyEqMemory = useCallback(
+    async (bucket: EqBucket) => {
+      const entry = eqModeProfilesRef.current[bucket];
+      if (!entry) return;
+      if (entry.kind === 'preset') {
+        const preset = EQ_PRESETS.find((p) => p.id === entry.presetId);
+        if (!preset) return;
+        const pkt = buildEqPreset(profile, preset);
+        if (!pkt) return;
+        setEqId(preset.id);
+        setBands([...preset.bands]);
+        await write(pkt, `EQ ${preset.name} (${bucket} memory)`);
+      } else {
+        const pkt = buildCustomEq(profile, entry.bands);
+        if (!pkt) return;
+        setEqId('custom');
+        setBands([...entry.bands]);
+        await write(pkt, `EQ custom (${bucket} memory)`);
+      }
+    },
+    [profile, write],
+  );
+
   const setAnc = useCallback(
     async (mode: AncMode, level?: number, scene?: AncScene) => {
       const appliedLevel = level ?? ancLevel;
@@ -903,9 +1022,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } finally {
         setBusy(null);
       }
+      // Per-mode EQ memory (optional): switching noise modes re-sends the
+      // curve the user last chose for that mode. Only documented EQ frames
+      // are used, and a failure never rolls back the ANC mode that succeeded.
+      if (preferencesRef.current.perModeEq) {
+        setBusy('eq');
+        try {
+          await applyEqMemory(eqBucketForMode(mode));
+        } catch (err) {
+          pushLog(
+            'sys',
+            '',
+            `Per-mode EQ re-apply failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        } finally {
+          setBusy(null);
+        }
+      }
       if (prompts) await beep('mode');
     },
-    [ancIntent, ancLevel, ancMode, ancScene, ancSubMode, profile.scenes, prompts, sendAnc],
+    [
+      ancIntent,
+      ancLevel,
+      ancMode,
+      ancScene,
+      ancSubMode,
+      applyEqMemory,
+      profile.scenes,
+      prompts,
+      pushLog,
+      sendAnc,
+    ],
   );
 
   const setTransVocal = useCallback(
@@ -1025,9 +1172,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } finally {
         setBusy(null);
       }
+      rememberEq(eqBucketForMode(ancModeRef.current), { kind: 'preset', presetId: preset.id });
       if (prompts) await beep('ok');
     },
-    [bands, eqId, profile, prompts, pushLog, write],
+    [bands, eqId, profile, prompts, pushLog, rememberEq, write],
   );
 
   const setBand = useCallback((index: number, db: number) => {
@@ -1045,10 +1193,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setBusy('eq');
     try {
       await write(pkt, 'EQ custom');
+      rememberEq(eqBucketForMode(ancModeRef.current), { kind: 'custom', bands: [...bands] });
     } finally {
       setBusy(null);
     }
-  }, [bands, profile, write]);
+  }, [bands, profile, rememberEq, write]);
 
   const applyBands = useCallback(
     async (next: number[]) => {
@@ -1060,6 +1209,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBusy('eq');
       try {
         await write(pkt, 'EQ custom');
+        rememberEq(eqBucketForMode(ancModeRef.current), { kind: 'custom', bands: [...next] });
       } catch (err) {
         setEqId(prev.eqId);
         setBands(prev.bands);
@@ -1068,8 +1218,168 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setBusy(null);
       }
     },
-    [bands, eqId, profile, write],
+    [bands, eqId, profile, rememberEq, write],
   );
+
+  /* ---------------------------------------------------- local user data */
+
+  const savePreset = useCallback(
+    (name: string): SavedEqPreset | null => {
+      const clean = sanitizeLabel(name);
+      if (!clean) return null;
+      const id =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `eq-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const preset: SavedEqPreset = {
+        id,
+        name: clean,
+        bands: [...bands],
+        createdAt: Date.now(),
+      };
+      setSavedPresets((prev) => {
+        const next = [preset, ...prev].slice(0, SAVED_PRESET_LIMIT);
+        save('sc.eq.presets', next);
+        return next;
+      });
+      return preset;
+    },
+    [bands],
+  );
+
+  const deleteSavedPreset = useCallback((id: string) => {
+    setSavedPresets((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      save('sc.eq.presets', next);
+      return next;
+    });
+  }, []);
+
+  const applySavedPreset = useCallback(
+    async (preset: SavedEqPreset) => {
+      await applyBands([...preset.bands]);
+    },
+    [applyBands],
+  );
+
+  const importSavedPresets = useCallback((text: string) => {
+    const parsed = parsePresetFile(text);
+    if (parsed.error) return { added: 0, error: parsed.error };
+    let added = 0;
+    setSavedPresets((prev) => {
+      const ids = new Set(prev.map((p) => p.id));
+      const names = new Set(prev.map((p) => p.name.toLowerCase()));
+      const fresh = parsed.presets.filter(
+        (p) => !ids.has(p.id) && !names.has(p.name.toLowerCase()),
+      );
+      added = fresh.length;
+      const next = [...fresh, ...prev].slice(0, SAVED_PRESET_LIMIT);
+      save('sc.eq.presets', next);
+      return next;
+    });
+    return { added };
+  }, []);
+
+  const exportSavedPresets = useCallback(() => serializePresetFile(savedPresets), [savedPresets]);
+
+  const clearEqModeProfile = useCallback((bucket: EqBucket) => {
+    setEqModeProfiles((prev) => {
+      const next = { ...prev, [bucket]: null };
+      save('sc.eq.modes', next);
+      return next;
+    });
+  }, []);
+
+  const setPreference = useCallback(
+    <K extends keyof AppPreferences>(key: K, value: AppPreferences[K]) => {
+      setPreferences((prev) => {
+        const next = { ...prev, [key]: value };
+        save('sc.prefs', next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const renameRecentDevice = useCallback((mac: string, label: string | null) => {
+    setRecentDevices((prev) => {
+      const next = renameRecentInList(prev, mac, label);
+      save('soundcontrol_recent_devices', next);
+      return next;
+    });
+  }, []);
+
+  /**
+   * Re-open the control link. The Windows audio route itself is owned by the
+   * OS/firmware; this only re-establishes SoundControl's RFCOMM session, which
+   * is what the app can honestly do after a phone call steals the link.
+   */
+  const reclaimAudio = useCallback(async () => {
+    const mac = connectedMac ?? recentDevicesRef.current[0]?.mac;
+    if (!mac) {
+      pushLog('sys', '', 'No device is known yet — connect one on the Devices page first.');
+      return;
+    }
+    const label = connectedMac
+      ? deviceName
+      : recentDevicesRef.current[0]?.label ?? recentDevicesRef.current[0]?.name;
+    await connectBridgePort(mac, label);
+    pushLog('sys', '', 'Control link re-opened. If Windows still routes audio elsewhere, pick the earbuds as the output device.');
+  }, [connectBridgePort, connectedMac, deviceName, pushLog]);
+
+  const exportSettings = useCallback(
+    () =>
+      serializeSettingsBackup(
+        buildSettingsBackup({
+          theme,
+          prompts,
+          preferences,
+          eqPresets: savedPresets,
+          eqModeProfiles,
+          recentDevices,
+        }),
+      ),
+    [eqModeProfiles, preferences, prompts, recentDevices, savedPresets, theme],
+  );
+
+  const importSettings = useCallback(
+    (text: string) => {
+      const { backup, error } = parseSettingsBackup(text);
+      if (error) return { ok: false, message: error };
+      setThemeState(backup.theme);
+      save('sc.theme', backup.theme);
+      setPromptsState(backup.prompts);
+      save('sc.prompts', backup.prompts);
+      setPreferences(backup.preferences);
+      save('sc.prefs', backup.preferences);
+      setSavedPresets(backup.eqPresets);
+      save('sc.eq.presets', backup.eqPresets);
+      setEqModeProfiles(backup.eqModeProfiles);
+      save('sc.eq.modes', backup.eqModeProfiles);
+      setRecentDevices(backup.recentDevices);
+      save('soundcontrol_recent_devices', backup.recentDevices);
+      return {
+        ok: true,
+        message: `Restored ${backup.eqPresets.length} preset(s) and ${backup.recentDevices.length} recent device(s).`,
+      };
+    },
+    [],
+  );
+
+  const resetAppSettings = useCallback(() => {
+    setThemeState('system');
+    save('sc.theme', 'system');
+    setPromptsState(true);
+    save('sc.prompts', true);
+    setPreferences({ ...DEFAULT_PREFERENCES });
+    save('sc.prefs', DEFAULT_PREFERENCES);
+    setSavedPresets([]);
+    save('sc.eq.presets', []);
+    setEqModeProfiles({ anc: null, normal: null, transparency: null });
+    save('sc.eq.modes', { anc: null, normal: null, transparency: null });
+    setRecentDevices([]);
+    save('soundcontrol_recent_devices', []);
+  }, []);
 
   const inject = useCallback(
     async (bytes: Uint8Array, note = 'Injected') => {
@@ -1085,6 +1395,143 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setProfile(hit);
     }
   }, []);
+
+  // Keep the recent list's last-known battery fresh while connected. Only
+  // real device telemetry reaches this effect, and only an actual change is
+  // written back — a 30 s poll with identical bytes does not churn storage.
+  useEffect(() => {
+    if (!connected || !connectedMac) return;
+    // A TWS model's pre-telemetry seed may be a Windows aggregate placed in
+    // `left`; it is not a per-side reading, so wait for the device's own
+    // presence before recording a last-known snapshot.
+    if (profileRef.current.state.batteryRight !== null && battery.presence === 'unknown') return;
+    const key = canonicalMac(connectedMac);
+    if (!key) return;
+    const snapshot = snapshotBattery(battery);
+    if (!snapshot) return;
+    setRecentDevices((prev) => {
+      const current = prev.find((d) => d.mac === key);
+      if (!current) return prev;
+      const before = current.lastBattery;
+      if (
+        before &&
+        before.left === snapshot.left &&
+        before.right === snapshot.right &&
+        before.case === snapshot.case
+      ) {
+        return prev;
+      }
+      const next = prev.map((d) => (d.mac === key ? { ...d, lastBattery: snapshot } : d));
+      save('soundcontrol_recent_devices', next);
+      return next;
+    });
+  }, [battery, connected, connectedMac]);
+
+  // Optional: re-apply the user's current ANC/EQ intent when the second bud
+  // joins. Only a real presence transition (left/right -> both) triggers it,
+  // and only documented frames are sent.
+  const lastPresenceRef = useRef<string>('unknown');
+  useEffect(() => {
+    const current = earbudState.connection;
+    const previous = lastPresenceRef.current;
+    lastPresenceRef.current = current;
+    if (!connected) return;
+    if (!preferencesRef.current.reapplyOnSecondBud) return;
+    if (!((previous === 'left' || previous === 'right') && current === 'both')) return;
+    void (async () => {
+      try {
+        if (capabilities.supportsNoiseControl) {
+          await sendAnc(ancIntent(), 'Re-apply after second earbud connected');
+        }
+        if (preferencesRef.current.perModeEq) {
+          await applyEqMemory(eqBucketForMode(ancModeRef.current));
+        }
+        pushLog('sys', '', 'Second earbud connected — re-applied the current settings.');
+      } catch (err) {
+        pushLog(
+          'sys',
+          '',
+          `Re-apply after second earbud failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    })();
+  }, [
+    ancIntent,
+    applyEqMemory,
+    capabilities.supportsNoiseControl,
+    connected,
+    earbudState.connection,
+    pushLog,
+    sendAnc,
+  ]);
+
+  // Optional launch reconnect. Off by default (the app is a normal desktop
+  // app with no background behaviour); when enabled it reuses the exact same
+  // bridge path as the Devices page, with the same error handling.
+  const autoReconnectTried = useRef(false);
+  useEffect(() => {
+    if (autoReconnectTried.current) return;
+    autoReconnectTried.current = true;
+    if (!preferencesRef.current.autoReconnect) return;
+    const first = recentDevicesRef.current[0];
+    if (!first) return;
+    void connectBridgePort(first.mac, first.label ?? first.name).catch(() => {});
+  }, [connectBridgePort]);
+
+  // Optional app-wide hotkeys (off by default). Registering happens in the
+  // main process; here we only ask for the toggle state and map a press to the
+  // exact same store action a click uses, so the same documented frames are
+  // sent and the same capability gates apply.
+  useEffect(() => {
+    const api = typeof window === 'undefined' ? undefined : window.electronAPI;
+    if (!api?.setGlobalHotkeys) return;
+    let cancelled = false;
+    void api
+      .setGlobalHotkeys(preferences.globalHotkeys)
+      .then((result) => {
+        if (cancelled || !preferences.globalHotkeys) return;
+        pushLog(
+          'sys',
+          '',
+          result.registered.length > 0
+            ? `Global hotkeys active: ${result.registered.join(', ')}`
+            : 'Global hotkeys could not be registered — another app may already own those keys.',
+        );
+      })
+      .catch(() => {
+        /* the toggle simply has no effect outside the desktop app */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [preferences.globalHotkeys, pushLog]);
+
+  useEffect(() => {
+    const api = typeof window === 'undefined' ? undefined : window.electronAPI;
+    if (!api?.onHotkey) return;
+    return api.onHotkey((action) => {
+      if (action === 'cycle-anc') {
+        if (!connected || !capabilities.supportsNoiseControl) return;
+        // Adaptive cancelling is the same user-facing mode as ANC, so it
+        // advances from the same slot in the cycle.
+        const order: AncMode[] = ['anc', 'normal', 'transparency'];
+        const index = ancMode === 'adaptive' ? 0 : order.indexOf(ancMode);
+        void setAnc(order[(index + 1) % order.length]).catch(() => {});
+      } else if (action === 'cycle-eq') {
+        if (!connected || !capabilities.supportsEqualizer) return;
+        const index = EQ_PRESETS.findIndex((p) => p.id === eqId);
+        void applyPreset(EQ_PRESETS[(index + 1) % EQ_PRESETS.length]).catch(() => {});
+      }
+    });
+  }, [
+    ancMode,
+    applyPreset,
+    capabilities.supportsEqualizer,
+    capabilities.supportsNoiseControl,
+    connected,
+    eqId,
+    setAnc,
+  ]);
 
   // Keep TWS battery levels fresh while connected to real hardware: the
   // device-info frame arrives once after the handshake, but the explicit
@@ -1142,6 +1589,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       profileNote,
       eqId,
       bands,
+      savedPresets,
+      savePreset,
+      deleteSavedPreset,
+      applySavedPreset,
+      importSavedPresets,
+      exportSavedPresets,
+      eqModeProfiles,
+      clearEqModeProfile,
+      preferences,
+      setPreference,
       log,
       recentDevices,
       forgetRecentDevice: (mac: string) => {
@@ -1152,6 +1609,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return next;
         });
       },
+      renameRecentDevice,
+      reclaimAudio,
+      exportSettings,
+      importSettings,
+      resetAppSettings,
       error,
       clearError: () => setError(null),
       connectBridge: connectBridgePort,
@@ -1212,8 +1674,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       profileNote,
       eqId,
       bands,
+      savedPresets,
+      savePreset,
+      deleteSavedPreset,
+      applySavedPreset,
+      importSavedPresets,
+      exportSavedPresets,
+      eqModeProfiles,
+      clearEqModeProfile,
+      preferences,
+      setPreference,
       log,
       recentDevices,
+      renameRecentDevice,
+      reclaimAudio,
+      exportSettings,
+      importSettings,
+      resetAppSettings,
       error,
       connectBridgePort,
       connectSim,
