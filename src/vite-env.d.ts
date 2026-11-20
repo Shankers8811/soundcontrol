@@ -5,6 +5,60 @@ declare const __REPO_URL__: string;
 // Injected by Vite from package.json — the real application version.
 declare const __APP_VERSION__: string;
 
+/**
+ * A validated, user-installed device profile. Phase 1 keeps `document` opaque
+ * in the renderer; Phase 2 narrows it to the full profile type.
+ */
+interface DeviceProfileSummary {
+  file: string;
+  id: string;
+  name: string;
+  sku: string;
+  kind: 'earbuds' | 'overear';
+  family: 'tws' | 'classic';
+  schemaVersion: number;
+  verified: boolean;
+  fallback: boolean;
+  matchNames: string[];
+  mtimeMs: number;
+  size: number;
+}
+
+interface DeviceProfileEntry extends DeviceProfileSummary {
+  document: unknown;
+  builtin?: true;
+}
+
+interface DeviceProfileIssue {
+  file: string | null;
+  path: string;
+  code: string;
+  message: string;
+}
+
+interface DeviceProfilesSnapshot {
+  schemaVersion: number;
+  folder: string;
+  exists: boolean;
+  scannedAt: number;
+  profiles: DeviceProfileEntry[];
+  errors: DeviceProfileIssue[];
+  builtin: DeviceProfileEntry[];
+  builtinErrors: DeviceProfileIssue[];
+  counts: {
+    files: number;
+    valid: number;
+    invalid: number;
+    builtin: number;
+  };
+}
+
+interface DeviceProfilesOpenResult {
+  ok: boolean;
+  path: string;
+  error: string | null;
+}
+
 interface Window {
   // Exposed by preload.cjs inside the packaged Windows desktop app.
   electronAPI?: {
@@ -17,6 +71,16 @@ interface Window {
     getAppVersion?: () => Promise<string>;
     /** Opens %AppData%\soundcontrol in the file manager. */
     openLogFolder?: () => Promise<boolean>;
+    /** Validated snapshot of %AppData%\soundcontrol\device_profiles. */
+    listDeviceProfiles?: () => Promise<DeviceProfilesSnapshot>;
+    /** Absolute path of the device_profiles folder (display only). */
+    getDeviceProfilesFolder?: () => Promise<string>;
+    /** Creates the folder if needed and opens it in Explorer. */
+    openDeviceProfilesFolder?: () => Promise<DeviceProfilesOpenResult>;
+    /** Subscribe to folder changes; returns an unsubscribe function. */
+    onDeviceProfilesChanged?: (
+      callback: (snapshot: DeviceProfilesSnapshot) => void,
+    ) => () => void;
     /** Current Windows default-output volume, 0..100 (null if unavailable). */
     getSystemVolume?: () => Promise<number | null>;
     /** Sets the Windows default-output volume, 0..100. */

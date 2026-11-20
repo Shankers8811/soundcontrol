@@ -10,7 +10,10 @@ import {
 } from 'react';
 import { beep } from '../lib/feedback';
 import { toHex, verifyFrame } from '../protocol/codec';
-import { DEVICES, matchDevice, matchNote } from '../protocol/devices';
+// Legacy table retained ONLY for the dev-only simulator (Settings → Developer
+// tools) and its unit tests. Real connections resolve through the installed
+// JSON profile registry below — never through this table.
+import { DEVICES } from '../protocol/devices';
 import {
   DEVICE_INFO,
   DUAL,
@@ -42,6 +45,13 @@ import {
   type ConnectionPhase,
   type EarbudState,
 } from './derive';
+import {
+  BUNDLED_FALLBACK,
+  PROFILE_NOT_FOUND_NOTE,
+  registryFromSnapshot,
+  resolveProfile,
+  type ProfileRegistry,
+} from './profileRegistry';
 import {
   DEFAULT_PREFERENCES,
   SAVED_PRESET_LIMIT,
@@ -95,6 +105,31 @@ function save(key: string, value: unknown) {
   }
 }
 
+/**
+ * Manual profile overrides, keyed by canonical MAC. The user picks a profile
+ * on the Devices page; the choice must survive a reconnect for that exact
+ * unit, but must never leak to a different device that happens to share a
+ * marketing name. Persisted locally only — nothing is sent to hardware.
+ */
+const PROFILE_INTENT_KEY = 'sc.device.intent';
+
+function readProfileIntent(): Record<string, string> {
+  const raw = load<unknown>(PROFILE_INTENT_KEY, {});
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'string' && value.length > 0 && value.length <= 64) out[key] = value;
+  }
+  return out;
+}
+
+/** Clamp a value into a declared range, falling back to the protocol bounds. */
+function clampToRange(value: number, range: { min: number; max: number } | undefined, fallback: { min: number; max: number }): number {
+  const min = range?.min ?? fallback.min;
+  const max = range?.max ?? fallback.max;
+  return Math.max(min, Math.min(max, value));
+}
+
 /** A last-known battery snapshot, only when the device reported a real level. */
 function snapshotBattery(b: BatteryState): LastKnownBattery | null {
   if (b.left === null && b.right === null && b.case === null) return null;
@@ -144,6 +179,8 @@ interface AppState {
   /** Bluetooth address of the active bridge session (null for simulator/none). */
   connectedMac: string | null;
   profile: DeviceProfile;
+  /** Every installed profile (plus the fallback) for the Devices preview picker. */
+  availableProfiles: DeviceProfile[];
   setProfileId: (id: string) => void;
   battery: BatteryState;
   ancMode: AncMode;
@@ -240,8 +277,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [transportLabel, setTransportLabel] = useState('Not connected');
   const [deviceName, setDeviceName] = useState('No device');
   const [connectedMac, setConnectedMac] = useState<string | null>(null);
-  const [profile, setProfile] = useState<DeviceProfile>(matchDevice('R50i'));
+  // Before any device is linked (and whenever the installed set changes) the
+  // honest preview is the bundled generic profile: it claims no capability.
+  const [profile, setProfile] = useState<DeviceProfile>(BUNDLED_FALLBACK.profile);
   const profileRef = useRef(profile);
+  const [registry, setRegistry] = useState<ProfileRegistry>(() => ({
+    sources: [],
+    fallback: BUNDLED_FALLBACK,
+  }));
+  const registryRef = useRef(registry);
+  registryRef.current = registry;
+  const [profileMissing, setProfileMissing] = useState(false);
+  // A simulator session pins an explicit profile; folder changes must not
+  // re-resolve it to the fallback while the dev-only sim is running.
+  const simPinnedRef = useRef(false);
   const [battery, setBattery] = useState<BatteryState>(emptyBattery);
   // Persisted recent-device list. Sanitized on load: only well-formed entries
   // survive, a non-array value falls back to empty, MACs are canonicalized,
@@ -306,8 +355,65 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  /** Set when the Bluetooth name matched an unverified alias, not a real profile. */
-  const profileNote = useMemo(() => matchNote(deviceName), [deviceName]);
+  /**
+   * Hydrate the profile registry from the main process and keep it live: the
+   * folder watcher pushes a fresh validated snapshot whenever a `.json` file
+   * is added, edited or removed, so a downloaded profile takes effect without
+   * restarting the app. Nothing is fetched from the network.
+   */
+  useEffect(() => {
+    const api = typeof window === 'undefined' ? undefined : window.electronAPI;
+    if (!api?.listDeviceProfiles) return;
+    let cancelled = false;
+    const apply = (snapshot: DeviceProfilesSnapshot) => {
+      if (cancelled) return;
+      setRegistry(registryFromSnapshot(snapshot));
+    };
+    void api
+      .listDeviceProfiles()
+      .then(apply)
+      .catch(() => {
+        /* no IPC surface (browser preview): the bundled fallback still works */
+      });
+    const unsubscribe = api.onDeviceProfilesChanged?.(apply);
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, []);
+
+  /**
+   * Re-resolve the active profile from the current identity and registry.
+   * `resolveProfile` checks a persisted per-MAC override first, then the
+   * normalized name/MAC against every installed `match.names` alias, then the
+   * bundled fallback with the explicit download note.
+   */
+  useEffect(() => {
+    if (simPinnedRef.current) return;
+    if (!connected) {
+      // Before a device links, preview the fallback: no capability is claimed
+      // until a real identity (or an explicit override) picks a profile.
+      const fresh = registry.fallback.profile;
+      profileRef.current = fresh;
+      setProfile(fresh);
+      setProfileMissing(false);
+      return;
+    }
+    const resolution = resolveProfile(deviceName, connectedMac, registry, readProfileIntent());
+    profileRef.current = resolution.profile;
+    setProfile(resolution.profile);
+    setProfileMissing(resolution.missing);
+  }, [connected, connectedMac, deviceName, registry]);
+
+  /** Exact download prompt when no installed profile matched the device. */
+  const profileNote = profileMissing ? PROFILE_NOT_FOUND_NOTE : null;
+
+  /** Installed profiles for the Devices preview picker (fallback last). */
+  const availableProfiles = useMemo<DeviceProfile[]>(() => {
+    const installed = registry.sources.map((source) => source.profile);
+    const fallback = registry.fallback.profile;
+    return installed.some((p) => p.id === fallback.id) ? installed : [...installed, fallback];
+  }, [registry]);
 
   /** Protocol-derived capability matrix for the connected (or previewed) model. */
   const capabilities = useMemo(
@@ -566,13 +672,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       name: string,
       bat?: Partial<BatteryState> | number | null,
       dspChannel?: number | null,
+      mac?: string | null,
+      override?: DeviceProfile,
     ) => {
       transportRef.current = t;
       setTransportLabel(t.label);
       setDeviceName(name);
-      const nextProfile = matchDevice(name);
+      // A real session resolves from the installed JSON profiles (name or MAC
+      // against `match.names`, plus a persisted per-MAC override). The
+      // dev-only simulator passes the profile its scripted telemetry was
+      // captured for, so its state offsets stay correct.
+      const resolution = override
+        ? { profile: override, note: null, missing: false }
+        : resolveProfile(name, mac, registryRef.current, readProfileIntent());
+      const nextProfile = resolution.profile;
+      simPinnedRef.current = override !== undefined;
       profileRef.current = nextProfile;
       setProfile(nextProfile);
+      setProfileMissing(resolution.missing);
       // Clear the previous device's telemetry: firmware and serial are read
       // per device, and showing a stale value is worse than showing none.
       setFirmware('Unknown');
@@ -583,7 +700,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? `DSP verified on RFCOMM channel ${dspChannel}`
           : null,
       );
-      const note = matchNote(name);
+      const note = resolution.note;
       // A fresh connection ALWAYS starts from the cleared battery state —
       // even when no seed is supplied (manual-MAC connects have none). Both
       // sides stay `unknown` until the device's own telemetry confirms them;
@@ -604,7 +721,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Feature state is per-device as well: back to power-on defaults until
       // the new device confirms its own (06:01 sound-mode / 02:81 EQ mirrors).
       setAncMode('anc');
-      setAncLevel(5);
+      setAncLevel(
+        clampToRange(5, nextProfile.ancLevelRange, { min: 1, max: 5 }),
+      );
       setAncScene('outdoor');
       setAncSubMode('manual');
       setAncAdaptiveLevel(5);
@@ -630,7 +749,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         pushLog(
           'sys',
           '',
-          nextProfile.id === 'unknown'
+          nextProfile.fallback
             ? 'The device model could not be identified, so SoundControl sends no equalizer frames — EQ stays disabled until the model is known. No payload is ever guessed.'
             : `${nextProfile.name} takes its equalizer over the model-specific 03:87 HearID frame, which SoundControl does not send — EQ is disabled for this model.`,
         );
@@ -732,11 +851,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setLinkInfo(null);
     setFirmware('Unknown');
     setSerial(null);
-    const fresh = matchDevice('R50i');
+    const fresh = registryRef.current.fallback.profile;
+    simPinnedRef.current = false;
     profileRef.current = fresh;
     setProfile(fresh);
+    setProfileMissing(false);
     setAncMode('anc');
-    setAncLevel(5);
+    setAncLevel(clampToRange(5, fresh.ancLevelRange, { min: 1, max: 5 }));
     setAncScene('outdoor');
     setAncSubMode('manual');
     setAncAdaptiveLevel(5);
@@ -797,7 +918,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           },
         );
         linked.transport = transport;
-        await attach(transport, name, b, dspChannel);
+        await attach(transport, name, b, dspChannel, mac || null);
         setConnectedMac(mac || null);
         // Settings persistence: remember the last few devices for one-tap
         // reconnect on the next launch.
@@ -838,7 +959,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : undefined;
         const simProfile = targetProfile ?? profileRef.current;
         const { transport, name, battery: b } = connectSimulator(onRx, simProfile);
-        await attach(transport, name, b);
+        // Pin the simulator's own profile: folder changes must not re-resolve
+        // the scripted session to a downloaded or fallback profile.
+        await attach(transport, name, b, undefined, null, simProfile);
         setConnectedMac(null);
       }),
     [attach, onRx, releaseTransport, wrapConnect],
@@ -880,13 +1003,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setEqId('signature');
     setSurroundState(false);
     setAncMode('anc');
-    setAncLevel(5);
+    setAncLevel(clampToRange(5, profile.ancLevelRange, { min: 1, max: 5 }));
     setAncSubMode('manual');
     setAncAdaptiveLevel(5);
     setAncSensitivity(undefined);
     setGamingState(false);
     if (prompts) await beep('ok');
-  }, [prompts, write]);
+  }, [profile.ancLevelRange, prompts, write]);
 
   const disconnect = useCallback(async () => {
     const t = transportRef.current;
@@ -988,7 +1111,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setAnc = useCallback(
     async (mode: AncMode, level?: number, scene?: AncScene) => {
-      const appliedLevel = level ?? ancLevel;
+      // The profile may narrow the documented 1..5 range; never send a level
+      // the JSON says this model does not accept.
+      const appliedLevel = clampToRange(
+        level ?? ancLevel,
+        profile.ancLevelRange,
+        { min: 1, max: 5 },
+      );
       const appliedScene = scene ?? ancScene;
       // Which sub-mode the user just chose. An explicit scene pick means
       // multi-scene; the adaptive toggle means adaptive; a level button means
@@ -1048,6 +1177,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ancScene,
       ancSubMode,
       applyEqMemory,
+      profile.ancLevelRange,
       profile.scenes,
       prompts,
       pushLog,
@@ -1153,7 +1283,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         pushLog(
           'sys',
           '',
-          profile.id === 'unknown'
+          profile.fallback
             ? 'The device model is unknown, so SoundControl does not guess an equalizer payload — nothing was sent.'
             : `${profile.name} takes its equalizer over the model-specific 03:87 HearID frame; SoundControl does not guess that payload, so nothing was sent.`,
         );
@@ -1182,10 +1312,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setEqId('custom');
     setBands((prev) => {
       const next = [...prev];
-      next[index] = Math.max(-6, Math.min(6, Math.round(db * 2) / 2));
+      next[index] = clampToRange(Math.round(db * 2) / 2, profile.eqRangeDb, {
+        min: -6,
+        max: 6,
+      });
       return next;
     });
-  }, []);
+  }, [profile.eqRangeDb]);
 
   const commitEq = useCallback(async () => {
     const pkt = buildCustomEq(profile, bands);
@@ -1388,13 +1521,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [write],
   );
 
-  const setProfileId = useCallback((id: string) => {
-    const hit = DEVICES.find((d) => d.id === id);
-    if (hit) {
-      profileRef.current = hit;
-      setProfile(hit);
-    }
-  }, []);
+  /**
+   * Apply a manual profile choice. A real connection persists it per MAC
+   * (`sc.device.intent`) so the same physical unit keeps the override across
+   * reconnects; a disconnected preview is in-memory only, because there is no
+   * MAC to key it to.
+   */
+  const setProfileId = useCallback(
+    (id: string) => {
+      const reg = registryRef.current;
+      const hit =
+        reg.sources.find((source) => source.profile.id === id) ??
+        (reg.fallback.profile.id === id ? reg.fallback : null);
+      if (!hit) return;
+      profileRef.current = hit.profile;
+      setProfile(hit.profile);
+      setProfileMissing(false);
+      const key = canonicalMac(connectedMac);
+      if (key) {
+        const intent = readProfileIntent();
+        intent[key] = id;
+        save(PROFILE_INTENT_KEY, intent);
+      }
+    },
+    [connectedMac],
+  );
 
   // Keep the recent list's last-known battery fresh while connected. Only
   // real device telemetry reaches this effect, and only an actual change is
@@ -1571,6 +1722,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deviceName,
       connectedMac,
       profile,
+      availableProfiles,
       setProfileId,
       battery,
       ancMode,
@@ -1655,6 +1807,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deviceName,
       connectedMac,
       profile,
+      availableProfiles,
       setProfileId,
       battery,
       ancMode,

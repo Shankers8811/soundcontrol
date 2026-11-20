@@ -14,6 +14,13 @@ const os = require('os');
 const path = require('path');
 const { spawn, execFile } = require('child_process');
 const { enforceNoAutostart, migrateLegacySettingsFile } = require('./autostart.cjs');
+const {
+  SCHEMA_VERSION,
+  ensureProfilesDir,
+  profilesDir,
+  readProfiles,
+  startProfilesWatcher,
+} = require('./electron/deviceProfiles.cjs');
 
 let bridgeProcess = null;
 // A candidate child that is still inside its readiness window. Tracked
@@ -38,6 +45,9 @@ let bridgeAdoptedAt = 0;
 let bridgeRestartTimer = null;
 let mainWindow = null;
 let windowEverShown = false;
+// Watches %AppData%\soundcontrol\device_profiles for user-installed JSON
+// profiles. Closed in before-quit so no handle outlives the window.
+let profilesWatcher = null;
 
 // Per-session secret for the RFCOMM bridge. Minted fresh on every launch,
 // handed to the helper through its (private) environment — never argv, which
@@ -81,6 +91,70 @@ ipcMain.handle('soundcontrol:app-version', () => {
     return app.getVersion();
   } catch {
     return '';
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Device profiles (config-driven architecture, Phase 1).
+//
+// Profiles are plain JSON files in %AppData%\soundcontrol\device_profiles.
+// The main process is the only component that touches that folder: it
+// validates each document, reports per-file errors, and watches for changes.
+// The renderer receives a snapshot over IPC and never gets an arbitrary path.
+//
+// There is deliberately no download / update channel. Profiles are installed
+// manually from the project's GitHub page; the app stays fully offline.
+// ---------------------------------------------------------------------------
+function profileErrorSnapshot(err) {
+  const message = err instanceof Error ? err.message : String(err);
+  let folder = '';
+  try {
+    folder = profilesDir(app.getPath('userData'));
+  } catch {
+    /* userData is unavailable before ready; the caller gets an empty path */
+  }
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    folder,
+    exists: false,
+    scannedAt: Date.now(),
+    profiles: [],
+    errors: [{ file: null, path: '$', code: 'E_FOLDER', message }],
+    builtin: [],
+    builtinErrors: [],
+    counts: { files: 0, valid: 0, invalid: 0, builtin: 0 },
+  };
+}
+
+ipcMain.handle('soundcontrol:profiles:list', () => {
+  try {
+    return readProfiles(app.getPath('userData'));
+  } catch (err) {
+    log(`profiles:list failed: ${err}`);
+    return profileErrorSnapshot(err);
+  }
+});
+
+ipcMain.handle('soundcontrol:profiles:folder-path', () => {
+  try {
+    return profilesDir(app.getPath('userData'));
+  } catch {
+    return '';
+  }
+});
+
+ipcMain.handle('soundcontrol:profiles:open-folder', async () => {
+  let dir = '';
+  try {
+    dir = ensureProfilesDir(app.getPath('userData'));
+    // shell.openPath resolves '' on success and an error string otherwise.
+    const res = await shell.openPath(dir);
+    if (res) log(`profiles:open-folder failed: ${res}`);
+    return { ok: res === '', path: dir, error: res || null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log(`profiles:open-folder failed: ${message}`);
+    return { ok: false, path: dir, error: message };
   }
 });
 
@@ -839,6 +913,36 @@ if (!gotTheLock) {
       log(`legacy settings migration skipped: ${err}`);
     }
     enforceNoAutostart(app, log);
+
+    // Device profiles: create the folder, log the initial state, and watch for
+    // user-added/removed/edited JSON. A broken file must never block startup.
+    try {
+      const userData = app.getPath('userData');
+      ensureProfilesDir(userData);
+      const initial = readProfiles(userData);
+      log(
+        `device profiles: ${initial.folder} — ${initial.counts.valid} valid, ` +
+          `${initial.errors.length} error(s), ${initial.counts.builtin} built-in`,
+      );
+      profilesWatcher = startProfilesWatcher(
+        userData,
+        (snapshot) => {
+          log(
+            `device profiles changed: ${snapshot.counts.valid} valid, ` +
+              `${snapshot.errors.length} error(s)`,
+          );
+          for (const win of BrowserWindow.getAllWindows()) {
+            if (!win.isDestroyed()) {
+              win.webContents.send('soundcontrol:profiles:changed', snapshot);
+            }
+          }
+        },
+        { onError: (err) => log(`device profiles watcher: ${err}`) },
+      );
+    } catch (err) {
+      log(`device profiles setup failed: ${err}`);
+    }
+
     // Fire-and-forget by design (the window must not wait for the helper),
     // but a rejection here must reach the log, not the void.
     startBridgeIfAvailable().catch((err) => log(`startBridgeIfAvailable failed: ${err}`));
@@ -858,6 +962,12 @@ app.on('before-quit', () => {
   log('app quitting; stopping the Bluetooth helper');
   shuttingDown = true;
   try {
+    profilesWatcher?.close();
+  } catch {
+    /* watcher already closed */
+  }
+  profilesWatcher = null;
+  try {
     globalShortcut.unregisterAll();
   } catch {
     /* no hotkeys were registered */
@@ -867,6 +977,12 @@ app.on('before-quit', () => {
 
 app.on('window-all-closed', () => {
   shuttingDown = true;
+  try {
+    profilesWatcher?.close();
+  } catch {
+    /* watcher already closed */
+  }
+  profilesWatcher = null;
   killBridgeProcesses();
   if (process.platform !== 'darwin') app.quit();
 });

@@ -56,7 +56,7 @@ export function EqualizerPage() {
         supported={caps.supportsEqualizer}
         noteTitle="The equalizer is not available on this model"
         note={
-          app.profile.id === 'unknown' ? (
+          app.profile.fallback ? (
             <>
               This device’s model could not be identified. Equalizer commands and byte layouts
               differ per model, and SoundControl never guesses a payload for unknown firmware — a

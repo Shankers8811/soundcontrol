@@ -111,6 +111,26 @@ export interface StateOffsets {
   soundModeLength?: number;
 }
 
+/** A declared numeric range, e.g. ANC level 1..5 or EQ adjustment -6..6 dB. */
+export interface ProfileRange {
+  min: number;
+  max: number;
+}
+
+/**
+ * JSON-declared narrowing of the sub-features a layout documents. An omitted
+ * key inherits the wire layout's capability; an explicit `false` removes a
+ * control the firmware does not actually expose on that model. A profile can
+ * never widen the layout (see deriveCapabilities).
+ */
+export interface AncFeatureOverrides {
+  level?: boolean;
+  scenes?: boolean;
+  transVocal?: boolean;
+  wind?: boolean;
+  adaptive?: boolean;
+}
+
 export interface DeviceProfile {
   id: string;
   name: string;
@@ -161,6 +181,22 @@ export interface DeviceProfile {
   source: string;
   /** False when no public capture confirms the profile; UI flags it. */
   verified: boolean;
+  /**
+   * True only for the bundled generic profile used when no installed JSON
+   * profile matched. UI copy must branch on this flag rather than on the id:
+   * a user-installed fallback may carry any id.
+   */
+  fallback?: boolean;
+  /** JSON narrowing of the documented ANC sub-features (never widening). */
+  ancFeatures?: AncFeatureOverrides;
+  /** Manual ANC strength bounds declared by the profile. */
+  ancLevelRange?: ProfileRange;
+  /** Adaptive-sensitivity bounds declared by the profile. */
+  adaptiveSensitivityRange?: ProfileRange;
+  /** EQ band adjustment bounds in dB declared by the profile. */
+  eqRangeDb?: ProfileRange;
+  /** Factory-default curve bands declared by the profile. */
+  defaultBands?: number[];
 }
 
 export interface LogEntry {

@@ -23,7 +23,7 @@
  *
  * Run: node scripts/check-package-files.mjs   (wired into `npm run build`)
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -134,7 +134,13 @@ if (process.argv.includes('--self-test')) {
     ['dist\\device-earbuds.webp', false, 'legacy raster in dist is not packaged'],
     ['public\\device-earbuds.webp', false, 'legacy raster in public is not packaged'],
     ['electron-main.cjs', true, 'main process file is packaged'],
+    ['electron\\deviceProfiles.cjs', true, 'device-profile store is packaged'],
+    ['shared\\device-profile-validate.cjs', true, 'device-profile validator is packaged'],
+    ['shared\\device-profile.schema.json', true, 'device-profile schema is packaged'],
+    ['profiles\\generic_unknown.json', false, 'downloadable profiles are not app files (shipped via extraResources)'],
+    ['profiles\\README.md', false, 'profiles README is not an app file'],
     ['soundcore_bridge.py', true, 'bridge is packaged'],
+    ['scripts\\test_profiles.mjs', false, 'profile tests are not packaged'],
     ['scripts\\check-package-files.mjs', false, 'build tooling is not packaged'],
     ['scripts\\test_ui_state.mjs', false, 'tests are not packaged'],
     ['node_modules\\foo\\index.js', false, 'node_modules is not packaged'],
@@ -153,8 +159,27 @@ if (process.argv.includes('--self-test')) {
   process.exit(0);
 }
 
-const required = ['package.json', 'electron-main.cjs', 'preload.cjs', 'autostart.cjs', 'soundcore_bridge.py', 'dist/index.html'];
+const required = [
+  'package.json',
+  'electron-main.cjs',
+  'preload.cjs',
+  'autostart.cjs',
+  'electron/deviceProfiles.cjs',
+  'shared/device-profile-validate.cjs',
+  'shared/device-profile.schema.json',
+  'soundcore_bridge.py',
+  'dist/index.html',
+];
 const missing = required.filter((f) => !packagedFiles.includes(f));
+
+// extraResources are outside the `files` whitelist. Verify file payloads that
+// must exist in the repo (directories such as python-embed are produced by the
+// prebuild step and are intentionally not checked here).
+for (const entry of pkg.build?.extraResources ?? []) {
+  const from = typeof entry === 'string' ? entry : entry?.from;
+  if (!from) continue;
+  if (!existsSync(join(ROOT, from)) && /\.[a-z0-9]+$/i.test(from)) missing.push(from);
+}
 
 if (violations.length || missing.length) {
   if (violations.length) {

@@ -1,0 +1,347 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Shankers8811/soundcontrol/main/shared/device-profile.schema.json",
+  "title": "SoundControl device profile",
+  "description": "A user-installed, offline device profile. The app validates this document before it can drive any device-facing control. Cross-field rules (EQ band count, battery case offset, fallback names, ANC layout capabilities) are enforced by shared/device-profile-validate.cjs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "name",
+    "sku",
+    "kind",
+    "family",
+    "match",
+    "features",
+    "state",
+    "provenance"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional editor hint. The app never fetches this URL."
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$",
+      "description": "Stable machine id, unique across installed profiles."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "sku": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16,
+      "description": "Soundcore SKU such as A3959. The built-in fallback uses UNKNOWN."
+    },
+    "kind": {
+      "enum": ["earbuds", "overear"]
+    },
+    "family": {
+      "enum": ["tws", "classic"]
+    },
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["names"],
+      "properties": {
+        "names": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "aliases": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "fallback": {
+          "type": "boolean",
+          "description": "True only for the built-in generic profile. A fallback must not declare names or aliases."
+        }
+      }
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anc", "eq", "battery"],
+      "properties": {
+        "anc": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["layout"],
+          "properties": {
+            "layout": {
+              "enum": ["classic", "tws-p30i", "tws-l4nc", "tws-l3pro", "none"]
+            },
+            "levels": {
+              "$ref": "#/$defs/ancLevelRange",
+              "description": "User-facing manual ANC range. Documented hardware range is 1..5."
+            },
+            "adaptiveSensitivity": {
+              "$ref": "#/$defs/sensitivityRange",
+              "description": "Adaptive sensitivity range. Documented hardware range is 0..10."
+            },
+            "scenes": {
+              "type": "boolean"
+            },
+            "transparency": {
+              "type": "boolean"
+            },
+            "wind": {
+              "type": "boolean"
+            },
+            "adaptive": {
+              "type": "boolean"
+            }
+          }
+        },
+        "eq": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command"],
+          "properties": {
+            "command": {
+              "enum": ["02:81", "02:83", "03:87", null]
+            },
+            "bands": {
+              "enum": [8, 10]
+            },
+            "rangeDb": {
+              "$ref": "#/$defs/eqDbRange"
+            },
+            "presets": {
+              "enum": ["factory", "none"]
+            },
+            "defaultBands": {
+              "type": "array",
+              "maxItems": 10,
+              "items": {
+                "type": "number",
+                "minimum": -12,
+                "maximum": 12
+              },
+              "description": "Initial custom curve in dB. Length must equal eq.bands and every value must sit inside eq.rangeDb."
+            }
+          }
+        },
+        "battery": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["scale"],
+          "properties": {
+            "scale": {
+              "type": ["integer", "null"],
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Raw level scale, e.g. 5 or 10. Null is allowed only for the generic fallback."
+            },
+            "case": {
+              "type": "boolean"
+            }
+          }
+        },
+        "dualConnection": {
+          "type": "boolean"
+        },
+        "ldac": {
+          "type": "boolean"
+        },
+        "surround": {
+          "type": "boolean"
+        },
+        "gaming": {
+          "type": "boolean"
+        },
+        "gamingMinFirmware": {
+          "type": "string",
+          "pattern": "^[0-9]{2}\\.[0-9]{2}$"
+        },
+        "factoryReset": {
+          "type": "boolean"
+        },
+        "multipoint": {
+          "type": "boolean"
+        },
+        "voicePrompt": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["setFrame"],
+              "properties": {
+                "setFrame": {
+                  "enum": ["01:AE"]
+                },
+                "stateOffset": {
+                  "type": ["integer", "null"],
+                  "minimum": 0,
+                  "maximum": 511
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["batteryLeft"],
+      "properties": {
+        "batteryLeft": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 511
+        },
+        "batteryRight": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 511
+        },
+        "batteryChargingLeft": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 511
+        },
+        "batteryChargingRight": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 511
+        },
+        "batteryCase": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 511
+        },
+        "firmware": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/span" }
+          ]
+        },
+        "serial": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/span" }
+          ]
+        },
+        "eqPresetId": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 511
+        },
+        "eqBands": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/bandSpan" }
+          ]
+        },
+        "soundModes": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 511
+        },
+        "soundModeLength": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 64
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "verified"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "verified": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "ancLevelRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "max": { "type": "integer", "minimum": 1, "maximum": 5 }
+      }
+    },
+    "sensitivityRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "max": { "type": "integer", "minimum": 0, "maximum": 10 }
+      }
+    },
+    "eqDbRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "type": "integer", "minimum": -12, "maximum": 12 },
+        "max": { "type": "integer", "minimum": -12, "maximum": 12 }
+      }
+    },
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "length"],
+      "properties": {
+        "at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 511
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        }
+      }
+    },
+    "bandSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "count"],
+      "properties": {
+        "at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 511
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        }
+      }
+    }
+  }
+}

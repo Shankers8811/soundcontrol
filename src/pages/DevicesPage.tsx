@@ -6,7 +6,6 @@ import {
   type ScannedDevice,
 } from '../state/derive';
 import { lastKnownSummary, recentDisplayName } from '../state/localData';
-import { DEVICES } from '../protocol/devices';
 import type { RecentDevice } from '../types';
 import { bridgeHealth, scanBridgeDevicesDetailed } from '../transports/bridge';
 import { IconBolt, IconBt, IconCheck, IconClose, IconRefresh } from '../components/Icons';
@@ -390,7 +389,7 @@ export function DevicesPage() {
                 {app.profileNote}
               </p>
             )}
-            {!app.profile.verified && (
+            {!app.profile.verified && !app.profile.fallback && (
               <p className="mt-2 text-[11px] text-faint">
                 This profile has no published capture; it is the closest verified relative and the
                 UI flags it.
@@ -418,10 +417,10 @@ export function DevicesPage() {
         {(() => {
           const q = profileQuery.trim().toLowerCase();
           const matches = q
-            ? DEVICES.filter((d) =>
+            ? app.availableProfiles.filter((d) =>
                 [d.name, d.sku, d.id, ...d.names].join(' ').toLowerCase().includes(q),
               )
-            : DEVICES;
+            : app.availableProfiles;
           if (matches.length === 0) {
             return (
               <p className="rounded-lg border border-edge bg-sunken px-3 py-2 text-xs text-mute">

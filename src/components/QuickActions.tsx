@@ -30,7 +30,7 @@ export function QuickActions() {
         supported={caps.supportsEqualizer}
         noteTitle="No quick sound actions on this model"
         note={
-          app.profile.id === 'unknown' ? (
+          app.profile.fallback ? (
             <>
               This device’s model could not be identified, so SoundControl sends no equalizer
               frames — a guessed EQ command or payload for unknown firmware could write a wrong

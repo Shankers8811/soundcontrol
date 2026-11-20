@@ -14,6 +14,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // user-toggleable setting, so nothing in the renderer can alter it.
   getAppVersion: () => ipcRenderer.invoke('soundcontrol:app-version'),
   openLogFolder: () => ipcRenderer.invoke('soundcontrol:open-log-folder'),
+  // User-installed device profiles. The main process owns the folder, reads
+  // and validates every JSON file, and pushes a fresh snapshot when it changes.
+  // There is no download channel: profiles are installed manually from GitHub.
+  listDeviceProfiles: () => ipcRenderer.invoke('soundcontrol:profiles:list'),
+  getDeviceProfilesFolder: () => ipcRenderer.invoke('soundcontrol:profiles:folder-path'),
+  openDeviceProfilesFolder: () => ipcRenderer.invoke('soundcontrol:profiles:open-folder'),
+  onDeviceProfilesChanged: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, snapshot) => callback(snapshot);
+    ipcRenderer.on('soundcontrol:profiles:changed', listener);
+    return () => ipcRenderer.removeListener('soundcontrol:profiles:changed', listener);
+  },
   // Windows default-output volume. The Soundcore RFCOMM protocol has no
   // volume command, so the Volume card controls the OS mixer instead.
   getSystemVolume: () => ipcRenderer.invoke('soundcontrol:get-system-volume'),

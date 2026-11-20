@@ -8,6 +8,7 @@
  * per-model profiles in `src/protocol/devices.ts` — nothing is guessed.
  */
 import type {
+  AncFeatureOverrides,
   AncLayout,
   AncMode,
   AncScene,
@@ -16,6 +17,7 @@ import type {
   DeviceProfile,
   EarbudPresence,
   EqBucket,
+  ProfileRange,
 } from '../types';
 
 /* ------------------------------------------------------------------ */
@@ -68,6 +70,33 @@ export const NO_ANC_SUB: AncSubFeatures = {
   adaptive: false,
 };
 
+/** Protocol-documented manual ANC strength range (the `manual << 4` nibble). */
+export const DEFAULT_ANC_LEVEL_RANGE: ProfileRange = { min: 1, max: 5 };
+/** Protocol-documented EQ band adjustment range, in dB. */
+export const DEFAULT_EQ_RANGE_DB: ProfileRange = { min: -6, max: 6 };
+
+/**
+ * Apply a JSON profile's declared narrowing to the layout's documented
+ * sub-features. The layout table is the ceiling: a profile may turn a control
+ * off, never on, so a hand-edited file cannot make the UI offer a byte the
+ * firmware does not read.
+ */
+export function narrowAncSub(
+  layout: AncLayout,
+  overrides?: AncFeatureOverrides,
+): AncSubFeatures {
+  if (layout === 'none') return NO_ANC_SUB;
+  const documented = ANC_SUB_FEATURES[layout];
+  if (!overrides) return documented;
+  return {
+    level: documented.level && overrides.level !== false,
+    scenes: documented.scenes && overrides.scenes !== false,
+    transVocal: documented.transVocal && overrides.transVocal !== false,
+    wind: documented.wind && overrides.wind !== false,
+    adaptive: documented.adaptive && overrides.adaptive !== false,
+  };
+}
+
 /**
  * What the connected device can actually be told to do. Two entries are
  * protocol facts, not per-model checks:
@@ -100,6 +129,12 @@ export interface Capabilities {
   supportsDual: boolean;
   supportsLdac: boolean;
   ancSub: AncSubFeatures;
+  /** Manual ANC strength bounds (documented 1..5, narrowed by the profile). */
+  ancLevelRange: ProfileRange;
+  /** Adaptive sensitivity bounds, or null when the layout has no such byte. */
+  adaptiveSensitivityRange: ProfileRange | null;
+  /** EQ band adjustment bounds in dB. */
+  eqRangeDb: ProfileRange;
 }
 
 /** Parse a dotted firmware string such as `01.60` / `02.31.00`. */
@@ -149,7 +184,14 @@ export function deriveCapabilities(profile: DeviceProfile, firmware?: string | n
     supportsSurround: profile.surround,
     supportsDual: profile.dual,
     supportsLdac: profile.ldac,
-    ancSub: profile.ancLayout === 'none' ? NO_ANC_SUB : ANC_SUB_FEATURES[profile.ancLayout],
+    ancSub: narrowAncSub(profile.ancLayout, profile.ancFeatures),
+    ancLevelRange: profile.ancLevelRange ?? DEFAULT_ANC_LEVEL_RANGE,
+    adaptiveSensitivityRange:
+      profile.adaptiveSensitivityRange ??
+      (profile.ancLayout !== 'none' && ANC_SUB_FEATURES[profile.ancLayout].adaptive
+        ? DEFAULT_ANC_LEVEL_RANGE
+        : null),
+    eqRangeDb: profile.eqRangeDb ?? DEFAULT_EQ_RANGE_DB,
   };
 }
 

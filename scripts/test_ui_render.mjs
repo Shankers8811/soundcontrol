@@ -7,14 +7,14 @@
  * react-dom/server in Node. No DOM framework, no browser: this catches
  * render-time crashes (bad store fields, undefined access, JSX errors) and
  * asserts the truthfulness markers the final UI must show in its default
- * (disconnected, R50i/A3949-profile) state:
+ * (disconnected, bundled generic-fallback-profile) state:
  *
  *   - Dashboard: "Battery unavailable" (never an invented percentage),
- *     honest noise-control unsupported note for the no-ANC default profile,
+ *     honest noise-control unsupported note for the no-ANC fallback,
  *     earbud card in "Status unavailable" (unknown ≠ disconnected),
  *     disabled volume card that explains it controls Windows playback volume.
  *   - Devices: real scan surface, capability matrix rows.
- *   - Equalizer: preset grid + FE FE custom curve (this profile has EQ).
+ *   - Equalizer: honest "no profile matched" gate — no fake faders.
  *   - Controls: the explicit gesture-unsupported statement.
  *   - Settings: desktop-only rows disabled with a reason; developer tools
  *     absent from a production build.
@@ -144,7 +144,7 @@ check('earbud card present for TWS profile', dash.includes('Earbud Connection'))
 // per-side earbud presence and is asserted in the connected-state section.)
 check('unknown presence renders per-side "Unknown", never "Not connected"', dash.includes('>Unknown<') && !dash.includes('Status unavailable') && !dash.includes('>Not connected<'));
 check('connect CTA points at the real Devices page', dash.includes('Open Devices'));
-check('quick actions render real presets for this EQ-capable profile', dash.includes('Bass Booster') && dash.includes('Spoken Word'));
+check('quick actions are honestly gated for the fallback profile', dash.includes('Preset shortcuts become available as soon as the model is known') && !dash.includes('Bass Booster'));
 
 console.log('\n[devices]');
 const devices = render(React.createElement(M.DevicesPage));
@@ -160,11 +160,11 @@ check('model profile preview (override only when connected)', devices.includes('
 console.log('\n[equalizer]');
 const eq = render(React.createElement(M.EqualizerPage));
 check('page title', eq.includes('>Equalizer<'));
-check('this EQ-capable profile shows the preset grid', eq.includes('Soundcore presets') && eq.includes('Soundcore Signature'));
-check('custom curve documents the real FE FE preset id', eq.includes('FE FE'));
-check('fader range documents the real wire values (±6 dB, 100 Hz–12.8 kHz)', eq.includes('±6 dB') && eq.includes('100 Hz') && eq.includes('12.8 kHz'));
-check('every band renders a fader input', (eq.match(/class="eq-fader"/g) ?? []).length === 8, `got ${(eq.match(/class="eq-fader"/g) ?? []).length}`);
-check('disabled while not connected', eq.includes('Connect a device to apply presets'));
+// The pre-connection profile is the bundled generic fallback: it must explain
+// the missing profile instead of rendering a preset grid the device cannot take.
+check('fallback profile shows the honest EQ-unavailable note', eq.includes('The equalizer is not available on this model') && eq.includes('model could not be identified'));
+check('no fake preset grid or faders without a matching profile', !eq.includes('Soundcore presets') && !eq.includes('class="eq-fader"'));
+check('equalizer page points at the Devices override path', eq.includes('Devices page'));
 
 console.log('\n[controls]');
 const controls = render(React.createElement(M.ControlsPage));
@@ -174,7 +174,7 @@ check('gesture customization is explicitly unsupported — no decorative remap U
 // 01:85 is documented only for the Motion+ (A3116); no profile in the table
 // may fire an undocumented destructive frame — the card must explain instead.
 check('factory reset is honestly withheld (01:85 documented for Motion+ only)', controls.includes('Factory reset is not offered for this model') && controls.includes('01:85') && !controls.includes('Send reset command'));
-check('no gaming toggle for this profile (A3949 has gaming — present)', controls.includes('Gaming mode'));
+check('no gaming toggle for the generic fallback profile (no documented frame)', !controls.includes('Gaming mode'));
 
 console.log('\n[settings]');
 const settings = render(React.createElement(M.SettingsPage));

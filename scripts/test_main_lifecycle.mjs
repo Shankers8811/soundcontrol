@@ -357,6 +357,11 @@ await scenario('L6 legacy settings migrated; settings IPC gone; no tray', async 
   check('unrelated settings keys preserved', after.keep === 1);
   check('settings write IPC removed', !ipc.has('soundcontrol:set-setting') && !ipc.has('soundcontrol:get-settings'));
   check('real IPC channels still registered', ipc.has('soundcontrol:bridge-token') && ipc.has('soundcontrol:open-log-folder') && ipc.has('soundcontrol:app-version') && ipc.has('soundcontrol:get-system-volume') && ipc.has('soundcontrol:set-system-volume'));
+  check('device-profile IPC registered', ipc.has('soundcontrol:profiles:list') && ipc.has('soundcontrol:profiles:folder-path') && ipc.has('soundcontrol:profiles:open-folder'));
+  const profileSnapshot = ipc.get('soundcontrol:profiles:list')();
+  check('profiles:list returns a validated snapshot', !!profileSnapshot && Array.isArray(profileSnapshot.profiles) && Array.isArray(profileSnapshot.errors) && profileSnapshot.builtin.length === 1);
+  const profileFolder = ipc.get('soundcontrol:profiles:folder-path')();
+  check('profiles:folder-path points at device_profiles', typeof profileFolder === 'string' && profileFolder.endsWith('device_profiles'));
   check('no Tray instance created (stub has none; any use would throw)', windows.length >= 1);
   windows[0].userClose(appStub);
   await sleep(200);

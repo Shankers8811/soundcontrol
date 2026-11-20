@@ -154,7 +154,7 @@ export function NoiseControl() {
         supported={caps.supportsNoiseControl}
         noteTitle="Noise control is not available on this model"
         note={
-          app.profile.id === 'unknown' ? (
+          app.profile.fallback ? (
             <>
               This device’s model could not be identified, and every supported model uses a
               different <span className="font-mono">06:81</span> sound-mode byte layout — sending a
