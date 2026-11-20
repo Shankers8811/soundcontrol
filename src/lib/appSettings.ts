@@ -47,3 +47,27 @@ export async function getAppVersion(): Promise<string | null> {
     return null;
   }
 }
+
+/**
+ * Absolute path of %AppData%\soundcontrol\device_profiles, for display only.
+ * Returns null outside the desktop app (the canonical %AppData% form is still
+ * shown to the user).
+ */
+export async function getDeviceProfilesFolder(): Promise<string | null> {
+  try {
+    const path = await api()?.getDeviceProfilesFolder?.();
+    return typeof path === 'string' && path ? path : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Creates the device-profile folder if needed and opens it in Explorer. */
+export async function openDeviceProfilesFolder(): Promise<boolean> {
+  try {
+    const result = await api()?.openDeviceProfilesFolder?.();
+    return result?.ok === true;
+  } catch {
+    return false;
+  }
+}

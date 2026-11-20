@@ -6,9 +6,19 @@ import {
   type ScannedDevice,
 } from '../state/derive';
 import { lastKnownSummary, recentDisplayName } from '../state/localData';
+import { openDeviceProfilesFolder, isDesktop } from '../lib/appSettings';
+import { REPO_URL } from '../lib/downloads';
 import type { RecentDevice } from '../types';
 import { bridgeHealth, scanBridgeDevicesDetailed } from '../transports/bridge';
-import { IconBolt, IconBt, IconCheck, IconClose, IconRefresh } from '../components/Icons';
+import {
+  IconBolt,
+  IconBt,
+  IconCheck,
+  IconClose,
+  IconExternal,
+  IconFolder,
+  IconRefresh,
+} from '../components/Icons';
 import {
   Button,
   Card,
@@ -56,6 +66,7 @@ export function DevicesPage() {
   const [profileQuery, setProfileQuery] = useState('');
   const [renaming, setRenaming] = useState<RecentDevice | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [profilesOpened, setProfilesOpened] = useState<boolean | null>(null);
 
   /* ---------------------------------------------------------- scanning */
 
@@ -144,6 +155,14 @@ export function DevicesPage() {
 
   const busy = app.connecting;
 
+  // Offline profile state: either no model profile is installed at all, or
+  // the connected device matched none of them (the store then serves the
+  // generic fallback). Both cases get the same honest setup card.
+  const installedProfileCount = app.availableProfiles.filter((p) => !p.fallback).length;
+  const profileMissing =
+    installedProfileCount === 0 || (app.connected && app.profile.fallback === true);
+  const desktop = isDesktop();
+
   /* ------------------------------------------------------------- render */
 
   return (
@@ -185,6 +204,61 @@ export function DevicesPage() {
           </Button>
         }
       />
+
+      {/* Offline profiles: the app ships no model table. Until the user drops
+          a matching .json into the AppData folder, the device stays on the
+          honest generic fallback — say so instead of pretending. */}
+      {profileMissing && (
+        <Card
+          title="Profile not found. Please download from GitHub."
+          subtitle="Model support is installed offline — SoundControl never downloads profiles by itself"
+        >
+          <p className="text-xs leading-relaxed text-mute">
+            Download the <code className="font-mono text-[11px] text-ink/80">.json</code> profile
+            for your model from the project’s{' '}
+            <a
+              href={`${REPO_URL}/tree/main/profiles`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-accent-soft underline-offset-2 hover:underline"
+            >
+              profiles folder on GitHub
+            </a>{' '}
+            and drop it into this folder:
+          </p>
+          <p className="mt-2 rounded-lg border border-edge bg-sunken px-3 py-2 font-mono text-[11px] text-ink/80">
+            %AppData%\soundcontrol\device_profiles
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              disabled={!desktop}
+              onClick={async () => setProfilesOpened(await openDeviceProfilesFolder())}
+            >
+              <IconFolder size={14} /> Open profiles folder
+            </Button>
+            <a
+              href={`${REPO_URL}/tree/main/profiles`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-edge bg-sunken px-2.5 py-1.5 text-[11px] font-semibold text-accent-soft transition-colors hover:border-accent/50"
+            >
+              Browse profiles <IconExternal size={12} />
+            </a>
+          </div>
+          <p className="mt-2 text-[11px] leading-relaxed text-faint">
+            {installedProfileCount === 0
+              ? 'No model profiles are installed yet, so every control that needs a documented byte layout stays disabled.'
+              : 'This device did not match any installed profile. Add the profile for its exact model name or Bluetooth address.'}
+            {!desktop && ' The folder button is available in the Windows desktop app.'}
+          </p>
+          {profilesOpened === false && (
+            <p className="mt-2 text-[11px] text-warn">
+              Windows did not open the folder — it is created automatically on first launch.
+            </p>
+          )}
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         {/* ---------------------------------------------- discovered list */}

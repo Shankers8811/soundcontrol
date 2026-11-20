@@ -1,0 +1,58 @@
+name: Release
+
+# Tag push is the only trigger:
+#
+#   git tag v1.0.6
+#   git push origin v1.0.6
+#
+# `build.publish` in package.json points electron-builder at this repository,
+# and `build.nsis.artifactName` names the installer SoundControl-Setup.exe —
+# the exact asset the in-app download link resolves via
+# /releases/latest/download/SoundControl-Setup.exe.
+#
+# The older release-windows.yml keeps its richer signing/smoke pipeline and
+# only runs on a tag whose commit message contains [publish-windows], so a
+# normal version tag publishes exactly once, here.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      # electron-builder's GitHub publisher reads GH_TOKEN.
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (protocol + profiles + TypeScript + renderer)
+        run: npm run build
+
+      # The installer must ship the bundled Python runtime. This is the same
+      # staging step `npm run build:win` performs locally; REQUIRED makes a
+      # download failure fatal instead of publishing a runtime-less build.
+      - name: Stage the bundled Python runtime
+        env:
+          SOUNDCONTROL_PYTHON_REQUIRED: '1'
+        run: npm run fetch:python-embed
+
+      - name: Build and publish the Windows installer
+        run: npx electron-builder --win --publish always

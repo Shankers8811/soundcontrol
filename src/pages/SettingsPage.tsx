@@ -1,13 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store';
-import { getAppVersion, isDesktop, openLogFolder } from '../lib/appSettings';
+import {
+  getAppVersion,
+  getDeviceProfilesFolder,
+  isDesktop,
+  openDeviceProfilesFolder,
+  openLogFolder,
+} from '../lib/appSettings';
+import { REPO_URL } from '../lib/downloads';
 import { HexConsole } from '../components/HexConsole';
 import { ThemeSection } from '../components/ThemeSection';
 import { UpdatesSection } from '../components/UpdatesSection';
 import { FeedbackSection } from '../components/FeedbackSection';
 import { ReportSection } from '../components/ReportSection';
 import { AboutSection } from './AboutPage';
-import { IconFolder, IconSound, IconTerminal, IconWindows } from '../components/Icons';
+import { IconExternal, IconFolder, IconSound, IconTerminal, IconWindows } from '../components/Icons';
 import { Button, Card, InfoRow, PageHeader, SettingsRow, Toggle } from '../components/ui';
 
 /**
@@ -62,6 +69,8 @@ export function SettingsPage() {
   const desktop = isDesktop();
 
   const [folderOpened, setFolderOpened] = useState<boolean | null>(null);
+  const [profilesFolderOpened, setProfilesFolderOpened] = useState<boolean | null>(null);
+  const [profilesPath, setProfilesPath] = useState<string | null>(null);
   const [version, setVersion] = useState<string | null>(null);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
@@ -79,7 +88,22 @@ export function SettingsPage() {
     };
   }, [desktop]);
 
+  // Resolve the real %AppData% path for display. The canonical
+  // %AppData%\soundcontrol\device_profiles form is always shown too, so the
+  // instructions still make sense outside the desktop shell.
+  useEffect(() => {
+    if (!desktop) return;
+    let stopped = false;
+    void getDeviceProfilesFolder().then((path) => {
+      if (!stopped) setProfilesPath(path);
+    });
+    return () => {
+      stopped = true;
+    };
+  }, [desktop]);
+
   const caps = app.capabilities;
+  const installedProfileCount = app.availableProfiles.filter((p) => !p.fallback).length;
 
   const downloadSettings = () => {
     const blob = new Blob([app.exportSettings()], { type: 'application/json' });
@@ -350,6 +374,68 @@ export function SettingsPage() {
           </p>
           <AboutSection />
         </div>
+
+        {/* ---------------------------------------------- device profiles */}
+        {/* Offline by design: model support is data the user installs, never a
+            download the app performs. The card states the exact folder, opens
+            it on request, and links to the real profiles directory. */}
+        <Card
+          title="Device profiles"
+          subtitle="Offline by design — model support comes from JSON files you install yourself"
+        >
+          <p className="text-xs leading-relaxed text-mute">
+            SoundControl ships no model table and downloads nothing. Each supported model is
+            described by a validated <code className="font-mono text-[11px] text-ink/80">.json</code>{' '}
+            profile. Download the file for your model from the project’s GitHub{' '}
+            <a
+              href={`${REPO_URL}/tree/main/profiles`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-accent-soft underline-offset-2 hover:underline"
+            >
+              profiles folder
+            </a>{' '}
+            and drop it into:
+          </p>
+          <p className="mt-2 rounded-lg border border-edge bg-sunken px-3 py-2 font-mono text-[11px] text-ink/80">
+            %AppData%\soundcontrol\device_profiles
+          </p>
+          {profilesPath && (
+            <p className="mt-1 truncate font-mono text-[10px] text-faint" title={profilesPath}>
+              {profilesPath}
+            </p>
+          )}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              disabled={!desktop}
+              onClick={async () =>
+                setProfilesFolderOpened(await openDeviceProfilesFolder())
+              }
+            >
+              <IconFolder size={14} /> Open profiles folder
+            </Button>
+            <a
+              href={`${REPO_URL}/tree/main/profiles`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-edge bg-sunken px-2.5 py-1.5 text-[11px] font-semibold text-accent-soft transition-colors hover:border-accent/50"
+            >
+              Browse profiles <IconExternal size={12} />
+            </a>
+          </div>
+          <p className="mt-2 text-[11px] leading-relaxed text-faint">
+            {installedProfileCount === 0
+              ? 'No model profiles are installed yet — a connected device stays on the honest generic fallback until you add one.'
+              : `${installedProfileCount} model profile${installedProfileCount === 1 ? '' : 's'} installed. New or edited files are picked up immediately; no restart is needed.`}
+            {!desktop && ' The folder button is available in the Windows desktop app.'}
+          </p>
+          {profilesFolderOpened === false && (
+            <p className="mt-2 text-[11px] text-warn">
+              Windows did not open the folder — it is created automatically on first launch.
+            </p>
+          )}
+        </Card>
 
         {/* -------------------------------------------------- application */}
         <Card title="Application">
