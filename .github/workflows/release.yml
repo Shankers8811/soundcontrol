@@ -119,9 +119,11 @@ jobs:
           if [ -f release/SoundControl-Setup.exe.blockmap ]; then
             assets+=(release/SoundControl-Setup.exe.blockmap)
           fi
-          if [ -f release/latest.yml ]; then
-            assets+=(release/latest.yml)
-          fi
+          # latest.yml is the electron-updater feed. Without it an installed app
+          # can never discover this release, so a missing file must fail loudly
+          # instead of publishing an installer that looks fine but never updates.
+          test -f release/latest.yml
+          assets+=(release/latest.yml)
           gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
 
       - name: Publish the release
