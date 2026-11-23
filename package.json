@@ -39,7 +39,7 @@
         "provider": "github",
         "owner": "Shankers8811",
         "repo": "soundcontrol",
-        "releaseType": "release"
+        "releaseType": "draft"
       }
     ],
     "files": [

@@ -5,10 +5,17 @@ name: Release
 #   git tag v1.0.6
 #   git push origin v1.0.6
 #
-# `build.publish` in package.json points electron-builder at this repository,
-# and `build.nsis.artifactName` names the installer SoundControl-Setup.exe —
-# the exact asset the in-app download link resolves via
+# `build.nsis.artifactName` names the installer SoundControl-Setup.exe — the
+# exact asset the in-app download link resolves via
 # /releases/latest/download/SoundControl-Setup.exe.
+#
+# Publishing is deliberately NOT left to electron-builder's GitHub publisher:
+# when its uploads race, it can create two release objects for the same tag,
+# and GitHub then resolves /releases/download/<tag>/<asset> against only one
+# of them. That is what shadowed the v1.0.11 installer (the blockmap-only
+# duplicate won, so the .exe returned 404). This workflow builds with
+# `--publish never` and owns the release through explicit `gh` calls:
+# delete stale release objects → create one draft → upload → publish.
 #
 # The older release-windows.yml keeps its richer signing/smoke pipeline and
 # only runs on a tag whose commit message contains [publish-windows], so a
@@ -21,12 +28,21 @@ on:
 permissions:
   contents: write
 
+# `max-parallel` only applies to matrix jobs, so the correct serialisation
+# primitive here is a concurrency group: a tag push and a manual re-run can
+# never overlap and create two release objects for the same tag.
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: windows-latest
-    timeout-minutes: 30
+    # 122 MB of installer + Electron packaging needs more than 30 minutes on
+    # a cold runner; the old ceiling could abort the job mid-upload.
+    timeout-minutes: 45
     env:
-      # electron-builder's GitHub publisher reads GH_TOKEN.
+      # The gh CLI (and any electron-builder publish path) reads GH_TOKEN.
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Check out the tagged commit
@@ -54,5 +70,65 @@ jobs:
           SOUNDCONTROL_PYTHON_REQUIRED: '1'
         run: npm run fetch:python-embed
 
-      - name: Build and publish the Windows installer
-        run: npx electron-builder --win --publish always
+      # Build only. The release is created and populated by the explicit `gh`
+      # steps below, so exactly one release object ever owns this tag's URLs.
+      - name: Build the Windows installer
+        run: npx electron-builder --win --publish never
+
+      - name: Verify the installer and bundled runtime
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem -Path release -Filter 'SoundControl-Setup.exe' -File)
+          if ($installers.Count -ne 1) { throw "expected exactly one installer, found $($installers.Count)" }
+          $installer = $installers[0]
+          if ($installer.Length -lt 50MB) { throw "installer suspiciously small: $($installer.Length) bytes" }
+          $python = 'release/win-unpacked/resources/python/python.exe'
+          if (-not (Test-Path $python)) { throw 'bundled Python runtime missing from the package' }
+          Write-Host "Installer: $($installer.Name) ($($installer.Length) bytes)"
+
+      # A duplicate release shadows /releases/download/<tag>/SoundControl-Setup.exe
+      # and serves a 404, so always start from exactly one release object.
+      # Deleting only the release (not the tag) keeps re-runs idempotent.
+      - name: Remove stale releases for this tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mapfile -t ids < <(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id")
+          for id in "${ids[@]}"; do
+            echo "Deleting stale release id $id for $RELEASE_TAG"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+          done
+
+      # Draft first, upload with --clobber, publish last: the release is never
+      # public with a partial asset set, and a retry replaces the installer
+      # instead of duplicating it.
+      - name: Create draft release and upload assets
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" \
+            --draft \
+            --title "SoundControl $RELEASE_TAG" \
+            --generate-notes
+          assets=(release/SoundControl-Setup.exe)
+          if [ -f release/SoundControl-Setup.exe.blockmap ]; then
+            assets+=(release/SoundControl-Setup.exe.blockmap)
+          fi
+          if [ -f release/latest.yml ]; then
+            assets+=(release/latest.yml)
+          fi
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+
+      - name: Publish the release
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release edit "$RELEASE_TAG" --draft=false --latest
+          gh release view "$RELEASE_TAG"
