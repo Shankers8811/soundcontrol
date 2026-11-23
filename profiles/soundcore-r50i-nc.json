@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "soundcore-r50i-nc",
+  "name": "Soundcore R50i NC",
+  "sku": "A3959",
+  "kind": "earbuds",
+  "family": "tws",
+  "match": {
+    "names": ["P30i", "R50i NC", "A3959"]
+  },
+  "features": {
+    "anc": {
+      "layout": "tws-p30i",
+      "levels": { "min": 1, "max": 5 },
+      "adaptiveSensitivity": { "min": 0, "max": 10 },
+      "scenes": false,
+      "transparency": false,
+      "wind": true,
+      "adaptive": true
+    },
+    "eq": {
+      "command": "02:83",
+      "bands": 10,
+      "rangeDb": { "min": -6, "max": 6 },
+      "presets": "factory",
+      "defaultBands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    "battery": { "scale": 10, "case": false },
+    "dualConnection": true,
+    "ldac": false,
+    "surround": true,
+    "gaming": true,
+    "gamingMinFirmware": "01.60",
+    "factoryReset": false,
+    "multipoint": false,
+    "voicePrompt": null
+  },
+  "state": {
+    "batteryLeft": 2,
+    "batteryRight": 3,
+    "batteryChargingLeft": 4,
+    "batteryChargingRight": 5,
+    "batteryCase": null,
+    "firmware": { "at": 6, "length": 10 },
+    "serial": { "at": 16, "length": 16 },
+    "eqPresetId": 32,
+    "eqBands": { "at": 34, "count": 10 },
+    "soundModes": 64,
+    "soundModeLength": 7
+  },
+  "provenance": {
+    "source": "OpenSCQ30 a3959 state_update.rs (dual battery 10, sound modes, equalizer_with_drc_tws); protocol frame vectors in scripts/verify-protocol.mjs.",
+    "verified": true
+  }
+}
