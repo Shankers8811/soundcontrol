@@ -59,6 +59,28 @@ interface DeviceProfilesOpenResult {
   error: string | null;
 }
 
+/** Status pushed by the main-process electron-updater wiring. */
+interface UpdateStatus {
+  state: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error';
+  version?: string | null;
+  percent?: number;
+  transferred?: number;
+  total?: number;
+  bytesPerSecond?: number;
+  message?: string;
+}
+
+interface UpdateCheckIpcResult {
+  ok: boolean;
+  version?: string | null;
+  reason?: string;
+}
+
+interface UpdateActionResult {
+  ok: boolean;
+  reason?: string;
+}
+
 interface Window {
   // Exposed by preload.cjs inside the packaged Windows desktop app.
   electronAPI?: {
@@ -71,6 +93,14 @@ interface Window {
     getAppVersion?: () => Promise<string>;
     /** Opens %AppData%\soundcontrol in the file manager. */
     openLogFolder?: () => Promise<boolean>;
+    /** Triggers an electron-updater check (auto-downloads newer releases). */
+    checkForUpdates?: () => Promise<UpdateCheckIpcResult>;
+    /** Explicitly downloads a found update. */
+    downloadUpdate?: () => Promise<UpdateActionResult>;
+    /** Quits and runs the downloaded installer. */
+    quitAndInstall?: () => Promise<UpdateActionResult>;
+    /** Subscribe to updater status; returns an unsubscribe function. */
+    onUpdateStatus?: (callback: (status: UpdateStatus) => void) => () => void;
     /** Validated snapshot of %AppData%\soundcontrol\device_profiles. */
     listDeviceProfiles?: () => Promise<DeviceProfilesSnapshot>;
     /** Absolute path of the device_profiles folder (display only). */

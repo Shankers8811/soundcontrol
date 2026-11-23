@@ -190,7 +190,7 @@ check('production build hides developer tools', !settings.includes('Developer to
 check('Settings has a Device section (honest when disconnected)', settings.includes('>Device<') && settings.includes('No device connected'));
 check('Settings has Appearance with System/Dark/Light (accessible group)', settings.includes('aria-label="Theme"') && settings.includes('>System<') && settings.includes('>Dark<') && settings.includes('>Light<'));
 check('theme selection persists through the store setting key', settings.includes('persists between launches'));
-check('Settings has Updates with a real check button and honest idle copy', settings.includes('Check for updates') && settings.includes('no background updater') && settings.includes('Installed version'));
+check('Settings has Updates with a real check button and honest idle copy', settings.includes('Check for updates') && settings.includes('no background service') && settings.includes('Installed version'));
 check('no fake update result is pre-rendered', !settings.includes('You are on the latest release') && !settings.includes('A newer release is available'));
 check('no accent-color picker (branding is fixed)', !settings.includes('Accent color'));
 check('Settings has Feedback & rating with five accessible star buttons', settings.includes('Feedback &amp; rating') && settings.includes('aria-label="Rating, 0 to 5 stars"') && (settings.match(/stars?"/g) ?? []).length >= 5);

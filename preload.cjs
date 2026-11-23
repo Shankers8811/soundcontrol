@@ -14,6 +14,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // user-toggleable setting, so nothing in the renderer can alter it.
   getAppVersion: () => ipcRenderer.invoke('soundcontrol:app-version'),
   openLogFolder: () => ipcRenderer.invoke('soundcontrol:open-log-folder'),
+  // In-app updates. The main process owns electron-updater; the renderer only
+  // triggers check/download/install and receives status events.
+  checkForUpdates: () => ipcRenderer.invoke('soundcontrol:update:check'),
+  downloadUpdate: () => ipcRenderer.invoke('soundcontrol:update:download'),
+  quitAndInstall: () => ipcRenderer.invoke('soundcontrol:update:install'),
+  onUpdateStatus: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, status) => callback(status);
+    ipcRenderer.on('soundcontrol:update:status', listener);
+    return () => ipcRenderer.removeListener('soundcontrol:update:status', listener);
+  },
   // User-installed device profiles. The main process owns the folder, reads
   // and validates every JSON file, and pushes a fresh snapshot when it changes.
   // There is no download channel: profiles are installed manually from GitHub.

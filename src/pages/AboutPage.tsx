@@ -11,10 +11,11 @@ import { Card } from '../components/ui';
  * The version is the actual application version (package.json via Vite in
  * the renderer, app.getVersion() in the desktop app — they are the same
  * string in a packaged build). Both links are real, working URLs to this
- * project's GitHub. There is deliberately no "check for updates",
- * "privacy policy" or "contact support" button: the app has no update
- * channel, no policy page and no support desk, and a button that pretended
- * otherwise would be exactly the fake UI this build forbids.
+ * project's GitHub. There is deliberately no "privacy policy" or "contact
+ * support" button: the app has no policy page and no support desk, and a
+ * button that pretended otherwise would be exactly the fake UI this build
+ * forbids. Updates are real and live in Settings → Updates (electron-updater
+ * in the installed app, a read-only GitHub check in the browser).
  */
 
 // Vite injects the real version at build time; fall back to the Electron
@@ -96,8 +97,10 @@ export function AboutSection() {
               </li>
             </ul>
             <p className="mt-3 text-[11px] leading-relaxed text-faint">
-              Updating is manual by design: download the newest installer and run it — the NSIS
-              setup upgrades in place. There is no background updater, so no update button.
+              Updates are handled in Settings → Updates: the installed app checks the official
+              GitHub Releases, downloads the new installer and offers Restart to update. You can
+              also download the newest installer above and run it — the NSIS setup upgrades in
+              place.
             </p>
           </Card>
 

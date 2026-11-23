@@ -19,18 +19,20 @@ import { Button, Card, InfoRow, PageHeader, SettingsRow, Toggle } from '../compo
 
 /**
  * Settings page (PART P, Pass 8 consolidation) — the single home of every
- * secondary feature. Sections, in order: Device, Appearance, Updates,
- * Feedback & rating, Report a problem, Startup & exit, About — then the
- * original Application and Diagnostics cards. Every control really does
- * something, and everything that has no backend says so plainly:
+ * secondary feature. Sections, in order: Device, Appearance, Feedback &
+ * rating, Report a problem, Startup & exit, About, Updates (under About),
+ * Device profiles — then the original Application and Diagnostics cards.
+ * Every control really does something, and everything that has no backend
+ * says so plainly:
  *
  *  - Device: real store state only (name/model/firmware/serial read from the
  *    device over 01:05); honest "no device connected" otherwise.
  *  - Appearance: System / Dark / Light, persisted (`sc.theme`), applied live
  *    by the shell — the only theme control in the app (none in the sidebar).
- *  - Updates: queries the official GitHub Releases API for this repository
- *    and reports the true outcome; never fabricates an update and never
- *    downloads anything.
+ *  - Updates: in the installed app the main process owns electron-updater
+ *    (check → download progress → Restart to update); in a browser it falls
+ *    back to the read-only GitHub Releases API check. Neither path fabricates
+ *    a version or a result.
  *  - Feedback & rating / Report a problem: no backend exists, so nothing is
  *    "submitted" — the app assembles real text (with token redaction),
  *    copies/saves it locally and links to the project's real issue tracker.
@@ -323,14 +325,6 @@ export function SettingsPage() {
           {backupMessage && <p className="mt-3 text-[11px] leading-relaxed text-mute">{backupMessage}</p>}
         </Card>
 
-        {/* ------------------------------------------------------ updates */}
-        <Card
-          title="Updates"
-          subtitle="Manual by design — the check reads the official GitHub releases for this repository and nothing is ever downloaded automatically"
-        >
-          <UpdatesSection />
-        </Card>
-
         {/* --------------------------------------------- feedback & rating */}
         <Card
           title="Feedback & rating"
@@ -374,6 +368,15 @@ export function SettingsPage() {
           </p>
           <AboutSection />
         </div>
+
+        {/* ------------------------------------------------------ updates */}
+        {/* Placed directly under About, next to the installed version. */}
+        <Card
+          title="Updates"
+          subtitle="Checks the official GitHub Releases; in the installed app the update downloads and installs from here"
+        >
+          <UpdatesSection />
+        </Card>
 
         {/* ---------------------------------------------- device profiles */}
         {/* Offline by design: model support is data the user installs, never a

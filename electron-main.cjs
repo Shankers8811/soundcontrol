@@ -95,6 +95,128 @@ ipcMain.handle('soundcontrol:app-version', () => {
 });
 
 // ---------------------------------------------------------------------------
+// In-app updates (electron-updater, bundled by scripts/build-updater-bundle.mjs).
+//
+// The updater exists only in a packaged build: electron-updater reads
+// app-update.yml from resources/ and refuses to run from a dev checkout, so an
+// unavailable updater is a normal state, not an error. Every failure is logged
+// and reported to the renderer as a status event; nothing here may throw into
+// startup or block the window.
+// ---------------------------------------------------------------------------
+let autoUpdater = null;
+let updaterInitialized = false;
+let updaterUnavailableReason = null;
+
+function loadAutoUpdater() {
+  if (autoUpdater) return autoUpdater;
+  if (!app.isPackaged) {
+    updaterUnavailableReason = 'updates are available in the installed Windows app';
+    return null;
+  }
+  try {
+    ({ autoUpdater } = require('./electron-updater.bundle.cjs'));
+    return autoUpdater;
+  } catch (err) {
+    updaterUnavailableReason = err instanceof Error ? err.message : String(err);
+    log(`updater unavailable: ${updaterUnavailableReason}`);
+    return null;
+  }
+}
+
+function sendUpdateStatus(status) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send('soundcontrol:update:status', status);
+  }
+}
+
+function getUpdater() {
+  if (updaterInitialized) return autoUpdater;
+  updaterInitialized = true;
+  const updater = loadAutoUpdater();
+  if (!updater) return null;
+
+  updater.logger = {
+    info: (message) => log(`updater: ${message}`),
+    warn: (message) => log(`updater warn: ${message}`),
+    error: (message) => log(`updater error: ${message}`),
+    debug: (message) => log(`updater debug: ${message}`),
+  };
+  // Download as soon as a newer release is found; install only when the user
+  // explicitly restarts (or on the next normal quit if they choose that path).
+  updater.autoDownload = true;
+  updater.autoInstallOnAppQuit = false;
+
+  updater.on('checking-for-update', () => sendUpdateStatus({ state: 'checking' }));
+  updater.on('update-available', (info) =>
+    sendUpdateStatus({ state: 'available', version: info?.version ?? null }),
+  );
+  updater.on('update-not-available', (info) =>
+    sendUpdateStatus({ state: 'idle', version: info?.version ?? null }),
+  );
+  updater.on('download-progress', (progress) =>
+    sendUpdateStatus({
+      state: 'downloading',
+      percent: Math.round(progress?.percent ?? 0),
+      transferred: progress?.transferred ?? 0,
+      total: progress?.total ?? 0,
+      bytesPerSecond: progress?.bytesPerSecond ?? 0,
+    }),
+  );
+  updater.on('update-downloaded', (info) =>
+    sendUpdateStatus({ state: 'downloaded', version: info?.version ?? null }),
+  );
+  updater.on('error', (err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    log(`updater error: ${message}`);
+    sendUpdateStatus({ state: 'error', message });
+  });
+
+  return updater;
+}
+
+ipcMain.handle('soundcontrol:update:check', async () => {
+  const updater = getUpdater();
+  if (!updater) return { ok: false, reason: updaterUnavailableReason ?? 'updater unavailable' };
+  try {
+    sendUpdateStatus({ state: 'checking' });
+    const result = await updater.checkForUpdates();
+    return { ok: true, version: result?.updateInfo?.version ?? null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log(`update check failed: ${message}`);
+    return { ok: false, reason: message };
+  }
+});
+
+ipcMain.handle('soundcontrol:update:download', async () => {
+  const updater = getUpdater();
+  if (!updater) return { ok: false, reason: updaterUnavailableReason ?? 'updater unavailable' };
+  try {
+    await updater.downloadUpdate();
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log(`update download failed: ${message}`);
+    return { ok: false, reason: message };
+  }
+});
+
+ipcMain.handle('soundcontrol:update:install', () => {
+  const updater = getUpdater();
+  if (!updater) return { ok: false, reason: updaterUnavailableReason ?? 'updater unavailable' };
+  try {
+    // isSilent=false, isForceRunAfter=true: the normal NSIS install UI, then
+    // the app starts again when the installer finishes.
+    setImmediate(() => updater.quitAndInstall(false, true));
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log(`update install failed: ${message}`);
+    return { ok: false, reason: message };
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Device profiles (config-driven architecture, Phase 1).
 //
 // Profiles are plain JSON files in %AppData%\soundcontrol\device_profiles.
@@ -947,6 +1069,17 @@ if (!gotTheLock) {
     // but a rejection here must reach the log, not the void.
     startBridgeIfAvailable().catch((err) => log(`startBridgeIfAvailable failed: ${err}`));
     createWindow();
+
+    // Silent update check, delayed so it never competes with the bridge helper
+    // or the first paint. Offline/failed checks are logged and never thrown.
+    setTimeout(() => {
+      const updater = getUpdater();
+      if (!updater) return;
+      updater.checkForUpdates().catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        log(`startup update check failed: ${message}`);
+      });
+    }, 8000).unref?.();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

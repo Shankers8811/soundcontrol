@@ -134,6 +134,7 @@ if (process.argv.includes('--self-test')) {
     ['dist\\device-earbuds.webp', false, 'legacy raster in dist is not packaged'],
     ['public\\device-earbuds.webp', false, 'legacy raster in public is not packaged'],
     ['electron-main.cjs', true, 'main process file is packaged'],
+    ['electron-updater.bundle.cjs', true, 'bundled updater is packaged'],
     ['electron\\deviceProfiles.cjs', true, 'device-profile store is packaged'],
     ['shared\\device-profile-validate.cjs', true, 'device-profile validator is packaged'],
     ['shared\\device-profile.schema.json', true, 'device-profile schema is packaged'],
@@ -162,6 +163,7 @@ if (process.argv.includes('--self-test')) {
 const required = [
   'package.json',
   'electron-main.cjs',
+  'electron-updater.bundle.cjs',
   'preload.cjs',
   'autostart.cjs',
   'electron/deviceProfiles.cjs',
