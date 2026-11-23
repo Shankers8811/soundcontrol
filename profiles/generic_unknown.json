@@ -1,0 +1,54 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Shankers8811/soundcontrol/main/shared/device-profile.schema.json",
+  "schemaVersion": 1,
+  "id": "generic-unknown",
+  "name": "Unknown model",
+  "sku": "UNKNOWN",
+  "kind": "earbuds",
+  "family": "tws",
+  "match": {
+    "names": [],
+    "aliases": [],
+    "fallback": true
+  },
+  "features": {
+    "anc": {
+      "layout": "none",
+      "scenes": false,
+      "transparency": false,
+      "wind": false,
+      "adaptive": false
+    },
+    "eq": {
+      "command": null,
+      "presets": "none"
+    },
+    "battery": {
+      "scale": null,
+      "case": false
+    },
+    "dualConnection": false,
+    "ldac": false,
+    "surround": false,
+    "gaming": false,
+    "factoryReset": false,
+    "multipoint": false,
+    "voicePrompt": null
+  },
+  "state": {
+    "batteryLeft": 2,
+    "batteryRight": 3,
+    "batteryChargingLeft": null,
+    "batteryChargingRight": null,
+    "batteryCase": null,
+    "firmware": null,
+    "serial": null,
+    "eqPresetId": null,
+    "eqBands": null,
+    "soundModes": null
+  },
+  "provenance": {
+    "source": "No identity: protocol-universal reads only (01:05, 01:03 presence per PROTOCOL.md). Battery scale unproven — percentages stay unavailable.",
+    "verified": false
+  }
+}
