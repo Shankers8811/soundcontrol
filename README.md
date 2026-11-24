@@ -216,6 +216,32 @@ SoundControl maintains a separate protocol profile for each **Soundcore SKU** �
 
 **Catalog-only devices** (identity known, no protocol layout): Life U2, Life U2i/R500, Life NC neckband, R500, V30i, V40i, AeroFit series, C30i, C40i, AeroFit 2/Pro, V30i/V40i, R500/Life U2i, Life U2, Life NC, Space 2 Pro, Q31i, H30i, Life Q20, etc. These show battery/identity only — no ANC/EQ/toggle controls.
 
+### 📥 Device profiles — install one, or add your model
+
+The table above is what SoundControl knows out of the box. New or unusual models are supported
+through small JSON profiles that you install yourself: the app never downloads them, and it
+validates every field before a control is enabled.
+
+**Install a profile (Windows, no coding):**
+
+1. Open [`profiles/`](profiles/) and pick your SKU, for example
+   [`soundcore-r50i-nc.json`](profiles/soundcore-r50i-nc.json).
+2. Click **Download raw file**.
+3. In SoundControl open **Settings → Device profiles → Open profiles folder** — or paste
+   `%AppData%\soundcontrol\device_profiles` into Explorer's address bar.
+4. Move the `.json` into that folder. The folder is watched, so the profile applies without a
+   restart.
+
+**Tune it yourself:** a profile is plain JSON. Open it in Notepad to change
+`features.eq.defaultBands` (your starting EQ curve) or `features.anc.levels` /
+`adaptiveSensitivity`, save, and the app reloads it. A bad value is reported with the exact field
+and nothing is partially applied.
+
+**Contribute a profile:** capture the Bluetooth traffic from the official app, decode it in
+Wireshark, describe it as one JSON file, and open a pull request. The complete walkthrough —
+Android HCI snoop log, iOS PacketLogger capture, the schema field table and the GitHub steps —
+is in **[`profiles/README.md`](profiles/README.md)**.
+
 ---
 
 ## Install / Uninstall
@@ -269,7 +295,9 @@ SoundControl maintains a separate protocol profile for each **Soundcore SKU** �
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 - Protocol contribution guide (evidence standards, capture format)
-- Device profile addition checklist
+- Device profile addition checklist — the full capture-to-PR walkthrough is in
+  **[`profiles/README.md`](profiles/README.md)** (Android HCI snoop log, iOS PacketLogger, the
+  schema field table and the GitHub steps)
 - Code style (ESLint + Prettier + TypeScript strict)
 - Test requirements (no hardware needed for CI)
 
