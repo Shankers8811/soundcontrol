@@ -13,7 +13,7 @@
   <a href="https://github.com/Shankers8811/soundcontrol/actions/workflows/smoke-windows.yml"><img src="https://github.com/Shankers8811/soundcontrol/actions/workflows/smoke-windows.yml/badge.svg?branch=main" alt="Windows Desktop Smoke Test"></a>
 </p>
 
-SoundControl is a **Windows and Linux desktop companion for Soundcore devices**. It uses a local Bluetooth bridge and evidence-backed protocol profiles for model-aware controls, battery telemetry and diagnostics. Supported controls depend on the connected model: unsupported commands remain blocked, and manual profile selection cannot bypass the model gate. Devices must already be paired and connected through the host's Bluetooth settings; some profiles are read-only or catalog-only. This is not an Android app.
+SoundControl is a **Windows and Linux desktop companion for Soundcore devices**, built with an **Electron + React** desktop shell and a **bundled Python RFCOMM bridge** (no Rust or Tauri anywhere). It uses evidence-backed protocol profiles for model-aware controls, battery telemetry and diagnostics, and device support can be extended offline with plain **JSON profiles** you install yourself. Supported controls depend on the connected model: unsupported commands remain blocked, and manual profile selection cannot bypass the model gate. Devices must already be paired and connected through the host's Bluetooth settings; some profiles are read-only or catalog-only. This is not an Android app.
 
 ## Build Status
 
@@ -25,7 +25,7 @@ Live status for `main`:
 
 The repository currently requires all three checks to pass before a validated `main` change is considered ready. CI is automated validation; it is not physical Soundcore-device or Windows audio-regression validation.
 
-**Install or download:** Linux AppImage and Debian packages are available below. The latest published release has **no Windows installer asset**; the Windows download remains unavailable until an Authenticode-verified installer is published. The Windows Build badge above shows live GitHub Actions status for `main`, not a signed-release indicator.
+**Install or download:** [`SoundControl-Setup.exe`](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup.exe) is the complete Windows app — Electron shell, React UI and the bundled Python RFCOMM bridge, with no Node.js, Python or Rust runtime to install. Device support beyond the built-in profiles is data you add by hand: download the `.json` for your model from [`profiles/`](profiles/) and drop it into `%AppData%\soundcontrol\device_profiles` (the app never downloads a profile itself). Linux AppImage and Debian packages are available below.
 
 ---
 
@@ -33,13 +33,30 @@ The repository currently requires all three checks to pass before a validated `m
 
 **⬇️ Direct downloads (recommended) — no build required:**
 
-**Latest published release:** [v1.0.10](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.10) (assets checked 2026-10-25). It contains `SoundControl.AppImage`, `SoundControl-1.0.10.AppImage`, `SoundControl.deb`, and `soundcontrol_1.0.10_amd64.deb`. Windows installer requires Authenticode signing — see [Windows Code Signing](docs/WINDOWS-CODE-SIGNING.md).
+**Latest published release:** [v1.0.13](https://github.com/Shankers8811/soundcontrol/releases/tag/v1.0.13) — Windows: `SoundControl-Setup.exe`, `SoundControl-Setup.exe.blockmap` and `latest.yml` (the in-app updater feed). The installer is currently unsigned, so SmartScreen shows its unknown-publisher prompt on first run — see [Code signing & SmartScreen](#-code-signing--smartscreen). Linux AppImage/Debian assets are published by the Linux release workflow when it runs.
 
 ### 🪟 Windows
 
-**Windows installer: not included in the latest published release.** There is no `SoundControl-Setup.exe` asset, so there is no official Windows download link to provide.
+[**Download `SoundControl-Setup.exe`**](https://github.com/Shankers8811/soundcontrol/releases/latest/download/SoundControl-Setup.exe)
 
-A future official Windows release would attach an Authenticode-signed NSIS installer with Start-menu and desktop shortcuts and a bundled Bluetooth runtime; users would not need Node.js or Python. Publication is gated by a valid Authenticode certificate and the `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` credentials (or their documented aliases). A passing Windows Build workflow, a local `npm run build:win` result, or an unsigned CI artifact is **not** a published signed Windows installer.
+The NSIS installer carries the Electron shell, the React renderer and the bundled Python RFCOMM
+bridge: there is no Node.js, Python or Rust toolchain to install. It creates Start-menu and
+desktop shortcuts, upgrades an existing installation in place (same application ID), and keeps
+your data in `%AppData%\soundcontrol`.
+
+**Profiles are manual, by design.** Download the `.json` for your model from
+[`profiles/`](profiles/) and copy it into:
+
+```
+%AppData%\soundcontrol\device_profiles
+```
+
+The folder is watched, so the profile applies without a restart. **Settings → Device profiles**
+lists what is installed and reports any invalid file with the exact field and reason. The full
+install, capture and contribution walkthrough is in [`profiles/README.md`](profiles/README.md).
+
+Windows may show SmartScreen's "unknown publisher" prompt on an unsigned build — choose
+**More info → Run anyway** (see [Code signing & SmartScreen](#-code-signing--smartscreen)).
 
 ### 🐧 Linux AppImage
 
@@ -65,7 +82,7 @@ Both published Linux packages bundle Electron and the Python bridge runtime — 
 [**View all releases and release notes**](https://github.com/Shankers8811/soundcontrol/releases)
 
 - Release links are built into the app under **Settings → About**.
-- Windows releases are required to pass Authenticode signing before publication; a CI artifact is not a published release asset.
+- Windows installers are signed when the code-signing secrets are configured; otherwise the release is published **unsigned** and SmartScreen shows its unknown-publisher prompt on first run.
 - **Lifecycle is deliberately boring:** SoundControl starts only when you launch it (it never
   registers a Windows startup entry, and a startup entry left by an older version is removed at
   launch), and closing the window exits completely — the Bluetooth helper is terminated, port
@@ -100,7 +117,7 @@ paired with the host computer** through a small local Bluetooth bridge:
    paired devices nor write to them — see [SECURITY.md](.github/SECURITY.md).
 
 The very first launch after installing can take a few extra seconds while the desktop runtime
-initializes — it is not hung. Windows installers must be Authenticode-signed before distribution (see [Code signing & SmartScreen](#-code-signing--smartscreen)).
+initializes — it is not hung. Unsigned Windows builds show SmartScreen's unknown-publisher prompt on first run (see [Code signing & SmartScreen](#-code-signing--smartscreen)).
 
 **Or build/run it yourself from source.** Run directly on Windows or Linux with hardware Bluetooth support:
   ```bash
@@ -130,7 +147,7 @@ initializes — it is not hung. Windows installers must be Authenticode-signed b
 - **Bluetooth**: Bluetooth 4.0+ adapter with RFCOMM support
 - **Runtime**: No separate Python/Node.js installation required (bundled in installer)
 - **Permissions**: No administrator rights needed for normal operation
-- **Security**: Authenticode-signed installer (SmartScreen-friendly); unsigned portable ZIP also available
+- **Security**: unsigned by default (SmartScreen shows the unknown-publisher prompt); signed builds when the code-signing secrets are configured
 
 ### 🐧 Linux
 - **OS**: Any modern distribution (Ubuntu 20.04+, Fedora 35+, Arch, Debian 11+, etc.)
@@ -216,13 +233,39 @@ SoundControl maintains a separate protocol profile for each **Soundcore SKU** �
 
 **Catalog-only devices** (identity known, no protocol layout): Life U2, Life U2i/R500, Life NC neckband, R500, V30i, V40i, AeroFit series, C30i, C40i, AeroFit 2/Pro, V30i/V40i, R500/Life U2i, Life U2, Life NC, Space 2 Pro, Q31i, H30i, Life Q20, etc. These show battery/identity only — no ANC/EQ/toggle controls.
 
+### 📥 Device profiles — install one, or add your model
+
+The table above is what SoundControl knows out of the box. New or unusual models are supported
+through small JSON profiles that you install yourself: the app never downloads them, and it
+validates every field before a control is enabled.
+
+**Install a profile (Windows, no coding):**
+
+1. Open [`profiles/`](profiles/) and pick your SKU, for example
+   [`soundcore-r50i-nc.json`](profiles/soundcore-r50i-nc.json).
+2. Click **Download raw file**.
+3. In SoundControl open **Settings → Device profiles → Open profiles folder** — or paste
+   `%AppData%\soundcontrol\device_profiles` into Explorer's address bar.
+4. Move the `.json` into that folder. The folder is watched, so the profile applies without a
+   restart.
+
+**Tune it yourself:** a profile is plain JSON. Open it in Notepad to change
+`features.eq.defaultBands` (your starting EQ curve) or `features.anc.levels` /
+`adaptiveSensitivity`, save, and the app reloads it. A bad value is reported with the exact field
+and nothing is partially applied.
+
+**Contribute a profile:** capture the Bluetooth traffic from the official app, decode it in
+Wireshark, describe it as one JSON file, and open a pull request. The complete walkthrough —
+Android HCI snoop log, iOS PacketLogger capture, the schema field table and the GitHub steps —
+is in **[`profiles/README.md`](profiles/README.md)**.
+
 ---
 
 ## Install / Uninstall
 
 | Platform | Method | Auto-Update | Notes |
 |----------|--------|-------------|-------|
-| **Windows** | `SoundControl-Setup.exe` (NSIS, Authenticode-signed) | In-app (GitHub Releases) | Start Menu + Desktop shortcut; no auto-start |
+| **Windows** | `SoundControl-Setup.exe` (NSIS installer; unsigned unless a certificate is configured) | In-app (GitHub Releases) | Start Menu + Desktop shortcut; no auto-start |
 | **Linux (AppImage)** | `chmod +x SoundControl.AppImage && ./SoundControl.AppImage` | Manual re-download | No FUSE issues; FUSE2 fallback |
 | **Linux (Debian/Ubuntu)** | `sudo apt install ./SoundControl.deb` | Manual re-download | Adds `.desktop` entry; BlueZ dependency |
 | **From Source** | `git clone && npm install && npm run electron` | Manual | Requires Node 22+, Python 3.12+ |
@@ -269,7 +312,9 @@ SoundControl maintains a separate protocol profile for each **Soundcore SKU** �
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 - Protocol contribution guide (evidence standards, capture format)
-- Device profile addition checklist
+- Device profile addition checklist — the full capture-to-PR walkthrough is in
+  **[`profiles/README.md`](profiles/README.md)** (Android HCI snoop log, iOS PacketLogger, the
+  schema field table and the GitHub steps)
 - Code style (ESLint + Prettier + TypeScript strict)
 - Test requirements (no hardware needed for CI)
 
@@ -491,9 +536,15 @@ git push origin vX.Y.Z
 The in-app downloader queries the latest release and shows only assets that exist. Linux stable aliases are attached by the Linux release workflow.
 
 ### 🔏 Code signing & SmartScreen
-The Windows signing pipeline is fully implemented and enforced: **release builds are gated on signing** — the release workflow refuses to build without credentials, electron-builder runs with `forceCodeSigning`, and the generated EXE is verified (`Get-AuthenticodeSignature` + `signtool verify /pa`, publisher identity, SHA-256 recorded, every shipped executable signed) before the GitHub Release is published. All details: **[docs/WINDOWS-CODE-SIGNING.md](docs/WINDOWS-CODE-SIGNING.md)**.
+Signing is optional and enabled through repository secrets. When `WIN_CSC_LINK` and
+`WIN_CSC_KEY_PASSWORD` exist, electron-builder signs the app, the bundled Python executables,
+the uninstaller and the installer (SHA-256 + RFC 3161 timestamping), the cleanup step deletes
+the staged certificate, and the signing gate verifies the published EXE. When they are absent,
+the installer is built and published **unsigned** — Windows shows SmartScreen's
+"unknown publisher" prompt on first run, and choosing **More info → Run anyway** installs it.
+All details: **[docs/WINDOWS-CODE-SIGNING.md](docs/WINDOWS-CODE-SIGNING.md)**.
 
-The latest published release has no Windows installer. A signed Windows release requires a valid code-signing certificate and the repository secrets below; the CI certificate-validation step is skipped when they are not configured. To enable signing, set two repository secrets (Settings → Secrets and
+To enable signing, set two repository secrets (Settings → Secrets and
 variables → Actions):
 
 | Secret | Value |
@@ -502,11 +553,9 @@ variables → Actions):
 | `WIN_CSC_KEY_PASSWORD` | the certificate password |
 
 (Optionally also set the repository variable `WINDOWS_EXPECTED_PUBLISHER` so
-the release gate can pin the expected signer identity.) electron-builder signs
-the app, the bundled Python executables, the uninstaller and the installer
-with SHA-256 + RFC 3161 timestamping, and the cleanup step deletes the staged
-certificate after the build. Until those secrets exist, every attempt to cut a
-release fails loudly instead of shipping another unsigned installer.
+the signing gate can pin the expected signer identity.) Signing does not
+instantly clear SmartScreen for a brand-new certificate: reputation accrues
+over downloads.
 
 **Getting a certificate — three routes, cheapest first:**
 
