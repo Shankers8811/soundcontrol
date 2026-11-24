@@ -31,7 +31,7 @@
   launch-at-login or minimize-to-tray setting by design; obsolete entries in an old
   `%AppData%\soundcontrol\settings.json` are stripped at startup so they can never re-enable
   either behaviour. The complete installed package stays far below 500 MB (measured on Windows CI).
-- More docs: [REQUIREMENTS.md](REQUIREMENTS.md) (honest audit of the community requirement list), [TROUBLESHOOTING.md](TROUBLESHOOTING.md) (every connect failure mode, explained from the real log messages), [ROADMAP.md](ROADMAP.md) (shipped vs open), [PROTOCOL.md](PROTOCOL.md) (verified wire spec), [PUBLISH.md](PUBLISH.md) (release checklist).
+- More docs: [REQUIREMENTS.md](REQUIREMENTS.md) (honest audit of the community requirement list), [TROUBLESHOOTING.md](TROUBLESHOOTING.md) (every connect failure mode, explained from the real log messages), [ROADMAP.md](ROADMAP.md) (shipped vs open), [PROTOCOL.md](PROTOCOL.md) (verified wire spec), [PUBLISH.md](PUBLISH.md) (release checklist), [profiles/README.md](profiles/README.md) (install a profile, or capture and contribute one).
 
 **🔎 Connecting earbuds on Windows (important).** SoundControl talks to devices **already paired
 with Windows** through a small local bridge that runs on a Python runtime **bundled inside the
@@ -65,6 +65,34 @@ freshly downloaded app — it is not hung. If SmartScreen appears, choose **More
   npm run build:win
   ```
   The packaged NSIS setup installer `.exe` will be generated in the **`release/`** directory.
+
+---
+
+## 🎛️ Device profiles — install one, or add your model
+
+SoundControl's built-in profile covers what is listed in the feature table below. New or unusual
+models are supported through small JSON profiles that **you** install: the app never downloads
+them, and every field is validated before a control is enabled.
+
+**Install a profile (Windows, no coding):**
+
+1. Open [`profiles/`](profiles/) and pick your SKU, for example
+   [`soundcore-r50i-nc.json`](profiles/soundcore-r50i-nc.json).
+2. Click **Download raw file**.
+3. In SoundControl open **Settings → Device profiles → Open profiles folder** — or paste
+   `%AppData%\soundcontrol\device_profiles` into Explorer's address bar.
+4. Move the `.json` into that folder. The folder is watched, so the profile applies without a
+   restart.
+
+**Tune it yourself:** a profile is plain JSON. Open it in Notepad to change
+`features.eq.defaultBands` (your starting EQ curve) or `features.anc.levels` /
+`adaptiveSensitivity`, save, and the app reloads it. A bad value is reported with the exact field
+and nothing is partially applied.
+
+**Contribute a profile:** capture the Bluetooth traffic from the official app, decode it in
+Wireshark, describe it as one JSON file, and open a pull request. The complete walkthrough —
+Android HCI snoop log, iOS PacketLogger capture, the schema field table and the GitHub steps —
+is in **[`profiles/README.md`](profiles/README.md)**.
 
 ---
 
